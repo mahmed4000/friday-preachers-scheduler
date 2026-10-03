@@ -25,6 +25,7 @@ import {
 import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
 import { ImamProfileData, Imam, Mosque } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
+import initialSeed from '../../db/initialSeed.json';
 import { buildWhatsAppLink } from '../../lib/whatsapp.ts';
 import { Button } from '../ui/Button.tsx';
 import { Badge } from '../ui/Badge.tsx';
@@ -32,6 +33,8 @@ import { Card } from '../ui/Card.tsx';
 import { Tabs } from '../ui/Tabs.tsx';
 import { OrnamentalSeparator } from '../ui/OrnamentalSeparator.tsx';
 import { ClickableMosque } from '../../context/ProfileNavigationContext.tsx';
+
+import { getFallbackImamProfile } from '../../lib/profileFallbacks.ts';
 
 interface ImamProfileViewProps {
   imamId: number;
@@ -70,8 +73,19 @@ export function ImamProfileView({
         setSelectedScheduleId(res.activeSchedule.id);
       }
     } catch (err: any) {
-      console.error('Error fetching imam profile:', err);
-      setError(err.message || 'تعذر تحميل الملف التعريفي للخطيب');
+      console.warn('Backend unavailable, attempting local seed fallback for imam profile:', err);
+      const fallback = getFallbackImamProfile(imamId, schedId || selectedScheduleId);
+      if (fallback) {
+        setData(fallback);
+        if (schedId) {
+          setSelectedScheduleId(schedId);
+        } else if (!selectedScheduleId && fallback.activeSchedule) {
+          setSelectedScheduleId(fallback.activeSchedule.id);
+        }
+      } else {
+        console.error('Error fetching imam profile and no local fallback found:', err);
+        setError(err.message || 'تعذر تحميل الملف التعريفي للخطيب');
+      }
     } finally {
       setLoading(false);
     }

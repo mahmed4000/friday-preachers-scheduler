@@ -813,7 +813,9 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
       auditLogs: logs,
     });
   } catch (error: any) {
-    console.error('Error fetching mosque profile:', error);
+    console.warn('DB fetch for mosque profile failed, falling back to memory store:', error?.message);
+    const fallback = memoryStore.getMosqueProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : undefined);
+    if (fallback) return res.json(fallback);
     res.status(500).json({ error: 'تعذر جلب الملف التعريفي للمسجد', details: error.message });
   }
 });
@@ -1093,8 +1095,17 @@ api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
       availableImams: allImams.filter((i) => i.isActive),
     });
   } catch (error: any) {
-    console.error('Error fetching fixed patterns:', error);
-    res.status(500).json({ error: 'تعذر جلب نمط التثبيت للمسجد', details: error.message });
+    console.warn('DB fetch for fixed patterns failed, falling back to memory store:', error?.message);
+    const mId = Number(req.params.id);
+    const yr = req.query.year ? Number(req.query.year) : 1448;
+    const mo = req.query.month ? Number(req.query.month) : 4;
+    const fallback = memoryStore.getFixedPatterns(mId, yr, mo);
+    const monthDetails = CalendarService.getHijriMonthDetails(yr, mo);
+    res.json({
+      ...fallback,
+      monthDetails,
+      availableImams: memoryStore.getImams().filter((i: any) => i.isActive),
+    });
   }
 });
 
@@ -1649,7 +1660,9 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
       auditLogs: logs,
     });
   } catch (error: any) {
-    console.error('Error fetching imam profile:', error);
+    console.warn('DB fetch for imam profile failed, falling back to memory store:', error?.message);
+    const fallback = memoryStore.getImamProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : undefined);
+    if (fallback) return res.json(fallback);
     res.status(500).json({ error: 'تعذر جلب الملف التعريفي للخطيب', details: error.message });
   }
 });
@@ -2859,7 +2872,8 @@ api.get('/reports/summary', async (_req: Request, res: Response) => {
       manualChangesCount: allHistory.length,
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب التقارير', details: error.message });
+    console.warn('DB fetch for reports summary failed, falling back to memory store:', error?.message);
+    res.json(memoryStore.getReportsSummary());
   }
 });
 
@@ -2868,7 +2882,8 @@ api.get('/audit-logs', async (_req: Request, res: Response) => {
     const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
     res.json(logs);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب سجل التدقيق', details: error.message });
+    console.warn('DB fetch for audit-logs failed, falling back to memory store:', error?.message);
+    res.json(memoryStore.getAuditLogs());
   }
 });
 

@@ -347,4 +347,367 @@ export const memoryStore = {
       liveDateTime: currentDT,
     };
   },
+
+  getImamProfile(id: number, scheduleId?: number) {
+    const imam = memoryImams.find((i: any) => i.id === id);
+    if (!imam) return null;
+
+    const allAssignments = memoryAssignments.filter((a: any) => a.imamId === id);
+    const fridayMap = new Map(memoryFridays.map((f: any) => [f.id, f]));
+    const scheduleMap = new Map(memorySchedules.map((s: any) => [s.id, s]));
+    const mosqueMap = new Map(memoryMosques.map((m: any) => [m.id, m]));
+
+    const activeSchedule =
+      (scheduleId ? memorySchedules.find((s: any) => s.id === scheduleId) : null) ||
+      memorySchedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
+      memorySchedules[0] ||
+      null;
+
+    const profileAssignments = allAssignments.map((a: any) => {
+      const f = fridayMap.get(a.fridayId) as any;
+      const s = scheduleMap.get(a.scheduleId) as any;
+      const m = mosqueMap.get(a.mosqueId) as any;
+      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+
+      return {
+        id: a.id,
+        scheduleId: a.scheduleId,
+        fridayId: a.fridayId,
+        fridayIndex: a.fridayIndex,
+        hijriDate: f?.hijriDate || `جمعة ${a.fridayIndex}`,
+        gregorianDate: f?.gregorianDate || undefined,
+        monthName: s?.monthName || 'غير محدد',
+        hijriYear: s?.hijriYear || 1448,
+        scheduleStatus: s?.status || 'APPROVED',
+        mosqueId: a.mosqueId,
+        mosqueName: m?.name || 'مسجد غير معروف',
+        mosqueCode: m?.code || '',
+        mosqueRegion: m?.region || '',
+        imamId: imam.id,
+        imamName: imam.name,
+        imamType: imam.type,
+        imamPhone: imam.phone || undefined,
+        isLocked: a.isLocked,
+        source: a.source,
+        isUpcoming,
+      };
+    }).sort((x: any, y: any) => {
+      if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
+      return x.fridayIndex - y.fridayIndex;
+    });
+
+    const upcomingAssignments = activeSchedule
+      ? profileAssignments
+          .filter((a: any) => a.scheduleId === activeSchedule.id)
+          .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+      : profileAssignments.filter((a: any) => a.isUpcoming);
+
+    const rules = memoryRules
+      .filter((r: any) => r.imamId === id)
+      .map((r: any) => {
+        const m = mosqueMap.get(r.mosqueId) as any;
+        return {
+          ...r,
+          mosqueName: m?.name,
+          mosqueRegion: m?.region,
+        };
+      });
+
+    const mosqueCounts = new Map<number, { count: number; lastDate?: string; nextDate?: string }>();
+    for (const a of profileAssignments) {
+      const curr = mosqueCounts.get(a.mosqueId) || { count: 0 };
+      curr.count += 1;
+      if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
+      if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
+      mosqueCounts.set(a.mosqueId, curr);
+    }
+
+    const linkedMosques = Array.from(mosqueCounts.entries()).map(([mId, data]) => {
+      const m = mosqueMap.get(mId) as any;
+      const rule = rules.find((r: any) => r.mosqueId === mId);
+      return {
+        mosqueId: mId,
+        mosqueName: m?.name || `مسجد #${mId}`,
+        mosqueCode: m?.code || '',
+        mosqueRegion: m?.region || '',
+        relationshipType: rule?.relationshipType,
+        assignedCount: data.count,
+        lastDate: data.lastDate,
+        nextDate: data.nextDate,
+      };
+    }).sort((x, y) => y.assignedCount - x.assignedCount);
+
+    const stats = {
+      currentMonthCount: upcomingAssignments.length,
+      currentMonthName: activeSchedule?.monthName || '',
+      currentHijriYear: activeSchedule?.hijriYear || 1448,
+      currentScheduleStatus: activeSchedule?.status || 'APPROVED',
+      lifetimeTotalAssigned: profileAssignments.length,
+      mosquesCount: linkedMosques.length,
+      upcomingCount: upcomingAssignments.length,
+      pastCount: profileAssignments.length - upcomingAssignments.length,
+      availabilitiesCount: 0,
+      minFridays: imam.minFridays,
+      targetFridays: imam.targetFridays,
+      maxFridays: imam.maxFridays,
+    };
+
+    return {
+      imam,
+      activeSchedule,
+      availableSchedules: memorySchedules.map((s: any) => ({
+        id: s.id,
+        monthName: s.monthName,
+        hijriYear: s.hijriYear,
+        fridaysCount: s.fridaysCount,
+        status: s.status,
+      })),
+      stats,
+      assignments: profileAssignments,
+      upcomingAssignments,
+      linkedMosques,
+      rules,
+      availabilities: [],
+      auditLogs: [],
+    };
+  },
+
+  getMosqueProfile(id: number, scheduleId?: number) {
+    const mosque = memoryMosques.find((m: any) => m.id === id);
+    if (!mosque) return null;
+
+    const imamMap = new Map(memoryImams.map((i: any) => [i.id, i]));
+    const fridayMap = new Map(memoryFridays.map((f: any) => [f.id, f]));
+    const scheduleMap = new Map(memorySchedules.map((s: any) => [s.id, s]));
+
+    const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
+    const allAssignments = memoryAssignments.filter((a: any) => a.mosqueId === id);
+
+    const activeSchedule =
+      (scheduleId ? memorySchedules.find((s: any) => s.id === scheduleId) : null) ||
+      memorySchedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
+      memorySchedules[0] ||
+      null;
+
+    const profileAssignments = allAssignments.map((a: any) => {
+      const f = fridayMap.get(a.fridayId) as any;
+      const s = scheduleMap.get(a.scheduleId) as any;
+      const i = a.imamId ? (imamMap.get(a.imamId) as any) : null;
+      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+
+      return {
+        id: a.id,
+        scheduleId: a.scheduleId,
+        fridayId: a.fridayId,
+        fridayIndex: a.fridayIndex,
+        hijriDate: f?.hijriDate || `جمعة ${a.fridayIndex}`,
+        gregorianDate: f?.gregorianDate || undefined,
+        monthName: s?.monthName || 'غير محدد',
+        hijriYear: s?.hijriYear || 1448,
+        scheduleStatus: s?.status || 'APPROVED',
+        mosqueId: mosque.id,
+        mosqueName: mosque.name,
+        mosqueCode: mosque.code,
+        mosqueRegion: mosque.region,
+        imamId: a.imamId,
+        imamName: i?.name || 'شاغر (لم يعين)',
+        imamType: i?.type || 'FLEXIBLE',
+        imamPhone: i?.phone || undefined,
+        isLocked: a.isLocked,
+        source: a.source,
+        isUpcoming,
+      };
+    }).sort((x: any, y: any) => {
+      if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
+      return x.fridayIndex - y.fridayIndex;
+    });
+
+    const upcomingAssignments = activeSchedule
+      ? profileAssignments
+          .filter((a: any) => a.scheduleId === activeSchedule.id)
+          .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+      : profileAssignments.filter((a: any) => a.isUpcoming);
+
+    const allRules = memoryRules.filter((r: any) => r.mosqueId === id);
+    const rulesGrouped = {
+      preferred: allRules.filter((r: any) => r.relationshipType === 'PREFERRED').map((r: any) => ({ ...r, imamName: (imamMap.get(r.imamId) as any)?.name })),
+      allowed: allRules.filter((r: any) => r.relationshipType === 'ALLOWED').map((r: any) => ({ ...r, imamName: (imamMap.get(r.imamId) as any)?.name })),
+      discouraged: allRules.filter((r: any) => r.relationshipType === 'DISCOURAGED').map((r: any) => ({ ...r, imamName: (imamMap.get(r.imamId) as any)?.name })),
+      forbidden: allRules.filter((r: any) => r.relationshipType === 'FORBIDDEN').map((r: any) => ({ ...r, imamName: (imamMap.get(r.imamId) as any)?.name })),
+      fixed: allRules.filter((r: any) => r.relationshipType === 'FIXED').map((r: any) => ({ ...r, imamName: (imamMap.get(r.imamId) as any)?.name })),
+    };
+
+    const imamCounts = new Map<number, { count: number; lastDate?: string; nextDate?: string }>();
+    for (const a of profileAssignments) {
+      if (a.imamId) {
+        const curr = imamCounts.get(a.imamId) || { count: 0 };
+        curr.count += 1;
+        if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
+        if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
+        imamCounts.set(a.imamId, curr);
+      }
+    }
+
+    const linkedImams = Array.from(imamCounts.entries()).map(([imId, data]) => {
+      const im = imamMap.get(imId) as any;
+      const rule = allRules.find((r: any) => r.imamId === imId);
+      return {
+        imamId: imId,
+        imamName: im?.name || `خطيب #${imId}`,
+        imamType: im?.type || 'FLEXIBLE',
+        imamPhone: im?.phone || undefined,
+        relationshipType: rule?.relationshipType || (mosque.fixedImamId === imId ? 'FIXED' : undefined),
+        assignedCount: data.count,
+        lastDate: data.lastDate,
+        nextDate: data.nextDate,
+      };
+    }).sort((x, y) => y.assignedCount - x.assignedCount);
+
+    const stats = {
+      totalAssigned: profileAssignments.length,
+      currentMonthCount: upcomingAssignments.length,
+      imamsCount: linkedImams.length,
+      upcomingCount: upcomingAssignments.length,
+      currentScheduleFridaysTotal: activeSchedule?.fridaysCount || 4,
+      currentMonthName: activeSchedule?.monthName || '',
+      currentHijriYear: activeSchedule?.hijriYear || 1448,
+    };
+
+    return {
+      mosque,
+      fixedImam,
+      activeSchedule,
+      availableSchedules: memorySchedules.map((s: any) => ({
+        id: s.id,
+        monthName: s.monthName,
+        hijriYear: s.hijriYear,
+        fridaysCount: s.fridaysCount,
+        status: s.status,
+      })),
+      stats,
+      assignments: profileAssignments,
+      upcomingAssignments,
+      linkedImams,
+      rules: rulesGrouped,
+      auditLogs: [],
+    };
+  },
+
+  getFixedPatterns(mosqueId: number, year: number, month: number) {
+    const pattern = memoryPatterns.find(
+      (p: any) => p.mosqueId === mosqueId && p.hijriYear === year && p.hijriMonth === month
+    );
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
+    const imamMap = new Map(memoryImams.map((i: any) => [i.id, i]));
+
+    if (!pattern) {
+      return {
+        exists: false,
+        fridaysCount: monthDetails.fridaysCount,
+        pattern: {
+          patternType: 'NONE',
+          items: monthDetails.fridays.map((f: any) => ({
+            fridayIndex: f.fridayIndex,
+            imamId: null,
+            imamName: null,
+          })),
+        },
+      };
+    }
+
+    const items = memoryPatternItems
+      .filter((pi: any) => pi.patternId === pattern.id)
+      .map((pi: any) => {
+        const im = pi.imamId ? (imamMap.get(pi.imamId) as any) : null;
+        return {
+          ...pi,
+          imamName: im?.name || null,
+        };
+      });
+
+    return {
+      exists: true,
+      pattern: {
+        ...pattern,
+        items,
+      },
+      fridaysCount: pattern.fridaysCount,
+    };
+  },
+
+  getReportsSummary() {
+    const imamLoads = memoryImams.map((i: any) => {
+      const assigned = memoryAssignments.filter((a: any) => a.imamId === i.id).length;
+      return {
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        min: i.minFridays,
+        target: i.targetFridays,
+        max: i.maxFridays,
+        assigned,
+        status: assigned < i.minFridays ? 'UNDER' : assigned > i.maxFridays ? 'OVER' : 'BALANCED',
+      };
+    });
+
+    const mosqueLoads = memoryMosques.map((m: any) => {
+      const assignedCount = memoryAssignments.filter((a: any) => a.mosqueId === m.id).length;
+      return {
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        region: m.region,
+        assignedCount,
+      };
+    });
+
+    return {
+      imamLoads,
+      mosqueLoads,
+      totalConflicts: memoryConflicts.length,
+      criticalConflicts: 0,
+      warningConflicts: 0,
+      overridesCount: memoryOverrides.length,
+      manualChangesCount: 0,
+    };
+  },
+
+  getAuditLogs() {
+    return [
+      {
+        id: 1,
+        userEmail: 'admin@aljameya.org',
+        action: 'INITIAL_SEED',
+        entityType: 'SYSTEM',
+        entityId: 1,
+        detailsJson: JSON.stringify({ message: 'تهيئة البيانات المعتمدة لمنظّم الجمعة' }),
+        createdAt: new Date().toISOString(),
+      },
+    ];
+  },
+
+  updateAssignment(scheduleId: number, assignmentId: number, imamId: number | null, reason?: string) {
+    const assign = memoryAssignments.find((a: any) => a.id === assignmentId && a.scheduleId === scheduleId);
+    if (!assign) return null;
+    assign.imamId = imamId;
+    assign.source = 'MANUAL';
+    assign.updatedAt = new Date().toISOString();
+    return assign;
+  },
+
+  toggleLock(scheduleId: number, assignmentId: number) {
+    const assign = memoryAssignments.find((a: any) => a.id === assignmentId && a.scheduleId === scheduleId);
+    if (!assign) return null;
+    assign.isLocked = !assign.isLocked;
+    assign.updatedAt = new Date().toISOString();
+    return assign;
+  },
+
+  approveSchedule(scheduleId: number) {
+    const sched = memorySchedules.find((s: any) => s.id === scheduleId);
+    if (!sched) return null;
+    sched.status = 'APPROVED';
+    sched.approvedAt = new Date().toISOString();
+    return sched;
+  },
 };

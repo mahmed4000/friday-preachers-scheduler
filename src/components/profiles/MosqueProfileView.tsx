@@ -38,6 +38,8 @@ import { ExportModal } from '../import-export/ExportModal.tsx';
 import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
 import { FileText } from 'lucide-react';
 
+import { getFallbackMosqueProfile } from '../../lib/profileFallbacks.ts';
+
 interface MosqueProfileViewProps {
   mosqueId: number;
   onBack: () => void;
@@ -88,8 +90,19 @@ export function MosqueProfileView({
         // ignore
       }
     } catch (err: any) {
-      console.error('Error fetching mosque profile:', err);
-      setError(err.message || 'تعذر تحميل الملف التعريفي للمسجد');
+      console.warn('Backend unavailable, attempting local seed fallback for mosque profile:', err);
+      const fallback = getFallbackMosqueProfile(mosqueId, schedId || selectedScheduleId);
+      if (fallback) {
+        setData(fallback);
+        if (schedId) {
+          setSelectedScheduleId(schedId);
+        } else if (!selectedScheduleId && fallback.activeSchedule) {
+          setSelectedScheduleId(fallback.activeSchedule.id);
+        }
+      } else {
+        console.error('Error fetching mosque profile and no fallback found:', err);
+        setError(err.message || 'تعذر تحميل الملف التعريفي للمسجد');
+      }
     } finally {
       setLoading(false);
     }
