@@ -693,7 +693,23 @@ export const memoryStore = {
     assign.imamId = imamId;
     assign.source = 'MANUAL';
     assign.updatedAt = new Date().toISOString();
+    this.persistToDisk();
     return assign;
+  },
+
+  swapAssignments(scheduleId: number, sourceAssignmentId: number, targetAssignmentId: number, reason?: string) {
+    const a1 = memoryAssignments.find((a: any) => a.id === sourceAssignmentId && a.scheduleId === scheduleId);
+    const a2 = memoryAssignments.find((a: any) => a.id === targetAssignmentId && a.scheduleId === scheduleId);
+    if (!a1 || !a2) return null;
+    const tempImamId = a1.imamId;
+    a1.imamId = a2.imamId;
+    a2.imamId = tempImamId;
+    a1.source = 'MANUAL';
+    a2.source = 'MANUAL';
+    a1.updatedAt = new Date().toISOString();
+    a2.updatedAt = new Date().toISOString();
+    this.persistToDisk();
+    return { assignment1: a1, assignment2: a2 };
   },
 
   toggleLock(scheduleId: number, assignmentId: number) {
@@ -701,6 +717,7 @@ export const memoryStore = {
     if (!assign) return null;
     assign.isLocked = !assign.isLocked;
     assign.updatedAt = new Date().toISOString();
+    this.persistToDisk();
     return assign;
   },
 

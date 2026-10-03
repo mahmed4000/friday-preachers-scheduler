@@ -67,6 +67,11 @@ export function ScheduleReviewBoard({
   const [isRedistributeModalOpen, setIsRedistributeModalOpen] = useState(false);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
 
+  // Drag-and-Drop state
+  const [draggedAssignment, setDraggedAssignment] = useState<Assignment | null>(null);
+  const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
+  const [swapFeedback, setSwapFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   // Redistribution options
   const [redistScope, setRedistScope] = useState<'ALL' | 'UNLOCKED_ONLY' | 'SINGLE_MOSQUE' | 'SINGLE_FRIDAY'>('UNLOCKED_ONLY');
   const [targetMosqueId, setTargetMosqueId] = useState<number>(mosques[0]?.id || 1);
@@ -91,6 +96,82 @@ export function ScheduleReviewBoard({
   // Count empty assignments & critical conflicts
   const emptyAssignmentsCount = assignments.filter((a) => !a.imamId).length;
   const criticalConflicts = conflicts.filter((c) => c.severity === 'CRITICAL');
+
+  // Drag-and-Drop Handlers
+  const handleDragStart = (assignment: Assignment, e: React.DragEvent) => {
+    if (assignment.isLocked) return;
+    setDraggedAssignment(assignment);
+    e.dataTransfer.setData('text/plain', JSON.stringify({ assignmentId: assignment.id }));
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (cellKey: string, e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverCellKey !== cellKey) {
+      setDragOverCellKey(cellKey);
+    }
+  };
+
+  const handleDragLeave = () => {
+    setDragOverCellKey(null);
+  };
+
+  const handleDrop = async (targetMosqueId: number, targetFridayIndex: number) => {
+    setDragOverCellKey(null);
+    if (!draggedAssignment) return;
+
+    const targetKey = `${targetMosqueId}:${targetFridayIndex}`;
+    const targetAssign = assignmentMap.get(targetKey);
+
+    if (!targetAssign) {
+      setSwapFeedback({ type: 'error', message: 'التعيين الهدف غير متاح' });
+      setDraggedAssignment(null);
+      setTimeout(() => setSwapFeedback(null), 4000);
+      return;
+    }
+
+    if (draggedAssignment.id === targetAssign.id) {
+      setDraggedAssignment(null);
+      return;
+    }
+
+    if (targetAssign.isLocked) {
+      setSwapFeedback({ type: 'error', message: 'لا يمكن التبديل مع خلية مقفلة (Locked) 🔒' });
+      setDraggedAssignment(null);
+      setTimeout(() => setSwapFeedback(null), 4000);
+      return;
+    }
+
+    const srcImamName = draggedAssignment.imamId ? (imamMap.get(draggedAssignment.imamId)?.name || 'خطيب') : 'شاغر';
+    const tgtImamName = targetAssign.imamId ? (imamMap.get(targetAssign.imamId)?.name || 'خطيب') : 'شاغر';
+
+    try {
+      const res = await fetchApi<{ error?: string }>(`/api/schedules/${schedule.id}/swap-assignments`, {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceAssignmentId: draggedAssignment.id,
+          targetAssignmentId: targetAssign.id,
+          reason: `تبديل تفاعلي بالسحب والإفلات (${srcImamName} ⇄ ${tgtImamName})`,
+        }),
+      });
+
+      if (res && res.error) {
+        setSwapFeedback({ type: 'error', message: res.error });
+      } else {
+        setSwapFeedback({
+          type: 'success',
+          message: `تم التبديل بنجاح بين (${srcImamName}) و (${tgtImamName}) ⇄`,
+        });
+        onRefreshData();
+      }
+    } catch (err: any) {
+      setSwapFeedback({ type: 'error', message: err.message || 'فشل التبديل بالسحب والإفلات' });
+    } finally {
+      setDraggedAssignment(null);
+      setTimeout(() => setSwapFeedback(null), 4500);
+    }
+  };
 
   // Cell Drawer item
   const activeAssignment = selectedCell
@@ -214,10 +295,36 @@ export function ScheduleReviewBoard({
 
   return (
     <div className="space-y-4">
-      {actionError && (
-        <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+      {/* Swap feedback toast banner */}
+      {swapFeedback && (
+        <div
+          className={`p-3.5 rounded-xl border text-xs flex items-center justify-between shadow-xs transition-all animate-fadeIn ${
+            swapFeedback.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-900 dark:text-emerald-200'
+              : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-900 dark:text-rose-200'
+          }`}
+        >
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            {swapFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+            )}
+            <span className="font-semibold">{swapFeedback.message}</span>
+          </div>
+          <button
+            onClick={() => setSwapFeedback(null)}
+            className="text-[11px] underline opacity-80 hover:opacity-100 cursor-pointer"
+          >
+            إغلاق
+          </button>
+        </div>
+      )}
+
+      {actionError && (
+        <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-800 dark:text-rose-300 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
             <span>{actionError}</span>
           </div>
           <button onClick={() => setActionError(null)} className="underline text-[11px] cursor-pointer">
@@ -227,28 +334,28 @@ export function ScheduleReviewBoard({
       )}
 
       {/* Top Header Card */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
             <button
               onClick={onBackToList}
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+              className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
             >
               <ArrowRight className="w-4 h-4" />
               <span>الجداول</span>
             </button>
-            <div className="h-4 w-px bg-slate-200"></div>
-            <h3 className="text-lg font-bold text-slate-900 font-heading">
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 font-heading">
               جدول شهر {schedule.monthName} {schedule.hijriYear} هـ
             </h3>
-            <span className="text-xs font-mono text-slate-500">· الإصدار V{schedule.currentVersion}</span>
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">· الإصدار V{schedule.currentVersion}</span>
             {schedule.status === 'APPROVED' && <Badge variant="success">معتمد 🟢</Badge>}
             {schedule.status === 'PUBLISHED' && <Badge variant="purple">منشور 🟣</Badge>}
             {schedule.status === 'NEEDS_REAPPROVAL' && <Badge variant="warning">بحاجة لإعادة اعتماد ⚠️</Badge>}
             {schedule.status === 'REVIEW' && <Badge variant="info">قيد المراجعة 🔵</Badge>}
           </div>
 
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {schedule.fridaysCount} جمعات · {mosques.filter((m) => m.isActive).length} مسجداً ·{' '}
             {assignments.length} تعييناً
           </p>
@@ -257,11 +364,13 @@ export function ScheduleReviewBoard({
         {/* View Switcher & Action Buttons */}
         <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Tabs */}
-          <div className="flex items-center p-0.5 bg-slate-100 rounded-lg">
+          <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
             <button
               onClick={() => setViewMode('byMosque')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-                viewMode === 'byMosque' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'byMosque'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Building2 className="w-3.5 h-3.5" />
@@ -270,7 +379,9 @@ export function ScheduleReviewBoard({
             <button
               onClick={() => setViewMode('byImam')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-                viewMode === 'byImam' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'byImam'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Users2 className="w-3.5 h-3.5" />
@@ -279,7 +390,9 @@ export function ScheduleReviewBoard({
             <button
               onClick={() => setViewMode('byFriday')}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
-                viewMode === 'byFriday' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                viewMode === 'byFriday'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
               <Calendar className="w-3.5 h-3.5" />
@@ -287,17 +400,17 @@ export function ScheduleReviewBoard({
             </button>
           </div>
 
-          <div className="h-5 w-px bg-slate-200"></div>
+          <div className="h-5 w-px bg-slate-200 dark:bg-slate-700"></div>
 
           {/* Conflict Center Trigger */}
           <button
             onClick={() => setIsConflictModalOpen(true)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 border ${
               criticalConflicts.length > 0
-                ? 'bg-rose-50 text-rose-800 border-rose-300 shadow-xs animate-pulse'
+                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs animate-pulse'
                 : conflicts.length > 0
-                ? 'bg-amber-50 text-amber-800 border-amber-300'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
@@ -307,9 +420,9 @@ export function ScheduleReviewBoard({
           {/* Redistribute Trigger */}
           <button
             onClick={() => setIsRedistributeModalOpen(true)}
-            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200"
+            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
           >
-            <RotateCw className="w-3.5 h-3.5 text-slate-600" />
+            <RotateCw className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
             <span>إعادة التوزيع</span>
           </button>
 
@@ -318,7 +431,7 @@ export function ScheduleReviewBoard({
             onClick={() => setIsApproveModalOpen(true)}
             className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
               isScheduleApproved
-                ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
                 : 'bg-emerald-700 hover:bg-emerald-800 text-white'
             }`}
           >
@@ -329,7 +442,7 @@ export function ScheduleReviewBoard({
           {/* Publishing Center */}
           <button
             onClick={onNavigateToPublishing}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
             <span>النشر والطباعة</span>
@@ -337,18 +450,33 @@ export function ScheduleReviewBoard({
         </div>
       </div>
 
+      {/* Drag & Drop Feature Hint */}
+      <div className="flex items-center justify-between px-3.5 py-2 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 rounded-xl text-xs text-emerald-900 dark:text-emerald-300">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+          <span>
+            <strong>ميزة السحب والإفلات التفاعلي:</strong> يمكنك سحب أي بطاقة خطيب وإفلاتها على مسجد آخر للتبديل الفوري بينهما (Mutual Swap) دون تعارض.
+          </span>
+        </div>
+        {draggedAssignment && (
+          <span className="font-mono bg-emerald-200 dark:bg-emerald-800 px-2 py-0.5 rounded text-[11px] font-bold animate-pulse">
+            جاري السحب... أفلت في الخلية المستهدفة
+          </span>
+        )}
+      </div>
+
       {/* Conflict Callout Banner */}
       {conflicts.length > 0 && (
-        <div className="p-3.5 bg-amber-50/95 border border-amber-300 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="p-3.5 bg-amber-50/95 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-amber-100 text-amber-800 shrink-0">
+            <div className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200 shrink-0">
               <AlertTriangle className="w-4 h-4" />
             </div>
             <div>
-              <span className="font-bold text-amber-950 font-heading block">
+              <span className="font-bold text-amber-950 dark:text-amber-100 font-heading block">
                 تنبيه: يوجد {conflicts.length} حالات تحتاج إلى تدقيق في جدول هذا الشهر
               </span>
-              <span className="text-[11px] text-amber-800">
+              <span className="text-[11px] text-amber-800 dark:text-amber-300">
                 يمكنك مراجعة البدلاء المتاحين وحل التعارضات فورياً أو تعديل التعيين بالنقر على أي خلية.
               </span>
             </div>
@@ -364,37 +492,37 @@ export function ScheduleReviewBoard({
 
       {/* VIEW 1: BY MOSQUE (The Grid) */}
       {viewMode === 'byMosque' && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-right text-xs border-collapse">
-              <thead className="bg-slate-100 border-b border-slate-300 text-slate-800 font-semibold sticky top-0 z-30 shadow-2xs">
+              <thead className="bg-slate-100 dark:bg-slate-800 border-b border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 font-semibold sticky top-0 z-30 shadow-2xs">
                 <tr>
-                  <th className="py-3 px-4 w-64 border-l border-slate-200 sticky right-0 bg-slate-100 z-40 font-heading">المسجد والمنطقة</th>
+                  <th className="py-3 px-4 w-64 border-l border-slate-200 dark:border-slate-700 sticky right-0 bg-slate-100 dark:bg-slate-800 z-40 font-heading">المسجد والمنطقة</th>
                   {fridays.map((friday) => (
-                    <th key={friday.id} className="py-3 px-3 text-center border-l border-slate-200 min-w-44">
-                      <span className="font-bold text-slate-900 block font-heading">
+                    <th key={friday.id} className="py-3 px-3 text-center border-l border-slate-200 dark:border-slate-700 min-w-44">
+                      <span className="font-bold text-slate-900 dark:text-slate-100 block font-heading">
                         الجمعة ({friday.fridayIndex})
                       </span>
-                      <span className="text-[11px] font-normal text-slate-500 font-mono">
+                      <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400 font-mono">
                         {friday.hijriDate}
                       </span>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {mosques
                   .filter((m) => m.isActive)
                   .map((mosque) => (
-                    <tr key={mosque.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3 px-4 border-l border-slate-200 bg-white sticky right-0 z-20 shadow-2xs">
+                    <tr key={mosque.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 px-4 border-l border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 sticky right-0 z-20 shadow-2xs">
                         <ClickableMosque
                           id={mosque.id}
                           name={mosque.name}
                           code={mosque.code}
-                          className="font-bold text-slate-900 block font-heading"
+                          className="font-bold text-slate-900 dark:text-slate-100 block font-heading"
                         />
-                        <span className="text-[11px] text-slate-500">
+                        <span className="text-[11px] text-slate-500 dark:text-slate-400">
                           {mosque.region} · كود {mosque.code}
                           {mosque.fixedImamId && ' · ثابت'}
                         </span>
@@ -405,34 +533,64 @@ export function ScheduleReviewBoard({
                         const assignment = assignmentMap.get(cellKey);
                         const assignedImam = assignment?.imamId ? imamMap.get(assignment.imamId) : null;
                         const isLocked = assignment?.isLocked || false;
+                        const isOverThisCell = dragOverCellKey === cellKey;
+                        const isCurrentDragged = draggedAssignment?.id === assignment?.id;
 
                         return (
                           <td
                             key={friday.id}
                             onClick={() => setSelectedCell({ mosqueId: mosque.id, fridayIndex: friday.fridayIndex })}
-                            className="p-2 border-l border-slate-200 text-center cursor-pointer hover:bg-emerald-50/40 transition-colors"
+                            onDragOver={(e) => handleDragOver(cellKey, e)}
+                            onDragLeave={handleDragLeave}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              handleDrop(mosque.id, friday.fridayIndex);
+                            }}
+                            className={`p-2 border-l border-slate-200 dark:border-slate-800 text-center cursor-pointer transition-all ${
+                              isOverThisCell
+                                ? 'bg-emerald-100/70 dark:bg-emerald-950/70 ring-2 ring-emerald-500 ring-inset scale-[1.02]'
+                                : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
+                            }`}
                           >
                             {!assignedImam ? (
-                              <div className="p-2 rounded-lg border-2 border-dashed border-rose-300 bg-rose-50/30 text-rose-700 text-xs font-bold flex items-center justify-center gap-1">
-                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                                <span>شاغر (بدون خطيب)</span>
+                              <div
+                                className={`p-2 rounded-lg border-2 border-dashed transition-all flex items-center justify-center gap-1 ${
+                                  isOverThisCell
+                                    ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300'
+                                    : 'border-rose-300 dark:border-rose-800 bg-rose-50/30 dark:bg-rose-950/30 text-rose-700 dark:text-rose-300'
+                                } text-xs font-bold`}
+                              >
+                                <AlertTriangle className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                <span>{isOverThisCell ? 'أفلت للتعيين هنا' : 'شاغر (بدون خطيب)'}</span>
                               </div>
                             ) : (
                               <div
-                                className={`p-2 rounded-lg border text-right transition-all ${
-                                  isLocked
-                                    ? 'bg-purple-50/40 border-purple-200'
-                                    : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
+                                draggable={!isLocked}
+                                onDragStart={(e) => assignment && handleDragStart(assignment, e)}
+                                onDragEnd={() => {
+                                  setDraggedAssignment(null);
+                                  setDragOverCellKey(null);
+                                }}
+                                className={`p-2 rounded-lg border text-right transition-all select-none ${
+                                  isCurrentDragged
+                                    ? 'opacity-40 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/40'
+                                    : isLocked
+                                    ? 'bg-purple-50/40 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800 cursor-not-allowed'
+                                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 shadow-2xs hover:border-slate-300 dark:hover:border-slate-600 cursor-grab active:cursor-grabbing hover:shadow-xs'
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-1 mb-1">
                                   {getSourceIconBadge(assignment?.source || 'BALANCED')}
-                                  {isLocked && <Lock className="w-3 h-3 text-purple-700 shrink-0" />}
+                                  {isLocked ? (
+                                    <Lock className="w-3 h-3 text-purple-700 dark:text-purple-400 shrink-0" />
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-60">⋮⋮</span>
+                                  )}
                                 </div>
                                 <ClickableImam
                                   id={assignedImam.id}
                                   name={assignedImam.name}
-                                  className="font-bold text-slate-900 text-xs block truncate leading-tight"
+                                  className="font-bold text-slate-900 dark:text-slate-100 text-xs block truncate leading-tight hover:text-emerald-700 dark:hover:text-emerald-400"
                                 />
                               </div>
                             )}
@@ -449,10 +607,10 @@ export function ScheduleReviewBoard({
 
       {/* VIEW 2: BY IMAM */}
       {viewMode === 'byImam' && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-2xs">
+        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xs">
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
-              <thead className="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold">
+              <thead className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 font-semibold">
                 <tr>
                   <th className="py-3 px-4 w-60">الخطيب</th>
                   <th className="py-3 px-4 text-center">النوع</th>
@@ -462,7 +620,7 @@ export function ScheduleReviewBoard({
                   <th className="py-3 px-4 text-center">حالة الحمل</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {imams
                   .filter((i) => i.isActive)
                   .map((imam) => {
@@ -474,14 +632,14 @@ export function ScheduleReviewBoard({
                     else if (assignedCount > imam.maxFridays) loadStatus = 'OVER';
 
                     return (
-                      <tr key={imam.id} className="hover:bg-slate-50/70">
-                        <td className="py-3 px-4 font-bold text-slate-900">
+                      <tr key={imam.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40">
+                        <td className="py-3 px-4 font-bold text-slate-900 dark:text-slate-100">
                           <ClickableImam
                             id={imam.id}
                             name={imam.name}
-                            className="font-bold text-slate-900 block hover:text-emerald-700"
+                            className="font-bold text-slate-900 dark:text-slate-100 block hover:text-emerald-700 dark:hover:text-emerald-400"
                           />
-                          <span className="block text-[11px] font-normal text-slate-400">
+                          <span className="block text-[11px] font-normal text-slate-400 dark:text-slate-500">
                             {imam.region || 'الوسط'} · حد أقصى: {imam.maxFridays}
                           </span>
                         </td>
@@ -490,10 +648,10 @@ export function ScheduleReviewBoard({
                           {imam.type === 'PARTIAL_FIXED' && <Badge variant="warning">جزئي</Badge>}
                           {imam.type === 'FLEXIBLE' && <Badge variant="info">مرن</Badge>}
                         </td>
-                        <td className="py-3 px-4 text-center font-bold text-slate-700 tabular-nums">
+                        <td className="py-3 px-4 text-center font-bold text-slate-700 dark:text-slate-300 tabular-nums">
                           {imam.targetFridays}
                         </td>
-                        <td className="py-3 px-4 text-center font-bold text-emerald-800 tabular-nums text-sm">
+                        <td className="py-3 px-4 text-center font-bold text-emerald-800 dark:text-emerald-400 tabular-nums text-sm">
                           {assignedCount}
                         </td>
                         <td className="py-3 px-4">
@@ -504,14 +662,14 @@ export function ScheduleReviewBoard({
                                 <span
                                   key={a.id}
                                   onClick={() => setSelectedCell({ mosqueId: a.mosqueId, fridayIndex: a.fridayIndex })}
-                                  className="cursor-pointer text-[11px] px-2 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200 flex items-center gap-1"
+                                  className="cursor-pointer text-[11px] px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 flex items-center gap-1"
                                 >
-                                  <span className="font-bold text-emerald-800">ج{a.fridayIndex}:</span>
+                                  <span className="font-bold text-emerald-800 dark:text-emerald-400">ج{a.fridayIndex}:</span>
                                   {m ? (
                                     <ClickableMosque
                                       id={m.id}
                                       name={m.name}
-                                      className="hover:text-emerald-700 text-xs"
+                                      className="hover:text-emerald-700 dark:hover:text-emerald-400 text-xs"
                                     />
                                   ) : (
                                     <span>مسجد</span>
@@ -539,17 +697,17 @@ export function ScheduleReviewBoard({
       {viewMode === 'byFriday' && (
         <div className="space-y-4">
           {/* Friday selector tabs */}
-          <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-200">
-            <span className="text-xs font-bold text-slate-700">اختر الجمعة:</span>
+          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">اختر الجمعة:</span>
             <div className="flex items-center gap-1">
               {fridays.map((f) => (
                 <button
                   key={f.id}
                   onClick={() => setSelectedFridayFilter(f.fridayIndex)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     selectedFridayFilter === f.fridayIndex
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                      ? 'bg-slate-900 dark:bg-emerald-700 text-white shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   الجمعة {f.fridayIndex} ({f.hijriDate})
@@ -566,45 +724,73 @@ export function ScheduleReviewBoard({
                 const cellKey = `${mosque.id}:${selectedFridayFilter}`;
                 const assignment = assignmentMap.get(cellKey);
                 const assignedImam = assignment?.imamId ? imamMap.get(assignment.imamId) : null;
+                const isOverThisCard = dragOverCellKey === cellKey;
+                const isCurrentDragged = draggedAssignment?.id === assignment?.id;
+                const isLocked = assignment?.isLocked || false;
 
                 return (
                   <div
                     key={mosque.id}
                     onClick={() => setSelectedCell({ mosqueId: mosque.id, fridayIndex: selectedFridayFilter })}
-                    className={`p-4 rounded-xl border cursor-pointer hover:shadow-xs transition-all flex flex-col justify-between ${
-                      !assignedImam
-                        ? 'bg-rose-50/50 border-rose-300'
-                        : assignment?.isLocked
-                        ? 'bg-purple-50/30 border-purple-200'
-                        : 'bg-white border-slate-200'
+                    draggable={Boolean(assignedImam && !isLocked)}
+                    onDragStart={(e) => assignment && handleDragStart(assignment, e)}
+                    onDragEnd={() => {
+                      setDraggedAssignment(null);
+                      setDragOverCellKey(null);
+                    }}
+                    onDragOver={(e) => handleDragOver(cellKey, e)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      handleDrop(mosque.id, selectedFridayFilter);
+                    }}
+                    className={`p-4 rounded-xl border cursor-pointer hover:shadow-xs transition-all flex flex-col justify-between select-none ${
+                      isOverThisCard
+                        ? 'bg-emerald-50 dark:bg-emerald-950/70 border-emerald-500 ring-2 ring-emerald-500 scale-[1.02]'
+                        : isCurrentDragged
+                        ? 'opacity-40 border-dashed border-emerald-500 bg-emerald-50 dark:bg-emerald-950/30'
+                        : !assignedImam
+                        ? 'bg-rose-50/50 dark:bg-rose-950/30 border-rose-300 dark:border-rose-800'
+                        : isLocked
+                        ? 'bg-purple-50/30 dark:bg-purple-950/30 border-purple-200 dark:border-purple-800'
+                        : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
                     }`}
                   >
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-mono text-slate-400 font-medium">{mosque.code}</span>
-                        {assignment && getSourceIconBadge(assignment.source)}
+                        <span className="text-xs font-mono text-slate-400 dark:text-slate-500 font-medium">{mosque.code}</span>
+                        <div className="flex items-center gap-1.5">
+                          {assignment && getSourceIconBadge(assignment.source)}
+                          {isLocked ? (
+                            <Lock className="w-3 h-3 text-purple-700 dark:text-purple-400" />
+                          ) : assignedImam ? (
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 opacity-60">⋮⋮ سحب</span>
+                          ) : null}
+                        </div>
                       </div>
 
                       <ClickableMosque
                         id={mosque.id}
                         name={mosque.name}
                         code={mosque.code}
-                        className="text-sm font-bold text-slate-900 block hover:text-emerald-700"
+                        className="text-sm font-bold text-slate-900 dark:text-slate-100 block hover:text-emerald-700 dark:hover:text-emerald-400"
                       />
-                      <p className="text-[11px] text-slate-500">{mosque.region}</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{mosque.region}</p>
                     </div>
 
-                    <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                    <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       {assignedImam ? (
                         <ClickableImam
                           id={assignedImam.id}
                           name={assignedImam.name}
-                          className="text-xs font-bold text-emerald-900 hover:text-emerald-700"
+                          className="text-xs font-bold text-emerald-900 dark:text-emerald-300 hover:text-emerald-700 dark:hover:text-emerald-400"
                         />
                       ) : (
-                        <span className="text-xs font-bold text-rose-600">شاغر ⚠️</span>
+                        <span className="text-xs font-bold text-rose-600 dark:text-rose-400">شاغر ⚠️</span>
                       )}
-                      <span className="text-[10px] text-slate-400 underline">تعديل</span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 underline">
+                        {isOverThisCard ? 'أفلت للتبديل' : 'تعديل'}
+                      </span>
                     </div>
                   </div>
                 );
@@ -642,52 +828,52 @@ export function ScheduleReviewBoard({
       {/* Redistribution Modal */}
       {isRedistributeModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-5">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 space-y-5">
             <div>
-              <h3 className="text-base font-bold text-slate-900 font-heading">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-heading">
                 إعادة توزيع الخطباء (Re-distribute)
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 إعادة تشغيل المحرك لتغطية الشواغر مع الحفاظ التام على التعيينات المقفولة
               </p>
             </div>
 
             <div className="space-y-3">
-              <label className="block text-xs font-bold text-slate-700">نطاق إعادة التوزيع:</label>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">نطاق إعادة التوزيع:</label>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <button
                   type="button"
                   onClick={() => setRedistScope('UNLOCKED_ONLY')}
-                  className={`p-2.5 rounded-lg border text-right ${
+                  className={`p-2.5 rounded-lg border text-right cursor-pointer ${
                     redistScope === 'UNLOCKED_ONLY'
-                      ? 'bg-emerald-50 border-emerald-600 font-bold text-emerald-900'
-                      : 'bg-white border-slate-200 text-slate-700'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-600 text-emerald-900 dark:text-emerald-300 font-bold'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   التعيينات غير المقفولة فقط
-                  <span className="block text-[10px] text-slate-500 font-normal">يحافظ على المثبت يدوياً</span>
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">يحافظ على المثبت يدوياً</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setRedistScope('ALL')}
-                  className={`p-2.5 rounded-lg border text-right ${
+                  className={`p-2.5 rounded-lg border text-right cursor-pointer ${
                     redistScope === 'ALL'
-                      ? 'bg-emerald-50 border-emerald-600 font-bold text-emerald-900'
-                      : 'bg-white border-slate-200 text-slate-700'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-600 text-emerald-900 dark:text-emerald-300 font-bold'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   كامل الجدول من البداية
-                  <span className="block text-[10px] text-slate-500 font-normal">يعيد بناء التعيينات</span>
+                  <span className="block text-[10px] text-slate-500 dark:text-slate-400 font-normal">يعيد بناء التعيينات</span>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setRedistScope('SINGLE_MOSQUE')}
-                  className={`p-2.5 rounded-lg border text-right ${
+                  className={`p-2.5 rounded-lg border text-right cursor-pointer ${
                     redistScope === 'SINGLE_MOSQUE'
-                      ? 'bg-emerald-50 border-emerald-600 font-bold text-emerald-900'
-                      : 'bg-white border-slate-200 text-slate-700'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-600 text-emerald-900 dark:text-emerald-300 font-bold'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   مسجد محدد فقط
@@ -696,10 +882,10 @@ export function ScheduleReviewBoard({
                 <button
                   type="button"
                   onClick={() => setRedistScope('SINGLE_FRIDAY')}
-                  className={`p-2.5 rounded-lg border text-right ${
+                  className={`p-2.5 rounded-lg border text-right cursor-pointer ${
                     redistScope === 'SINGLE_FRIDAY'
-                      ? 'bg-emerald-50 border-emerald-600 font-bold text-emerald-900'
-                      : 'bg-white border-slate-200 text-slate-700'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-600 text-emerald-900 dark:text-emerald-300 font-bold'
+                      : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300'
                   }`}
                 >
                   جمعة محددة فقط
@@ -708,11 +894,11 @@ export function ScheduleReviewBoard({
 
               {redistScope === 'SINGLE_MOSQUE' && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">اختر المسجد:</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">اختر المسجد:</label>
                   <select
                     value={targetMosqueId}
                     onChange={(e) => setTargetMosqueId(Number(e.target.value))}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                   >
                     {mosques.filter((m) => m.isActive).map((m) => (
                       <option key={m.id} value={m.id}>
@@ -725,11 +911,11 @@ export function ScheduleReviewBoard({
 
               {redistScope === 'SINGLE_FRIDAY' && (
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 mb-1">اختر الجمعة:</label>
+                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">اختر الجمعة:</label>
                   <select
                     value={targetFridayIdx}
                     onChange={(e) => setTargetFridayIdx(Number(e.target.value))}
-                    className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                    className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                   >
                     {fridays.map((f) => (
                       <option key={f.id} value={f.fridayIndex}>
@@ -741,11 +927,11 @@ export function ScheduleReviewBoard({
               )}
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">طريقة التوزيع:</label>
+                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">طريقة التوزيع:</label>
                 <select
                   value={redistMethod}
                   onChange={(e) => setRedistMethod(e.target.value as any)}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg bg-white"
+                  className="w-full text-xs p-2.5 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                 >
                   <option value="Balanced Random">Balanced Random — متوازن عشوائي (الأمثل)</option>
                   <option value="Balanced">Balanced — متوازن تماماً</option>
@@ -754,11 +940,11 @@ export function ScheduleReviewBoard({
               </div>
             </div>
 
-            <div className="pt-3 border-t border-slate-200 flex justify-between">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between">
               <button
                 type="button"
                 onClick={() => setIsRedistributeModalOpen(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
               >
                 إلغاء
               </button>
@@ -766,7 +952,7 @@ export function ScheduleReviewBoard({
                 type="button"
                 disabled={redistributing}
                 onClick={handleExecuteRedistribute}
-                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5"
+                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCw className="w-3.5 h-3.5" />
                 <span>{redistributing ? 'جارٍ المعالجة...' : 'بدء إعادة التوزيع'}</span>
@@ -779,80 +965,80 @@ export function ScheduleReviewBoard({
       {/* Approval Checklist Modal */}
       {isApproveModalOpen && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-lg w-full p-6 space-y-5">
+          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 max-w-lg w-full p-6 space-y-5">
             <div>
-              <h3 className="text-base font-bold text-slate-900 font-heading">
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 font-heading">
                 اعتماد جدول شهر {schedule.monthName} {schedule.hijriYear} هـ
               </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 التدقيق النهائي للضوابط الشرعية والإدارية قبل إقرار النسخة الرسمية
               </p>
             </div>
 
             {/* Checklist */}
-            <div className="space-y-2 border border-slate-200 rounded-xl p-4 bg-slate-50/50">
+            <div className="space-y-2 border border-slate-200 dark:border-slate-800 rounded-xl p-4 bg-slate-50/50 dark:bg-slate-800/40">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-800">1. تغطية كافة المساجد بخطباء:</span>
+                <span className="text-slate-800 dark:text-slate-200">1. تغطية كافة المساجد بخطباء:</span>
                 {emptyAssignmentsCount === 0 ? (
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> مكتمل 100%
                   </span>
                 ) : (
-                  <span className="text-rose-700 font-bold">
+                  <span className="text-rose-700 dark:text-rose-400 font-bold">
                     يوجد {emptyAssignmentsCount} مسجداً شاغراً ✕
                   </span>
                 )}
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-800">2. خلو الجدول من التعارضات الحرجة:</span>
+                <span className="text-slate-800 dark:text-slate-200">2. خلو الجدول من التعارضات الحرجة:</span>
                 {criticalConflicts.length === 0 ? (
-                  <span className="text-emerald-700 font-bold flex items-center gap-1">
+                  <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                     <Check className="w-3.5 h-3.5" /> سليم تماماً
                   </span>
                 ) : (
-                  <span className="text-rose-700 font-bold">
+                  <span className="text-rose-700 dark:text-rose-400 font-bold">
                     يوجد {criticalConflicts.length} تعارضات حرجة ✕
                   </span>
                 )}
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-800">3. احترام الثوابت والأنماط المعتمدة:</span>
-                <span className="text-emerald-700 font-bold flex items-center gap-1">
+                <span className="text-slate-800 dark:text-slate-200">3. احترام الثوابت والأنماط المعتمدة:</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                   <Check className="w-3.5 h-3.5" /> محققة
                 </span>
               </div>
 
               <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-800">4. تدقيق الاستثناءات الإدارية (Overrides):</span>
-                <span className="text-slate-700 font-mono font-medium">
+                <span className="text-slate-800 dark:text-slate-200">4. تدقيق الاستثناءات الإدارية (Overrides):</span>
+                <span className="text-slate-700 dark:text-slate-300 font-mono font-medium">
                   {overrides.length} استثناء مسجل
                 </span>
               </div>
             </div>
 
             {emptyAssignmentsCount > 0 || criticalConflicts.length > 0 ? (
-              <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+              <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-lg text-xs text-rose-800 dark:text-rose-300 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
                 <span>
                   لا يمكن إتمام الاعتماد الرسمي قبل حل التعارضات وتغطية كافة المساجد الشاغرة.
                 </span>
               </div>
             ) : (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-800 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-lg text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                 <span>
                   الجدول مكتمل ومستوفٍ لكافة الشروط. بعد الاعتماد ستصبح النسخة رسمية وجاهزة للطباعة والإرسال.
                 </span>
               </div>
             )}
 
-            <div className="pt-3 border-t border-slate-200 flex justify-between">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-between">
               <button
                 type="button"
                 onClick={() => setIsApproveModalOpen(false)}
-                className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg cursor-pointer"
               >
                 إلغاء
               </button>
@@ -861,7 +1047,7 @@ export function ScheduleReviewBoard({
                 type="button"
                 disabled={emptyAssignmentsCount > 0 || criticalConflicts.length > 0 || approving}
                 onClick={handleApproveSchedule}
-                className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors"
+                className="px-6 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <ShieldCheck className="w-4 h-4" />
                 <span>{approving ? 'جارٍ الاعتماد...' : 'إقرار واعتماد النسخة الرسمية'}</span>

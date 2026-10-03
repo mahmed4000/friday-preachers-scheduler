@@ -2784,6 +2784,140 @@ api.post('/schedules/:id/lock-toggle', async (req: AuthRequest, res: Response) =
   }
 });
 
+// Mutual Swap or Drag-and-Drop Move of Assignments
+api.post('/schedules/:id/swap-assignments', async (req: AuthRequest, res: Response) => {
+  try {
+    const scheduleId = Number(req.params.id);
+    const { sourceAssignmentId, targetAssignmentId, reason } = req.body;
+
+    if (!sourceAssignmentId || !targetAssignmentId) {
+      return res.status(400).json({ error: 'معرفات التعيينات المصدر والهدف مطلوبة' });
+    }
+
+    const [schedule] = await db.select().from(monthlySchedules).where(eq(monthlySchedules.id, scheduleId));
+    if (!schedule) return res.status(404).json({ error: 'الجدول غير موجود' });
+
+    const [sourceAssign] = await db.select().from(assignments).where(eq(assignments.id, Number(sourceAssignmentId)));
+    const [targetAssign] = await db.select().from(assignments).where(eq(assignments.id, Number(targetAssignmentId)));
+
+    if (!sourceAssign || !targetAssign) {
+      return res.status(404).json({ error: 'أحد التعيينات غير موجود' });
+    }
+
+    // Constraint: Locked cells cannot be moved or swapped
+    if (sourceAssign.isLocked || targetAssign.isLocked) {
+      return res.status(400).json({ error: 'لا يمكن نقل أو تبديل خطيب في خلية مقفلة (Locked) 🔒' });
+    }
+
+    // Constraint: Past fridays cannot be modified
+    const provider = (schedule.calendarProvider as any) || 'UMM_AL_QURA';
+    const tz = schedule.timezone || 'Asia/Riyadh';
+    const srcCheck = CalendarService.validateFridayAction(schedule.hijriYear, schedule.hijriMonth, sourceAssign.fridayIndex, { provider, timezone: tz });
+    const tgtCheck = CalendarService.validateFridayAction(schedule.hijriYear, schedule.hijriMonth, targetAssign.fridayIndex, { provider, timezone: tz });
+
+    if (!srcCheck.isAllowed || !tgtCheck.isAllowed) {
+      return res.status(400).json({ error: 'لا يمكن تعديل جمعة منتهية بالفعل وفق السياسة الزمنية.' });
+    }
+
+    // If across DIFFERENT Fridays, ensure neither imam is booked in multiple mosques on the other Friday
+    if (sourceAssign.fridayIndex !== targetAssign.fridayIndex) {
+      if (sourceAssign.imamId) {
+        const conflict = await db.select().from(assignments).where(
+          and(
+            eq(assignments.scheduleId, scheduleId),
+            eq(assignments.fridayIndex, targetAssign.fridayIndex),
+            eq(assignments.imamId, sourceAssign.imamId),
+            ne(assignments.id, targetAssign.id)
+          )
+        );
+        if (conflict.length > 0) {
+          return res.status(400).json({ error: `الخطيب في المصدر مرتبط بالفعل بمسجد آخر في الجمعة ${targetAssign.fridayIndex}` });
+        }
+      }
+      if (targetAssign.imamId) {
+        const conflict = await db.select().from(assignments).where(
+          and(
+            eq(assignments.scheduleId, scheduleId),
+            eq(assignments.fridayIndex, sourceAssign.fridayIndex),
+            eq(assignments.imamId, targetAssign.imamId),
+            ne(assignments.id, sourceAssign.id)
+          )
+        );
+        if (conflict.length > 0) {
+          return res.status(400).json({ error: `الخطيب في الهدف مرتبط بالفعل بمسجد آخر في الجمعة ${sourceAssign.fridayIndex}` });
+        }
+      }
+    }
+
+    // Execute swap
+    const oldSourceImam = sourceAssign.imamId;
+    const oldTargetImam = targetAssign.imamId;
+
+    const [updatedSource] = await db.update(assignments)
+      .set({ imamId: oldTargetImam, source: 'MANUAL', updatedAt: new Date() })
+      .where(eq(assignments.id, sourceAssign.id))
+      .returning();
+
+    const [updatedTarget] = await db.update(assignments)
+      .set({ imamId: oldSourceImam, source: 'MANUAL', updatedAt: new Date() })
+      .where(eq(assignments.id, targetAssign.id))
+      .returning();
+
+    // Log history
+    await db.insert(assignmentHistory).values([
+      {
+        scheduleId,
+        assignmentId: sourceAssign.id,
+        oldImamId: oldSourceImam,
+        newImamId: oldTargetImam,
+        changedBy: req.user?.email || 'admin@aljameya.org',
+        reason: reason || 'تبديل تفاعلي بالسحب والإفلات (Drag & Drop)',
+      },
+      {
+        scheduleId,
+        assignmentId: targetAssign.id,
+        oldImamId: oldTargetImam,
+        newImamId: oldSourceImam,
+        changedBy: req.user?.email || 'admin@aljameya.org',
+        reason: reason || 'تبديل تفاعلي بالسحب والإفلات (Drag & Drop)',
+      },
+    ]);
+
+    if (schedule.status === 'APPROVED' || schedule.status === 'PUBLISHED') {
+      await db.update(monthlySchedules)
+        .set({ status: 'NEEDS_REAPPROVAL', updatedAt: new Date() })
+        .where(eq(monthlySchedules.id, scheduleId));
+    }
+
+    await logAudit(req, 'SWAP_ASSIGNMENTS', 'ASSIGNMENT', sourceAssign.id, {
+      sourceAssignmentId,
+      targetAssignmentId,
+      sourceImam: oldSourceImam,
+      targetImam: oldTargetImam,
+    });
+
+    res.json({ success: true, sourceAssignment: updatedSource, targetAssignment: updatedTarget });
+  } catch (error: any) {
+    console.warn('DB swap assignments failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const { sourceAssignmentId, targetAssignmentId, reason } = req.body;
+      const fallbackResult = memoryStore.swapAssignments(
+        scheduleId,
+        Number(sourceAssignmentId),
+        Number(targetAssignmentId),
+        reason
+      );
+      if (fallbackResult) {
+        return res.json({ success: true, ...fallbackResult });
+      }
+    } catch (fbErr) {
+      console.error('Fallback swapAssignments failed:', fbErr);
+    }
+    res.status(500).json({ error: 'تعذر تبديل التكليفات', details: error.message });
+  }
+});
+
 // Approve Schedule
 api.post('/schedules/:id/approve', async (req: AuthRequest, res: Response) => {
   try {
