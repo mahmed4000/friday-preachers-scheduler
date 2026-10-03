@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Assignment, Mosque, Imam, Friday, Conflict } from '../../types/index.ts';
 import {
   X,
@@ -11,9 +11,13 @@ import {
   Save,
   CheckCircle2,
   FileCheck2,
+  Zap,
+  Sparkles,
+  MapPin,
 } from 'lucide-react';
 import { Badge } from '../common/Badge.tsx';
 import { ClickableMosque, ClickableImam } from '../../context/ProfileNavigationContext.tsx';
+import { SchedulingEngine } from '../../services/schedulingEngine.ts';
 
 interface AssignmentCellDrawerProps {
   isOpen: boolean;
@@ -47,6 +51,53 @@ export function AssignmentCellDrawer({
   const [isOverrideMode, setIsOverrideMode] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [drawerError, setDrawerError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'all' | 'emergency'>('all');
+
+  const emergencyReplacements = useMemo(() => {
+    return SchedulingEngine.findEmergencyReplacements({
+      fridayIndex: assignment.fridayIndex,
+      mosqueId: mosque.id,
+      currentImamId: assignment.imamId,
+      allMosques: [
+        {
+          id: mosque.id,
+          name: mosque.name,
+          code: mosque.code,
+          region: mosque.region,
+          isActive: mosque.isActive,
+          fixedImamId: mosque.fixedImamId,
+        },
+      ],
+      allImams: imams.map((i) => ({
+        id: i.id,
+        name: i.name,
+        type: i.type as any,
+        minFridays: i.minFridays,
+        targetFridays: i.targetFridays,
+        maxFridays: i.maxFridays,
+        isActive: i.isActive,
+        region: i.region,
+      })),
+      rules: (mosque.rules || []).map((r) => ({
+        mosqueId: mosque.id,
+        imamId: r.imamId,
+        relationshipType: r.relationshipType as any,
+        priority: r.priority || 1,
+      })),
+      existingAssignments: allAssignments.map((a) => ({
+        fridayIndex: a.fridayIndex,
+        mosqueId: a.mosqueId,
+        imamId: a.imamId,
+      })),
+      unavailabilities: imams.flatMap((i) =>
+        (i.availabilities || []).map((av) => ({
+          imamId: i.id,
+          fridayIndex: av.fridayIndex,
+          isAvailable: av.isAvailable,
+        }))
+      ),
+    });
+  }, [assignment, mosque, imams, allAssignments]);
 
   const currentImam = imams.find((i) => i.id === assignment.imamId);
 
@@ -312,13 +363,104 @@ export function AssignmentCellDrawer({
 
           {/* Qualified Candidates List */}
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-xs font-bold text-slate-800 font-heading">
-                اختر خطيباً بديلاً (مرتب حسب الأهلية والأولوية):
-              </h4>
+            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('all')}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-bold transition-all cursor-pointer ${
+                    activeTab === 'all'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  جميع الخطباء ({evaluatedCandidates.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('emergency')}
+                  className={`px-3 py-1.5 text-xs rounded-lg font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    activeTab === 'emergency'
+                      ? 'bg-amber-600 text-white shadow-2xs ring-2 ring-amber-300'
+                      : 'bg-amber-50 text-amber-900 border border-amber-200 hover:bg-amber-100'
+                  }`}
+                >
+                  <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  <span>خطباء الطوارئ والاحتياط</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-white/30 font-mono">
+                    {emergencyReplacements.length}
+                  </span>
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-1.5 max-h-72 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50/30">
+            {activeTab === 'emergency' ? (
+              <div className="space-y-2 max-h-72 overflow-y-auto border border-amber-200 rounded-xl p-2.5 bg-amber-50/20">
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-950 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <p className="text-[11px] leading-relaxed">
+                    تم حصر الخطباء غير المكلفين في الجمعة ({assignment.fridayIndex}) وترتيبهم آلياً وفق معايير الجاهزية، التقارب الجغرافي، والتوافق الإداري لمعالجة أي اعتذار طارئ فوراً.
+                  </p>
+                </div>
+
+                {emergencyReplacements.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-500">
+                    لا يتوفر حالياً خطباء طوارئ متاحون في هذه الجمعة بدون تعارض.
+                  </div>
+                ) : (
+                  emergencyReplacements.map((cand) => {
+                    const isSelected = selectedImamId === cand.imam.id;
+                    return (
+                      <div
+                        key={cand.imam.id}
+                        onClick={() => {
+                          setSelectedImamId(cand.imam.id);
+                          setOverrideReason(`استبدال طارئ معتمد: ${cand.reason}`);
+                        }}
+                        className={`p-3 rounded-lg border transition-all cursor-pointer space-y-1.5 ${
+                          isSelected
+                            ? 'bg-amber-50 border-amber-500 shadow-2xs ring-1 ring-amber-400'
+                            : 'bg-white border-slate-200 hover:border-amber-300 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-3.5 h-3.5 rounded-full border border-slate-300 flex items-center justify-center">
+                              {isSelected && <span className="w-2 h-2 rounded-full bg-amber-600" />}
+                            </span>
+                            <span className="font-bold text-xs text-slate-900 font-heading">
+                              {cand.imam.name}
+                            </span>
+                            {cand.isNearby && (
+                              <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] bg-sky-50 text-sky-800 border border-sky-200">
+                                <MapPin className="w-2.5 h-2.5" /> نفس المنطقة
+                              </span>
+                            )}
+                          </div>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              cand.compatibilityScore >= 75
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-300'
+                            }`}
+                          >
+                            ⭐ {cand.compatibilityScore}% ملاءمة
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-600 pr-5 flex items-center gap-1">
+                          <span>{cand.reason}</span>
+                        </p>
+                        <div className="text-[10px] text-slate-400 pr-5 flex items-center gap-3">
+                          <span>جمعات الشهر: {cand.currentMonthLoad} من {cand.maxFridays}</span>
+                          <span>المستهدف: {cand.targetFridays}</span>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ) : (
+              <div className="space-y-1.5 max-h-72 overflow-y-auto border border-slate-200 rounded-xl p-2 bg-slate-50/30">
               {/* Option for Unassigned */}
               <label
                 onClick={() => setSelectedImamId(null)}

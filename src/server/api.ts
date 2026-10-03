@@ -2520,6 +2520,69 @@ api.post('/schedules/:id/redistribute', async (req: AuthRequest, res: Response) 
   }
 });
 
+// Emergency Replacements Finder
+api.post('/schedules/:id/emergency-replacements', async (req: Request, res: Response) => {
+  try {
+    const scheduleId = Number(req.params.id);
+    const { fridayIndex, mosqueId, currentImamId } = req.body;
+
+    const allMosques = memoryStore.getMosques();
+    const allImams = memoryStore.getImams();
+    const allRules = memoryStore.getRules();
+    const scheduleDetails = memoryStore.getScheduleDetails(scheduleId);
+
+    const existingAssignments = scheduleDetails?.assignments || [];
+
+    const replacements = SchedulingEngine.findEmergencyReplacements({
+      scheduleId,
+      fridayIndex: Number(fridayIndex),
+      mosqueId: Number(mosqueId),
+      currentImamId: currentImamId ? Number(currentImamId) : null,
+      allMosques: allMosques.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        region: m.region,
+        isActive: m.isActive,
+        fixedImamId: m.fixedImamId,
+        fixedPattern: m.fixedPattern,
+        fixedCount: m.fixedCount,
+      })),
+      allImams: allImams.map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        minFridays: i.minFridays,
+        targetFridays: i.targetFridays,
+        maxFridays: i.maxFridays,
+        isActive: i.isActive,
+        region: i.region,
+      })),
+      rules: allRules.map((r: any) => ({
+        mosqueId: r.mosqueId,
+        imamId: r.imamId,
+        relationshipType: r.relationshipType,
+        priority: r.priority || 1,
+      })),
+      existingAssignments: existingAssignments.map((a: any) => ({
+        fridayIndex: a.fridayIndex,
+        mosqueId: a.mosqueId,
+        imamId: a.imamId,
+      })),
+      unavailabilities: [],
+    });
+
+    res.json({
+      success: true,
+      candidates: replacements,
+      count: replacements.length,
+    });
+  } catch (error: any) {
+    console.error('Error finding emergency replacements:', error);
+    res.status(500).json({ error: 'تعذر استخراج المرشحين للطوارئ', details: error.message });
+  }
+});
+
 // Manual assignment edit (Cell Drawer)
 api.post('/schedules/:id/assignment', async (req: AuthRequest, res: Response) => {
   try {

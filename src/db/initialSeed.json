@@ -3616,9 +3616,9 @@
       "currentVersion": 1,
       "createdBy": "admin@aljameya.org",
       "createdAt": "2026-10-03T22:36:32.579Z",
-      "updatedAt": "2026-10-03T22:36:32.606Z",
-      "approvedAt": "2026-10-03T22:36:32.603Z",
-      "publishedAt": "2026-10-03T22:36:32.605Z"
+      "updatedAt": "2026-10-03T22:48:49.899Z",
+      "approvedAt": "2026-10-03T22:48:49.888Z",
+      "publishedAt": "2026-10-03T22:48:49.899Z"
     },
     {
       "id": 10,
@@ -6331,30 +6331,17 @@
       "updatedAt": "2026-10-03T22:36:18.903Z"
     },
     {
-      "id": 983,
+      "id": 984,
       "scheduleId": 11,
-      "fridayId": 43,
-      "fridayIndex": 1,
+      "fridayId": 44,
+      "fridayIndex": 2,
       "mosqueId": 30,
       "imamId": 1,
       "isLocked": false,
       "source": "MANUAL",
       "notes": "ثابت وفق نمط (ALL)",
       "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.602Z"
-    },
-    {
-      "id": 984,
-      "scheduleId": 11,
-      "fridayId": 44,
-      "fridayIndex": 2,
-      "mosqueId": 30,
-      "imamId": 54,
-      "isLocked": true,
-      "source": "FIXED",
-      "notes": "ثابت وفق نمط (ALL)",
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "updatedAt": "2026-10-03T22:48:49.887Z"
     },
     {
       "id": 985,
@@ -6385,6 +6372,58 @@
     {
       "id": 987,
       "scheduleId": 11,
+      "fridayId": 44,
+      "fridayIndex": 2,
+      "mosqueId": 30,
+      "imamId": 54,
+      "isLocked": true,
+      "source": "FIXED",
+      "notes": "ثابت وفق نمط (ALL)",
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
+    },
+    {
+      "id": 988,
+      "scheduleId": 11,
+      "fridayId": 45,
+      "fridayIndex": 3,
+      "mosqueId": 30,
+      "imamId": 54,
+      "isLocked": true,
+      "source": "FIXED",
+      "notes": "ثابت وفق نمط (ALL)",
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
+    },
+    {
+      "id": 989,
+      "scheduleId": 11,
+      "fridayId": 46,
+      "fridayIndex": 4,
+      "mosqueId": 30,
+      "imamId": 54,
+      "isLocked": true,
+      "source": "FIXED",
+      "notes": "ثابت وفق نمط (ALL)",
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
+    },
+    {
+      "id": 990,
+      "scheduleId": 11,
+      "fridayId": 43,
+      "fridayIndex": 1,
+      "mosqueId": 30,
+      "imamId": 54,
+      "isLocked": true,
+      "source": "FIXED",
+      "notes": "ثابت وفق نمط (ALL)",
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
+    },
+    {
+      "id": 991,
+      "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
       "mosqueId": 40,
@@ -6392,11 +6431,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 988,
+      "id": 992,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6405,11 +6444,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 989,
+      "id": 993,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6418,11 +6457,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 990,
+      "id": 994,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6431,11 +6470,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 991,
+      "id": 995,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6444,11 +6483,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 992,
+      "id": 996,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6457,11 +6496,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 993,
+      "id": 997,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6470,11 +6509,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 994,
+      "id": 998,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6483,11 +6522,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 995,
+      "id": 999,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6496,11 +6535,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 996,
+      "id": 1000,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6509,11 +6548,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 997,
+      "id": 1001,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6522,11 +6561,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 998,
+      "id": 1002,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6535,11 +6574,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 999,
+      "id": 1003,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6548,11 +6587,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1000,
+      "id": 1004,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6561,11 +6600,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1001,
+      "id": 1005,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6574,11 +6613,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1002,
+      "id": 1006,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6587,11 +6626,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1003,
+      "id": 1007,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6600,11 +6639,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1004,
+      "id": 1008,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6613,11 +6652,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1005,
+      "id": 1009,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6626,11 +6665,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1006,
+      "id": 1010,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6639,11 +6678,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1007,
+      "id": 1011,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6652,11 +6691,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1008,
+      "id": 1012,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6665,11 +6704,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1009,
+      "id": 1013,
       "scheduleId": 11,
       "fridayId": 43,
       "fridayIndex": 1,
@@ -6678,11 +6717,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1010,
+      "id": 1014,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6691,11 +6730,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1011,
+      "id": 1015,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6704,11 +6743,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1012,
+      "id": 1016,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6717,11 +6756,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1013,
+      "id": 1017,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6730,11 +6769,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1014,
+      "id": 1018,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6743,11 +6782,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1015,
+      "id": 1019,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6756,11 +6795,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1016,
+      "id": 1020,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6769,11 +6808,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1017,
+      "id": 1021,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6782,11 +6821,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1018,
+      "id": 1022,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6795,11 +6834,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1019,
+      "id": 1023,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6808,11 +6847,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1020,
+      "id": 1024,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6821,11 +6860,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1021,
+      "id": 1025,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6834,11 +6873,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1022,
+      "id": 1026,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6847,11 +6886,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1023,
+      "id": 1027,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6860,11 +6899,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1024,
+      "id": 1028,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6873,11 +6912,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1025,
+      "id": 1029,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6886,11 +6925,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1026,
+      "id": 1030,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6899,11 +6938,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1027,
+      "id": 1031,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6912,11 +6951,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1028,
+      "id": 1032,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6925,11 +6964,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1029,
+      "id": 1033,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6938,11 +6977,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1030,
+      "id": 1034,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6951,11 +6990,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1031,
+      "id": 1035,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6964,11 +7003,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1032,
+      "id": 1036,
       "scheduleId": 11,
       "fridayId": 44,
       "fridayIndex": 2,
@@ -6977,11 +7016,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1033,
+      "id": 1037,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -6990,11 +7029,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1034,
+      "id": 1038,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7003,11 +7042,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1035,
+      "id": 1039,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7016,11 +7055,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1036,
+      "id": 1040,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7029,11 +7068,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1037,
+      "id": 1041,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7042,11 +7081,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1038,
+      "id": 1042,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7055,11 +7094,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1039,
+      "id": 1043,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7068,11 +7107,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1040,
+      "id": 1044,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7081,11 +7120,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1041,
+      "id": 1045,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7094,11 +7133,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1042,
+      "id": 1046,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7107,11 +7146,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1043,
+      "id": 1047,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7120,11 +7159,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1044,
+      "id": 1048,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7133,11 +7172,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1045,
+      "id": 1049,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7146,11 +7185,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1046,
+      "id": 1050,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7159,11 +7198,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1047,
+      "id": 1051,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7172,11 +7211,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.598Z",
-      "updatedAt": "2026-10-03T22:36:32.598Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1048,
+      "id": 1052,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7185,11 +7224,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1049,
+      "id": 1053,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7198,11 +7237,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1050,
+      "id": 1054,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7211,11 +7250,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1051,
+      "id": 1055,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7224,11 +7263,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1052,
+      "id": 1056,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7237,11 +7276,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1053,
+      "id": 1057,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7250,11 +7289,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1054,
+      "id": 1058,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7263,11 +7302,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1055,
+      "id": 1059,
       "scheduleId": 11,
       "fridayId": 45,
       "fridayIndex": 3,
@@ -7276,11 +7315,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1056,
+      "id": 1060,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7289,11 +7328,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1057,
+      "id": 1061,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7302,11 +7341,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1058,
+      "id": 1062,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7315,11 +7354,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1059,
+      "id": 1063,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7328,11 +7367,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1060,
+      "id": 1064,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7341,11 +7380,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1061,
+      "id": 1065,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7354,11 +7393,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1062,
+      "id": 1066,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7367,11 +7406,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1063,
+      "id": 1067,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7380,11 +7419,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1064,
+      "id": 1068,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7393,11 +7432,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1065,
+      "id": 1069,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7406,11 +7445,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1066,
+      "id": 1070,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7419,11 +7458,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1067,
+      "id": 1071,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7432,11 +7471,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1068,
+      "id": 1072,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7445,11 +7484,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1069,
+      "id": 1073,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7458,11 +7497,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1070,
+      "id": 1074,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7471,11 +7510,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1071,
+      "id": 1075,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7484,11 +7523,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1072,
+      "id": 1076,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7497,11 +7536,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1073,
+      "id": 1077,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7510,11 +7549,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1074,
+      "id": 1078,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7523,11 +7562,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1075,
+      "id": 1079,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7536,11 +7575,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1076,
+      "id": 1080,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7549,11 +7588,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1077,
+      "id": 1081,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7562,11 +7601,11 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 1078,
+      "id": 1082,
       "scheduleId": 11,
       "fridayId": 46,
       "fridayIndex": 4,
@@ -7575,8 +7614,8 @@
       "isLocked": false,
       "source": "BALANCED_RANDOM",
       "notes": null,
-      "createdAt": "2026-10-03T22:36:32.599Z",
-      "updatedAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z",
+      "updatedAt": "2026-10-03T22:48:49.881Z"
     }
   ],
   "mosqueImamRules": [],
@@ -8364,7 +8403,7 @@
       "createdAt": "2026-10-03T22:36:18.903Z"
     },
     {
-      "id": 33,
+      "id": 49,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8373,10 +8412,10 @@
       "severity": "WARNING",
       "message": "الخطيب (أ. محمد صالح) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 34,
+      "id": 50,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8385,10 +8424,10 @@
       "severity": "WARNING",
       "message": "الخطيب (الشيخ فوزي غلاب) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 35,
+      "id": 51,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8397,10 +8436,10 @@
       "severity": "WARNING",
       "message": "الخطيب (د. محمد نبيل) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 36,
+      "id": 52,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8409,10 +8448,10 @@
       "severity": "WARNING",
       "message": "الخطيب (الشيخ رضانا) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 37,
+      "id": 53,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8421,10 +8460,10 @@
       "severity": "WARNING",
       "message": "الخطيب (عبدالرحمن أسعد) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 38,
+      "id": 54,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8433,10 +8472,10 @@
       "severity": "WARNING",
       "message": "الخطيب (عصام ماهر) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 39,
+      "id": 55,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8445,10 +8484,10 @@
       "severity": "WARNING",
       "message": "الخطيب (عبدالملك رضانا) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 40,
+      "id": 56,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8457,10 +8496,10 @@
       "severity": "WARNING",
       "message": "الخطيب (محمد ايمن عبدالله) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.881Z"
     },
     {
-      "id": 41,
+      "id": 57,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8469,10 +8508,10 @@
       "severity": "WARNING",
       "message": "الخطيب (سهيل بدر) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 42,
+      "id": 58,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8481,10 +8520,10 @@
       "severity": "WARNING",
       "message": "الخطيب (مصطفي ابوزيد) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 43,
+      "id": 59,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8493,10 +8532,10 @@
       "severity": "WARNING",
       "message": "الخطيب (عمر ربيع) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 44,
+      "id": 60,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8505,10 +8544,10 @@
       "severity": "WARNING",
       "message": "الخطيب (محمود أبوعمار) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 45,
+      "id": 61,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8517,10 +8556,10 @@
       "severity": "WARNING",
       "message": "الخطيب (احمد السيد رشاد) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 46,
+      "id": 62,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8529,10 +8568,10 @@
       "severity": "WARNING",
       "message": "الخطيب (احمد جودة) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 47,
+      "id": 63,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8541,10 +8580,10 @@
       "severity": "WARNING",
       "message": "الخطيب (أحمد صباح) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     },
     {
-      "id": 48,
+      "id": 64,
       "scheduleId": 11,
       "fridayIndex": null,
       "mosqueId": null,
@@ -8553,7 +8592,7 @@
       "severity": "WARNING",
       "message": "الخطيب (جمال عبدالتواب) حصل على (0) جمعات وهو أقل من الحد الأدنى المطلوب (1)",
       "possibleResolutions": "[\"إعادة توزيع بعض الجمعات الشاغرة لصالحه\",\"تعديل الحد الأدنى للخطيب في بياناته\"]",
-      "createdAt": "2026-10-03T22:36:32.599Z"
+      "createdAt": "2026-10-03T22:48:49.882Z"
     }
   ],
   "overrides": []

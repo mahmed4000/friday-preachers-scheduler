@@ -85,6 +85,21 @@ export interface SchedulingInput {
   distributionMethod?: 'Balanced' | 'Random' | 'Balanced Random';
   targetMosqueId?: number; // Optional: redistribute single mosque
   targetFridayIndex?: number; // Optional: redistribute single friday
+  history?: Array<{ mosqueId: number; imamId: number; hijriYear?: number; hijriMonth?: number; fridayIndex?: number }>;
+  standbyImamIds?: number[];
+}
+
+export interface EmergencyReplacementCandidate {
+  imam: ImamInput;
+  compatibilityScore: number;
+  isPreferred: boolean;
+  isDiscouraged: boolean;
+  isNearby: boolean;
+  isStandby: boolean;
+  reason: string;
+  currentMonthLoad: number;
+  maxFridays: number;
+  targetFridays: number;
 }
 
 export interface EngineAssignment {
@@ -460,6 +475,39 @@ export class SchedulingEngine {
             score += 150 * deficitToTarget;
           }
 
+          // -------------------------------------------------------------
+          // Rotation Smoothing & Anti-Repetition Rules:
+          // -------------------------------------------------------------
+          // Rule A: Consecutive Friday Prevention for non-fixed imams
+          const preachedLastFridayHere = f > 1 && assignmentsGrid.get(`${mosque.id}:${f - 1}`)?.imamId === imam.id;
+          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id) {
+            score -= 2000; // Heavily penalize consecutive fridays in the same mosque
+          }
+
+          // Rule B: Month-level repeat visit smoothing
+          let previousVisitsInMonth = 0;
+          for (let prevF = 1; prevF < f; prevF++) {
+            if (assignmentsGrid.get(`${mosque.id}:${prevF}`)?.imamId === imam.id) {
+              previousVisitsInMonth++;
+            }
+          }
+          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id) {
+            score -= 450 * previousVisitsInMonth;
+          }
+
+          // Rule C: Historical rotation smoothing (across previous months)
+          if (input.history && input.history.length > 0 && mosque.fixedImamId !== imam.id) {
+            const historyVisits = input.history.filter((h) => h.mosqueId === mosque.id && h.imamId === imam.id).length;
+            if (historyVisits > 0) {
+              score -= 300 * Math.min(historyVisits, 3);
+            }
+          }
+
+          // Rule D: Geographic proximity affinity
+          if (imam.region && mosque.region && imam.region === mosque.region) {
+            score += 150;
+          }
+
           if (method === 'Random' || method === 'Balanced Random') {
             // Small tie-breaking noise from seeded random
             const noise = (rng.next() - 0.5) * (method === 'Random' ? 300 : 25);
@@ -690,4 +738,161 @@ export class SchedulingEngine {
       },
     };
   }
+
+  /**
+   * محرك اقتراح خطباء الطوارئ والاحتياط
+   * يبحث عن أفضل الخطباء البدلاء المتاحين لجمعة ومسجد معين عند حدوث اعتذار طارئ
+   */
+  public static findEmergencyReplacements(params: {
+    scheduleId?: number;
+    fridayIndex: number;
+    mosqueId: number;
+    currentImamId?: number | null;
+    allMosques: MosqueInput[];
+    allImams: ImamInput[];
+    rules: RuleInput[];
+    existingAssignments: Array<{ fridayIndex: number; mosqueId: number; imamId: number | null }>;
+    unavailabilities?: AvailabilityInput[];
+    history?: Array<{ mosqueId: number; imamId: number }>;
+    standbyImamIds?: number[];
+  }): EmergencyReplacementCandidate[] {
+    const {
+      fridayIndex,
+      mosqueId,
+      currentImamId,
+      allMosques,
+      allImams,
+      rules,
+      existingAssignments,
+      unavailabilities = [],
+      history = [],
+      standbyImamIds = [],
+    } = params;
+
+    const mosque = allMosques.find((m) => m.id === mosqueId);
+    if (!mosque) return [];
+
+    // Set of unavailabilities for this friday
+    const unavailSet = new Set(
+      unavailabilities
+        .filter((u) => u.fridayIndex === fridayIndex && !u.isAvailable)
+        .map((u) => u.imamId)
+    );
+
+    // Set of imams already booked on this friday across any mosque
+    const bookedThisFriday = new Set(
+      existingAssignments
+        .filter((a) => a.fridayIndex === fridayIndex && a.imamId && a.imamId !== currentImamId)
+        .map((a) => a.imamId!)
+    );
+
+    // Calculate current monthly load for each imam
+    const imamLoads: Record<number, number> = {};
+    for (const a of existingAssignments) {
+      if (a.imamId && a.imamId !== currentImamId) {
+        imamLoads[a.imamId] = (imamLoads[a.imamId] || 0) + 1;
+      }
+    }
+
+    // Rules map
+    const rulesMap = new Map<number, RuleInput>();
+    for (const r of rules) {
+      if (r.mosqueId === mosqueId) {
+        rulesMap.set(r.imamId, r);
+      }
+    }
+
+    const standbySet = new Set(standbyImamIds);
+    const candidates: EmergencyReplacementCandidate[] = [];
+
+    for (const imam of allImams) {
+      if (!imam.isActive) continue;
+      if (currentImamId && imam.id === currentImamId) continue;
+
+      // 1. Hard constraint: Already booked on this Friday
+      if (bookedThisFriday.has(imam.id)) continue;
+
+      // 2. Hard constraint: Unavailable on this Friday
+      if (unavailSet.has(imam.id)) continue;
+
+      // 3. Hard constraint: FORBIDDEN in this mosque
+      const rule = rulesMap.get(imam.id);
+      if (rule && rule.relationshipType === 'FORBIDDEN') continue;
+
+      // 4. Hard constraint: Maximum monthly capacity reached
+      const currentLoad = imamLoads[imam.id] || 0;
+      if (currentLoad >= imam.maxFridays) continue;
+
+      const isPreferred = rule?.relationshipType === 'PREFERRED';
+      const isDiscouraged = rule?.relationshipType === 'DISCOURAGED';
+      const isNearby = !!(imam.region && mosque.region && imam.region === mosque.region);
+      const isStandby = standbySet.has(imam.id);
+
+      // Scoring (0 - 100)
+      let score = 50;
+      const reasons: string[] = [];
+
+      // Standby bonus
+      if (isStandby) {
+        score += 20;
+        reasons.push('مصنّف كخطيب طوارئ واحتياط معتمد');
+      }
+
+      // Preference bonus
+      if (isPreferred) {
+        score += 25 - Math.min((rule?.priority || 1) * 3, 15);
+        reasons.push('مفضل لإدارة ورواد المسجد');
+      } else if (isDiscouraged) {
+        score -= 30;
+      }
+
+      // Proximity
+      if (isNearby) {
+        score += 15;
+        reasons.push(`مطابق للمنطقة الجغرافية (${mosque.region})`);
+      }
+
+      // Load optimization
+      if (currentLoad < imam.targetFridays) {
+        score += 10;
+        reasons.push(`لديه متسع في حصته الشهرية (${currentLoad} من ${imam.targetFridays})`);
+      } else if (currentLoad < imam.minFridays) {
+        score += 15;
+        reasons.push(`أولوية استكمال الحد الأدنى (${currentLoad} من ${imam.minFridays})`);
+      }
+
+      // Rotation check in current month
+      const visitsThisMonth = existingAssignments.filter(
+        (a) => a.mosqueId === mosqueId && a.imamId === imam.id && a.fridayIndex !== fridayIndex
+      ).length;
+      if (visitsThisMonth > 0 && mosque.fixedImamId !== imam.id) {
+        score -= 15;
+      }
+
+      // Historical visits
+      const histVisits = history.filter((h) => h.mosqueId === mosqueId && h.imamId === imam.id).length;
+      if (histVisits === 0) {
+        score += 5;
+        reasons.push('تنويع وتجديد الخطباء (لم يخطب بالمسجد مؤخراً)');
+      }
+
+      const compatibilityScore = Math.max(10, Math.min(100, Math.round(score)));
+
+      candidates.push({
+        imam,
+        compatibilityScore,
+        isPreferred,
+        isDiscouraged,
+        isNearby,
+        isStandby,
+        reason: reasons.length > 0 ? reasons.join(' • ') : 'جاهز ومتاح بدون تعارضات زمنية',
+        currentMonthLoad: currentLoad,
+        maxFridays: imam.maxFridays,
+        targetFridays: imam.targetFridays,
+      });
+    }
+
+    return candidates.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+  }
 }
+
