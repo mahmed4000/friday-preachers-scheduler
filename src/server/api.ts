@@ -902,6 +902,13 @@ api.post('/mosques', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'CREATE_MOSQUE', 'MOSQUE', created.id, { name, code });
     res.status(201).json(created);
   } catch (error: any) {
+    console.warn('DB create mosque failed, falling back to memoryStore:', error?.message);
+    try {
+      const created = memoryStore.createMosque(req.body);
+      return res.status(201).json(created);
+    } catch (fbErr) {
+      console.error('Fallback createMosque failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر إنشاء المسجد', details: error.message });
   }
 });
@@ -951,6 +958,13 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'UPDATE_MOSQUE', 'MOSQUE', id, data);
     res.json(updated);
   } catch (error: any) {
+    console.warn('DB patch mosque failed, falling back to memoryStore:', error?.message);
+    try {
+      const updated = memoryStore.updateMosque(Number(req.params.id), req.body);
+      if (updated) return res.json(updated);
+    } catch (fbErr) {
+      console.error('Fallback updateMosque failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر تحديث بيانات المسجد', details: error.message });
   }
 });
@@ -962,7 +976,9 @@ api.delete('/mosques/:id', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'DELETE_MOSQUE', 'MOSQUE', id);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف المسجد', details: error.message });
+    console.warn('DB delete mosque failed, falling back to memoryStore:', error?.message);
+    memoryStore.deleteMosque(Number(req.params.id));
+    return res.json({ success: true });
   }
 });
 
@@ -1439,6 +1455,19 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'CREATE', 'RULE', inserted[0].id, { mosqueId, imamId, relationshipType });
     res.status(201).json(inserted[0]);
   } catch (error: any) {
+    console.warn('DB create rule failed, falling back to memoryStore:', error?.message);
+    try {
+      const created = memoryStore.createRule({
+        mosqueId: Number(req.body.mosqueId),
+        imamId: Number(req.body.imamId),
+        relationshipType: req.body.relationshipType,
+        priority: req.body.priority || 1,
+        notes: req.body.notes || null,
+      });
+      return res.status(201).json(created);
+    } catch (fbErr) {
+      console.error('Fallback createRule failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر إضافة القاعدة', details: error.message });
   }
 });
@@ -1450,7 +1479,9 @@ api.delete('/rules/:id', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'DELETE', 'RULE', id);
     res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف القاعدة', details: error.message });
+    console.warn('DB delete rule failed, falling back to memoryStore:', error?.message);
+    memoryStore.deleteRule(Number(req.params.id));
+    return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   }
 });
 
@@ -1744,6 +1775,13 @@ api.post('/imams', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
     res.status(201).json(created);
   } catch (error: any) {
+    console.warn('DB create imam failed, falling back to memoryStore:', error?.message);
+    try {
+      const created = memoryStore.createImam(req.body);
+      return res.status(201).json(created);
+    } catch (fbErr) {
+      console.error('Fallback createImam failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر إضافة الخطيب', details: error.message });
   }
 });
@@ -1794,6 +1832,13 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
     res.json(updated);
   } catch (error: any) {
+    console.warn('DB patch imam failed, falling back to memoryStore:', error?.message);
+    try {
+      const updated = memoryStore.updateImam(Number(req.params.id), req.body);
+      if (updated) return res.json(updated);
+    } catch (fbErr) {
+      console.error('Fallback updateImam failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر تحديث بيانات الخطيب', details: error.message });
   }
 });
@@ -1805,7 +1850,9 @@ api.delete('/imams/:id', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'DELETE_IMAM', 'IMAM', id);
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف الخطيب', details: error.message });
+    console.warn('DB delete imam failed, falling back to memoryStore:', error?.message);
+    memoryStore.deleteImam(Number(req.params.id));
+    return res.json({ success: true });
   }
 });
 
@@ -1985,8 +2032,23 @@ api.post('/schedules', async (req: AuthRequest, res: Response) => {
       monthDetails,
     });
   } catch (error: any) {
-    console.error('Error creating schedule:', error);
-    res.status(500).json({ error: 'تعذر إنشاء الجدول الشهري', details: error.message });
+    console.warn('DB create schedule failed, falling back to memoryStore:', error?.message);
+    try {
+      const fallbackResult = memoryStore.createSchedule(
+        Number(req.body.hijriYear),
+        Number(req.body.hijriMonth),
+        req.body.calendarProvider,
+        req.body.timezone,
+        req.user?.email
+      );
+      if (fallbackResult.isDuplicate) {
+        return res.status(400).json({ error: fallbackResult.error });
+      }
+      return res.status(201).json(fallbackResult);
+    } catch (fbError: any) {
+      console.error('Fallback memoryStore create schedule failed:', fbError);
+      res.status(500).json({ error: 'تعذر إنشاء الجدول الشهري', details: fbError.message });
+    }
   }
 });
 
@@ -2240,10 +2302,20 @@ api.post('/schedules/:id/generate', async (req: AuthRequest, res: Response) => {
       stats: result.stats,
       protectedPastFridaysCount: pastFridayIndices.size,
     });
-    res.json({ success: true, result });
   } catch (error: any) {
-    console.error('Error generating schedule:', error);
-    res.status(500).json({ error: 'تعذر إنشاء التوزيع', details: error.message });
+    console.warn('DB generate schedule failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const fallbackResult = memoryStore.generateSchedule(
+        scheduleId,
+        req.body?.distributionMethod,
+        req.body?.seed
+      );
+      return res.json(fallbackResult);
+    } catch (fbError: any) {
+      console.error('Fallback memoryStore generate schedule failed:', fbError);
+      res.status(500).json({ error: 'تعذر إنشاء التوزيع', details: fbError.message });
+    }
   }
 });
 
@@ -2583,6 +2655,22 @@ api.post('/schedules/:id/assignment', async (req: AuthRequest, res: Response) =>
 
     res.json(updated);
   } catch (error: any) {
+    console.warn('DB assignment update failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const { assignmentId, newImamId, reason } = req.body;
+      const fallbackUpdated = memoryStore.updateAssignment(
+        scheduleId,
+        Number(assignmentId),
+        newImamId ? Number(newImamId) : null,
+        reason
+      );
+      if (fallbackUpdated) {
+        return res.json(fallbackUpdated);
+      }
+    } catch (fbErr) {
+      console.error('Fallback updateAssignment failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر تعديل التعيين', details: error.message });
   }
 });
@@ -2618,6 +2706,17 @@ api.post('/schedules/:id/lock-toggle', async (req: AuthRequest, res: Response) =
 
     res.json(updated);
   } catch (error: any) {
+    console.warn('DB toggle lock failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const { assignmentId } = req.body;
+      const fallbackUpdated = memoryStore.toggleLock(scheduleId, Number(assignmentId));
+      if (fallbackUpdated) {
+        return res.json(fallbackUpdated);
+      }
+    } catch (fbErr) {
+      console.error('Fallback toggleLock failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر تغيير حالة القفل', details: error.message });
   }
 });
@@ -2704,6 +2803,16 @@ api.post('/schedules/:id/approve', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'APPROVE_SCHEDULE', 'SCHEDULE', scheduleId, { version: nextVersion });
     res.json(approved);
   } catch (error: any) {
+    console.warn('DB approve schedule failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const fallbackApproved = memoryStore.approveSchedule(scheduleId);
+      if (fallbackApproved) {
+        return res.json(fallbackApproved);
+      }
+    } catch (fbErr) {
+      console.error('Fallback approveSchedule failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر اعتماد الجدول', details: error.message });
   }
 });
@@ -2737,6 +2846,7 @@ api.post('/schedules/:id/publish', async (req: AuthRequest, res: Response) => {
         status: (m.whatsapp || m.phone) ? 'READY' : 'MISSING_PHONE',
       });
     }
+
     for (const i of activeImams) {
       logsToInsert.push({
         scheduleId,
@@ -2764,6 +2874,16 @@ api.post('/schedules/:id/publish', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'PUBLISH_SCHEDULE', 'SCHEDULE', scheduleId);
     res.json({ success: true, published, recipientsCount: logsToInsert.length });
   } catch (error: any) {
+    console.warn('DB publish schedule failed, falling back to memoryStore:', error?.message);
+    try {
+      const scheduleId = Number(req.params.id);
+      const fallbackPublished = memoryStore.publishSchedule(scheduleId);
+      if (fallbackPublished) {
+        return res.json({ success: true, published: fallbackPublished, recipientsCount: 0 });
+      }
+    } catch (fbErr) {
+      console.error('Fallback publishSchedule failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر نشر الجدول', details: error.message });
   }
 });

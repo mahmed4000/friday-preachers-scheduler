@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CalendarService } from '../services/calendar/calendarService.ts';
+import { SchedulingEngine } from '../services/schedulingEngine.ts';
 
 // Load initial seed data
 let seedData: any = {
@@ -708,6 +709,335 @@ export const memoryStore = {
     if (!sched) return null;
     sched.status = 'APPROVED';
     sched.approvedAt = new Date().toISOString();
+    sched.updatedAt = new Date().toISOString();
+    this.persistToDisk();
     return sched;
   },
+
+  publishSchedule(scheduleId: number) {
+    const sched = memorySchedules.find((s: any) => s.id === scheduleId);
+    if (!sched) return null;
+    sched.status = 'PUBLISHED';
+    sched.publishedAt = new Date().toISOString();
+    sched.updatedAt = new Date().toISOString();
+    this.persistToDisk();
+    return sched;
+  },
+
+  createSchedule(
+    hijriYear: number,
+    hijriMonth: number,
+    calendarProvider?: string,
+    timezone?: string,
+    createdBy?: string
+  ) {
+    const periodValidation = CalendarService.validateSchedulePeriod(hijriYear, hijriMonth, {
+      provider: (calendarProvider as any) || 'UMM_AL_QURA',
+      timezone: timezone || 'Asia/Riyadh',
+    });
+
+    const existing = memorySchedules.find(
+      (s: any) => s.hijriYear === hijriYear && s.hijriMonth === hijriMonth
+    );
+    if (existing) {
+      return {
+        isDuplicate: true,
+        schedule: existing,
+        error: `يوجد بالفعل جدول لشهر ${existing.monthName} ${hijriYear} هـ (الجدول #${existing.id})`,
+      };
+    }
+
+    const monthDetails = periodValidation.monthDetails;
+    const nextId = memorySchedules.reduce((max: number, s: any) => Math.max(max, s.id || 0), 0) + 1;
+
+    const newSchedule = {
+      id: nextId,
+      hijriYear,
+      hijriMonth,
+      monthName: monthDetails.monthName,
+      fridaysCount: monthDetails.fridaysCount,
+      daysCount: monthDetails.daysCount,
+      calendarProvider: monthDetails.calendarProvider,
+      timezone: monthDetails.timezone,
+      startDateGregorian: monthDetails.startDateGregorian,
+      endDateGregorian: monthDetails.endDateGregorian,
+      status: 'DRAFT',
+      currentVersion: 1,
+      createdBy: createdBy || 'admin@aljameya.org',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    memorySchedules.unshift(newSchedule);
+
+    let nextFridayId = memoryFridays.reduce((max: number, f: any) => Math.max(max, f.id || 0), 0) + 1;
+    const fridaysToInsert = monthDetails.fridays.map((f: any) => ({
+      id: nextFridayId++,
+      scheduleId: newSchedule.id,
+      fridayIndex: f.fridayIndex,
+      hijriYear: f.hijriYear,
+      hijriMonth: f.hijriMonth,
+      hijriDay: f.hijriDay,
+      hijriDate: f.hijriDate,
+      gregorianDate: f.gregorianDate,
+      dayOfWeek: f.dayOfWeek,
+    }));
+
+    memoryFridays.push(...fridaysToInsert);
+    this.persistToDisk();
+
+    return {
+      ...newSchedule,
+      periodStatus: monthDetails.periodStatus,
+      statusLabelArabic: monthDetails.statusLabelArabic,
+      monthDetails,
+    };
+  },
+
+  generateSchedule(scheduleId: number, distributionMethod?: string, seed?: string) {
+    const schedule = memorySchedules.find((s: any) => s.id === scheduleId);
+    if (!schedule) {
+      throw new Error('الجدول غير موجود');
+    }
+
+    const activeMosques = memoryMosques.filter((m: any) => m.isActive);
+    const activeImams = memoryImams.filter((i: any) => i.isActive);
+    const rules = memoryRules;
+
+    const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
+      provider: (schedule.calendarProvider as any) || 'UMM_AL_QURA',
+      timezone: schedule.timezone || 'Asia/Riyadh',
+    });
+
+    const pastFridayIndices = new Set(
+      monthDetails.fridays.filter((f: any) => f.isPast).map((f: any) => f.fridayIndex)
+    );
+
+    const existingAssignments = memoryAssignments.filter((a: any) => a.scheduleId === scheduleId);
+    const lockedAssignments = existingAssignments
+      .filter((a: any) => a.isLocked || pastFridayIndices.has(a.fridayIndex))
+      .map((a: any) => ({
+        fridayIndex: a.fridayIndex,
+        mosqueId: a.mosqueId,
+        imamId: a.imamId,
+        source: a.source,
+        notes: a.notes,
+      }));
+
+    const patternRecords = memoryPatterns.filter(
+      (p: any) =>
+        p.hijriYear === schedule.hijriYear &&
+        p.hijriMonth === schedule.hijriMonth &&
+        p.isActive !== false
+    );
+    const patternIds = patternRecords.map((p: any) => p.id);
+    const patternItemsRecords = memoryPatternItems.filter((item: any) => patternIds.includes(item.patternId));
+
+    const fixedPatternsInput = patternRecords.map((p: any) => ({
+      mosqueId: p.mosqueId,
+      patternType: p.patternType,
+      fridaysCount: p.fridaysCount,
+      items: patternItemsRecords
+        .filter((item: any) => item.patternId === p.id)
+        .map((item: any) => ({
+          fridayIndex: item.fridayIndex,
+          imamId: item.imamId,
+          sequence: item.sequence,
+          notes: item.notes,
+        })),
+    }));
+
+    const result = SchedulingEngine.generate({
+      monthName: schedule.monthName,
+      hijriYear: schedule.hijriYear,
+      hijriMonth: schedule.hijriMonth,
+      fridaysCount: schedule.fridaysCount,
+      mosques: activeMosques.map((m: any) => ({
+        id: m.id,
+        name: m.name,
+        code: m.code,
+        region: m.region,
+        isActive: m.isActive,
+        fixedImamId: m.fixedImamId,
+        fixedPattern: m.fixedPattern,
+        fixedCount: m.fixedCount,
+      })),
+      imams: activeImams.map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        type: i.type,
+        minFridays: i.minFridays,
+        targetFridays: i.targetFridays,
+        maxFridays: i.maxFridays,
+        isActive: i.isActive,
+        region: i.region,
+      })),
+      rules: rules.map((r: any) => ({
+        mosqueId: r.mosqueId,
+        imamId: r.imamId,
+        relationshipType: r.relationshipType,
+        priority: r.priority || 1,
+      })),
+      availabilities: [],
+      lockedAssignments,
+      fixedPatterns: fixedPatternsInput,
+      distributionMethod: (distributionMethod as any) || 'Balanced Random',
+      seed: seed || `${schedule.monthName}-${schedule.hijriYear}`,
+    });
+
+    const lockedIds = new Set(existingAssignments.filter((a: any) => a.isLocked).map((a: any) => a.id));
+    memoryAssignments = memoryAssignments.filter((a: any) => a.scheduleId !== scheduleId || lockedIds.has(a.id));
+
+    let nextAssignId = memoryAssignments.reduce((max: number, a: any) => Math.max(max, a.id || 0), 0) + 1;
+    const scheduleFridays = memoryFridays.filter((f: any) => f.scheduleId === scheduleId);
+    const fridayMap = new Map(scheduleFridays.map((f: any) => [f.fridayIndex, f.id]));
+
+    const newAssignmentsToInsert = result.assignments.map((ea: any) => ({
+      id: nextAssignId++,
+      scheduleId,
+      fridayId: fridayMap.get(ea.fridayIndex) || 0,
+      fridayIndex: ea.fridayIndex,
+      mosqueId: ea.mosqueId,
+      imamId: ea.imamId,
+      isLocked: ea.isLocked || false,
+      source: ea.source,
+      notes: ea.notes || null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+
+    memoryAssignments.push(...newAssignmentsToInsert);
+
+    if (result.conflicts && result.conflicts.length > 0) {
+      let nextConflictId = memoryConflicts.reduce((max: number, c: any) => Math.max(max, c.id || 0), 0) + 1;
+      const newConflicts = result.conflicts.map((c: any) => ({
+        id: nextConflictId++,
+        scheduleId,
+        fridayIndex: c.fridayIndex || null,
+        mosqueId: c.mosqueId || null,
+        imamId: c.imamId || null,
+        ruleCode: c.ruleCode,
+        severity: c.severity,
+        message: c.message,
+        possibleResolutions: JSON.stringify(c.possibleResolutions || []),
+        createdAt: new Date().toISOString(),
+      }));
+      memoryConflicts = memoryConflicts.filter((c: any) => c.scheduleId !== scheduleId);
+      memoryConflicts.push(...newConflicts);
+    }
+
+    schedule.status = 'REVIEW';
+    schedule.updatedAt = new Date().toISOString();
+    this.persistToDisk();
+
+    return { success: true, result };
+  },
+
+  createMosque(data: any) {
+    const nextId = memoryMosques.reduce((max: number, m: any) => Math.max(max, m.id || 0), 0) + 1;
+    const newMosque = {
+      id: nextId,
+      isActive: true,
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryMosques.push(newMosque);
+    this.persistToDisk();
+    return newMosque;
+  },
+
+  updateMosque(id: number, data: any) {
+    const index = memoryMosques.findIndex((m: any) => m.id === id);
+    if (index === -1) return null;
+    memoryMosques[index] = {
+      ...memoryMosques[index],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    this.persistToDisk();
+    return memoryMosques[index];
+  },
+
+  deleteMosque(id: number) {
+    memoryMosques = memoryMosques.filter((m: any) => m.id !== id);
+    this.persistToDisk();
+    return true;
+  },
+
+  createImam(data: any) {
+    const nextId = memoryImams.reduce((max: number, i: any) => Math.max(max, i.id || 0), 0) + 1;
+    const newImam = {
+      id: nextId,
+      isActive: true,
+      minFridays: data.minFridays ?? 1,
+      targetFridays: data.targetFridays ?? 4,
+      maxFridays: data.maxFridays ?? 5,
+      ...data,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    memoryImams.push(newImam);
+    this.persistToDisk();
+    return newImam;
+  },
+
+  updateImam(id: number, data: any) {
+    const index = memoryImams.findIndex((i: any) => i.id === id);
+    if (index === -1) return null;
+    memoryImams[index] = {
+      ...memoryImams[index],
+      ...data,
+      updatedAt: new Date().toISOString(),
+    };
+    this.persistToDisk();
+    return memoryImams[index];
+  },
+
+  deleteImam(id: number) {
+    memoryImams = memoryImams.filter((i: any) => i.id !== id);
+    this.persistToDisk();
+    return true;
+  },
+
+  createRule(data: any) {
+    const nextId = memoryRules.reduce((max: number, r: any) => Math.max(max, r.id || 0), 0) + 1;
+    const newRule = {
+      id: nextId,
+      ...data,
+      createdAt: new Date().toISOString(),
+    };
+    memoryRules.push(newRule);
+    this.persistToDisk();
+    return newRule;
+  },
+
+  deleteRule(id: number) {
+    memoryRules = memoryRules.filter((r: any) => r.id !== id);
+    this.persistToDisk();
+    return true;
+  },
+
+  persistToDisk() {
+    try {
+      const seedPath = path.resolve('src/db/initialSeed.json');
+      const payload = {
+        ...seedData,
+        mosques: memoryMosques,
+        imams: memoryImams,
+        mosqueImamRules: memoryRules,
+        monthlySchedules: memorySchedules,
+        fridays: memoryFridays,
+        assignments: memoryAssignments,
+        conflicts: memoryConflicts,
+        overrides: memoryOverrides,
+        fixedAssignmentPatterns: memoryPatterns,
+        fixedAssignmentPatternItems: memoryPatternItems,
+      };
+      fs.writeFileSync(seedPath, JSON.stringify(payload, null, 2), 'utf8');
+    } catch (e) {
+      console.warn('Could not persist memoryStore to initialSeed.json:', e);
+    }
+  },
 };
+
