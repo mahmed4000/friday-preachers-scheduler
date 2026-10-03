@@ -11,7 +11,7 @@ import {
   FRIDAY_ORDINALS,
   TIMEZONE_LABELS,
 } from './calendarProvider.ts';
-import {
+import type {
   CalendarProviderType,
   CurrentDateTimeInfo,
   FridayCalendarItem,

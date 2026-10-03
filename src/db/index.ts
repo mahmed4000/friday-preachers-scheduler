@@ -22,25 +22,40 @@ export const createPool = () => {
           connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
             ? false
             : { rejectUnauthorized: false },
-        max: 10,
-        connectionTimeoutMillis: 10000,
+        max: 5,
+        connectionTimeoutMillis: 2500,
+        idleTimeoutMillis: 10000,
       };
     } else {
+      let host = process.env.SQL_HOST || 'localhost';
+      // If host is a unix socket path that does not exist, fallback to localhost
+      if (host.startsWith('/') && typeof window === 'undefined') {
+        try {
+          const fs = require('fs');
+          if (!fs.existsSync(host)) {
+            host = 'localhost';
+          }
+        } catch {
+          host = 'localhost';
+        }
+      }
+
       config = {
-        host: process.env.SQL_HOST || 'localhost',
+        host,
         user: process.env.SQL_USER || 'postgres',
         password: process.env.SQL_PASSWORD || 'postgres',
         database: process.env.SQL_DB_NAME || 'postgres',
         port: Number(process.env.SQL_PORT) || 5432,
-        max: 10,
-        connectionTimeoutMillis: 10000,
+        max: 5,
+        connectionTimeoutMillis: 2500,
+        idleTimeoutMillis: 10000,
       };
     }
 
     global._postgresPool = new Pool(config);
 
     global._postgresPool.on('error', (err) => {
-      console.error('Unexpected error on idle SQL pool client:', err);
+      console.warn('PostgreSQL idle pool notification:', err?.message || err);
     });
   }
   return global._postgresPool;

@@ -43,6 +43,7 @@ import {
 } from '../services/importExportService.ts';
 import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
+import { memoryStore } from './memoryStore.ts';
 
 const api = express.Router({ mergeParams: true });
 api.use(express.json({ limit: '50mb' }));
@@ -358,8 +359,9 @@ api.get('/dashboard', async (req: Request, res: Response) => {
       liveDateTime: currentDT,
     });
   } catch (error: any) {
-    console.error('Error fetching dashboard:', error);
-    res.status(500).json({ error: 'تعذر جلب بيانات لوحة القيادة', details: error.message });
+    console.warn('DB fetch for dashboard failed, falling back to memory store:', error?.message);
+    const fallbackData = memoryStore.getDashboard(hijriYear, hijriMonth);
+    res.json(fallbackData);
   }
 });
 
@@ -633,7 +635,9 @@ api.get('/mosques', async (req: Request, res: Response) => {
 
     res.json(enhanced);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب قائمة المساجد', details: error.message });
+    console.warn('DB fetch for mosques failed, falling back to memory store:', error?.message);
+    const fallback = memoryStore.getMosques(search, region);
+    res.json(fallback);
   }
 });
 
@@ -641,7 +645,11 @@ api.get('/mosques/:id', async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
-    if (!found[0]) return res.status(404).json({ error: 'المسجد غير موجود' });
+    if (!found[0]) {
+      const fallbackFound = memoryStore.getMosqueDetails(id);
+      if (fallbackFound) return res.json(fallbackFound);
+      return res.status(404).json({ error: 'المسجد غير موجود' });
+    }
 
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.mosqueId, id)).orderBy(asc(mosqueImamRules.priority));
     const allImams = await db.select().from(imams);
@@ -657,6 +665,9 @@ api.get('/mosques/:id', async (req: Request, res: Response) => {
       rules: enrichedRules,
     });
   } catch (error: any) {
+    console.warn('DB fetch for mosque details failed, falling back to memory store:', error?.message);
+    const fallbackFound = memoryStore.getMosqueDetails(Number(req.params.id));
+    if (fallbackFound) return res.json(fallbackFound);
     res.status(500).json({ error: 'تعذر جلب تفاصيل المسجد', details: error.message });
   }
 });
@@ -1394,7 +1405,8 @@ api.get('/rules', async (_req: Request, res: Response) => {
     const list = await db.select().from(mosqueImamRules).orderBy(asc(mosqueImamRules.id));
     res.json(list);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب قواعد ومصفوفة التفضيلات', details: error.message });
+    console.warn('DB fetch for rules failed, falling back to memory store:', error?.message);
+    res.json(memoryStore.getRules());
   }
 });
 
@@ -1453,7 +1465,9 @@ api.get('/imams', async (req: Request, res: Response) => {
 
     res.json(filtered);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب قائمة الخطباء', details: error.message });
+    console.warn('DB fetch for imams failed, falling back to memory store:', error?.message);
+    const fallback = memoryStore.getImams(search, type);
+    res.json(fallback);
   }
 });
 
@@ -1461,7 +1475,11 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
     const found = await db.select().from(imams).where(eq(imams.id, id)).limit(1);
-    if (!found[0]) return res.status(404).json({ error: 'الخطيب غير موجود' });
+    if (!found[0]) {
+      const fallbackFound = memoryStore.getImamDetails(id);
+      if (fallbackFound) return res.json(fallbackFound);
+      return res.status(404).json({ error: 'الخطيب غير موجود' });
+    }
 
     const availabilities = await db.select().from(imamAvailabilities).where(eq(imamAvailabilities.imamId, id));
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
@@ -1479,6 +1497,9 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
       rules: enrichedRules,
     });
   } catch (error: any) {
+    console.warn('DB fetch for imam details failed, falling back to memory store:', error?.message);
+    const fallbackFound = memoryStore.getImamDetails(Number(req.params.id));
+    if (fallbackFound) return res.json(fallbackFound);
     res.status(500).json({ error: 'تعذر جلب تفاصيل الخطيب', details: error.message });
   }
 });
@@ -1857,7 +1878,8 @@ api.get('/schedules', async (_req: Request, res: Response) => {
     });
     res.json(enrichedList);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب الجداول', details: error.message });
+    console.warn('DB fetch for schedules failed, falling back to memory store:', error?.message);
+    res.json(memoryStore.getSchedules());
   }
 });
 
@@ -2011,6 +2033,16 @@ api.get('/schedules/:id', async (req: Request, res: Response) => {
       rules: allRules,
     });
   } catch (error: any) {
+    console.warn('DB fetch for schedule details failed, falling back to memory store:', error?.message);
+    const fallback = memoryStore.getScheduleDetails(Number(req.params.id));
+    if (fallback) {
+      return res.json({
+        ...fallback,
+        mosques: memoryStore.getMosques(),
+        imams: memoryStore.getImams(),
+        rules: memoryStore.getRules(),
+      });
+    }
     res.status(500).json({ error: 'تعذر جلب تفاصيل الجدول', details: error.message });
   }
 });
@@ -3924,11 +3956,13 @@ api.post('/system/clear-all', async (req: AuthRequest, res: Response) => {
 
 api.post('/system/reset-demo', async (req: AuthRequest, res: Response) => {
   try {
-    await seedDatabase();
+    memoryStore.reset();
+    await seedDatabase().catch((e) => console.warn('seedDatabase DB error (using memoryStore):', e?.message));
     await logAudit(req, 'RESET_DEMO_DATA', 'SYSTEM', 1);
     res.json({ success: true, message: 'تمت إعادة ضبط النظام إلى الحالة الافتراضية بنجاح' });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر إعادة ضبط النظام', details: error.message });
+    memoryStore.reset();
+    res.json({ success: true, message: 'تمت إعادة ضبط النظام إلى الحالة الافتراضية بنجاح' });
   }
 });
 

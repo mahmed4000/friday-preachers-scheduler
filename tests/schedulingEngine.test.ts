@@ -1,5 +1,5 @@
-import {
-  SchedulingEngine,
+import { SchedulingEngine } from '../src/services/schedulingEngine.ts';
+import type {
   MosqueInput,
   ImamInput,
   RuleInput,

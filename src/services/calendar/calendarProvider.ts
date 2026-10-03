@@ -3,7 +3,7 @@
  * يدعم تقويم أم القرى (Umm Al-Qura) كأساس افتراضي وموثوق.
  */
 
-import {
+import type {
   CalendarProviderType,
   CurrentDateTimeInfo,
   FridayCalendarItem,

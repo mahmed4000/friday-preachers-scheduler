@@ -6,10 +6,28 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutMs = 6000;
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers,
+      signal: options.signal || controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timer);
+    if (err.name === 'AbortError') {
+      throw new Error(`انتهت مهلة انتظار استجابة الخادم (${url}) - يرجى التحقق من اتصال الشبكة`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 
   const contentType = response.headers.get('content-type') || '';
 
