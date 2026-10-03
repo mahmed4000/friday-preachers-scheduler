@@ -59,6 +59,16 @@ export const SupabaseSyncService = {
       ]);
 
       if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('schema cache') || error.message?.includes('not find')) {
+          const latencyMs = Date.now() - startTime;
+          return {
+            configured: true,
+            connected: true,
+            latencyMs,
+            message: `تم التحقق من الاتصال بسحابة Supabase بنجاح (${latencyMs} ms). يرجى الآن تشغيل ملف supabase_schema.sql في SQL Editor لإنشاء الجداول.`,
+            error: 'TABLES_NOT_CREATED_YET',
+          };
+        }
         return {
           configured: true,
           connected: false,
