@@ -21,6 +21,7 @@ import { WhatsAppCenterView } from './components/whatsapp/WhatsAppCenterView.tsx
 import { ReportsView } from './components/reports/ReportsView.tsx';
 import { AuditLogsView } from './components/audit/AuditLogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
+import { SupabaseCloudSettings } from './components/settings/SupabaseCloudSettings.tsx';
 import { MosqueProfileView } from './components/profiles/MosqueProfileView.tsx';
 import { ImamProfileView } from './components/profiles/ImamProfileView.tsx';
 import { ProfileNavigationContext } from './context/ProfileNavigationContext.tsx';
@@ -385,6 +386,8 @@ export default function App() {
         return { title: 'سجل الخطباء والدعاة', subtitle: 'إدارة الحدود (Min/Target/Max) واستثناءات عدم التوفر' };
       case 'rules':
         return { title: 'مصفوفة التفضيلات والقواعد', subtitle: 'العلاقات المباشرة بين المساجد والخطباء' };
+      case 'cloud':
+        return { title: 'سحابة Supabase ومزامنة البيانات', subtitle: 'إدارة قاعدة البيانات السحابية والمزامنة الحية مع خوادم PostgreSQL' };
       case 'publishing':
         return { title: 'مركز النشر والطباعة والواتساب', subtitle: 'توليد ملفات PDF وإرسال رسائل التكليف الرسمية' };
       case 'reports':
@@ -449,6 +452,7 @@ export default function App() {
               onOpenWizard={() => setIsWizardOpen(true)}
               onResetDemo={handleResetDemo}
               onOpenSettings={() => setCurrentTab('settings')}
+              onOpenCloud={() => setCurrentTab('cloud')}
             />
           </div>
 
@@ -591,6 +595,9 @@ export default function App() {
 
               {/* Audit Trail */}
               {currentTab === 'audit' && <AuditLogsView />}
+
+              {/* Supabase Cloud View */}
+              {currentTab === 'cloud' && <SupabaseCloudSettings />}
 
               {/* Organization & Logo Settings */}
               {currentTab === 'settings' && (

@@ -18,6 +18,7 @@ export type NavItem =
   | 'mosques'
   | 'imams'
   | 'rules'
+  | 'cloud'
   | 'publishing'
   | 'reports'
   | 'audit'
@@ -50,6 +51,7 @@ export function Sidebar({
     { id: 'mosques', label: 'المساجد', icon: Building2 },
     { id: 'imams', label: 'الخطباء', icon: Users },
     { id: 'rules', label: 'القواعد والتفضيلات', icon: Sliders },
+    { id: 'cloud', label: 'سحابة Supabase', icon: Database },
     { id: 'publishing', label: 'النشر والإرسال', icon: Send },
     { id: 'reports', label: 'التقارير والإحصائيات', icon: BarChart3 },
     { id: 'audit', label: 'سجل العمليات', icon: ScrollText },

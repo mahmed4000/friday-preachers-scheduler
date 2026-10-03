@@ -21,6 +21,7 @@ interface HeaderProps {
   onOpenWizard: () => void;
   onResetDemo?: () => void;
   onOpenSettings?: () => void;
+  onOpenCloud?: () => void;
   alertCount?: number;
 }
 
@@ -30,6 +31,7 @@ export function Header({
   onOpenWizard,
   onResetDemo,
   onOpenSettings,
+  onOpenCloud,
   alertCount = 0,
 }: HeaderProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -97,6 +99,17 @@ export function Header({
         >
           <span>جدول جديد</span>
         </Button>
+
+        {onOpenCloud && (
+          <button
+            onClick={onOpenCloud}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-lg transition-colors border border-emerald-300 dark:border-emerald-700 cursor-pointer shadow-2xs"
+            title="سحابة Supabase ومزامنة البيانات"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="hidden sm:inline">سحابة Supabase ☁️</span>
+          </button>
+        )}
 
         <div className="h-5 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
