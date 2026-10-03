@@ -1,11 +1,82 @@
-<div align="center">
+# منظّم الجمعة — Friday Preachers Scheduler
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+> نظام مؤسسي حديث ومتكامل لإدارة وتنظيم وجدولة وتوزيع خطباء الجمعة للجمعية الشرعية على مستوى مدينة، مبني بنهج SaaS وتوجيه عربي أصيل (RTL First).
 
-  <h1>Built with AI Studio</h2>
+---
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## 🌟 المزايا الرئيسية
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+1. **محرك جدولة خوارزمي متطور (Deterministic Scheduling Engine)**:
+   - يطبق الأولويات الست: القيود الصارمة، الثوابت، المستهدف والحدود، تفضيلات المساجد، عدالة الأحمال، والتوزيع المتوازن.
+   - يدعم الأشهر ذات 4 و 5 جمعات.
+   - يدعم أنماط التعيين الثابت: `ALL`, `FIRST_N`, `LAST_N`, `ANY_N`, `SPECIFIC_FRIDAYS`.
+   - كشف التعارضات الحرجة واقتراح الحلول دون إجبار استثناءات غير مصرح بها.
 
-</div>
+2. **لوحة مراجعة الجدول (Desktop-First Schedule Review Board)**:
+   - العرض حسب المساجد (الجمعات كأعمدة)، حسب الخطباء، وحسب الجمعة الفردية.
+   - خلايا تفاعلية مع بيان مصدر التعيين (ثابت 🔒، تفضيل ⭐، متوازن ⚖️، يدوي ✏️، استثناء ⚡).
+   - درج جانبي لتبديل الخطيب يعرض المرشحين المؤهلين والمفضلين والمانعين بوضوح.
+   - قفل التعيينات وإعادة التوزيع الجزئي للغير مقفول أو جمعة محددة أو مسجد محدد.
+   - مسار الاعتماد الرسمي (Approval Checklist).
+
+3. **مركز النشر والطباعة (Publishing & PDF Center)**:
+   - جدول المدينة الشامل العريض (A4 Landscape) بتنسيق طباعي مؤسسي وتوقيعات رسمية.
+   - جدول مستقل لكل مسجد (A4 Portrait).
+   - جدول مستقل لكل خطيب بتكليفاته للشهر (A4 Portrait).
+
+4. **مركز الواتساب (WhatsApp Dispatch Center)**:
+   - التحقق من جاهزية أرقام هواتف المساجد والخطباء.
+   - قوالب رسائل ديناميكية لفضيلة الخطيب وإدارة المسجد.
+   - روابط واتساب مباشرة (`wa.me`) وزر نسخ فوري.
+   - زر إرسال جماعي محاكى.
+
+5. **استيراد وتصدير Excel**:
+   - معالج استيراد متكامل مع معاينة فورية للأعمدة وقالب جاهز للتنزيل.
+
+6. **الرقابة والتقارير (Audit Log & Reports)**:
+   - توثيق غير قابل للحذف لجميع التعديلات والتعيينات والقرارات الإدارية.
+   - مؤشرات عدالة التوزيع واستيفاء التفضيلات.
+
+---
+
+## 🏗️ التقنيات المستخدمة (Tech Stack)
+
+- **Frontend**: React 19 + TypeScript + Vite + Tailwind CSS v4 + Lucide React.
+- **Backend**: Express + Node.js REST API.
+- **Database**: Google Cloud SQL (PostgreSQL) Developer Edition مع Drizzle ORM و Connection Pooling.
+- **Authentication**: Firebase Authentication + Google Sign-In + Firebase Admin Token Verification.
+- **Typography & Direction**: `dir="rtl"`, خط `Tajawal` للعناوين و `IBM Plex Sans Arabic` للنصوص و `tabular-nums` للأرقام.
+
+---
+
+## 🚀 تشغيل النظام والاختبارات
+
+### تشغيل خادم التطوير:
+```bash
+npm run dev
+```
+
+### تشغيل اختبارات وحدة محرك الجدولة:
+```bash
+npm run test
+```
+
+### فحص سلامة وتوافق الأكواد:
+```bash
+npm run lint
+```
+
+### بناء التطبيق للإنتاج:
+```bash
+npm run build
+npm start
+```
+
+---
+
+## 📊 البيانات التجريبية الشاملة (Seed Data)
+التطبيق مزود ببيانات واقعية فورية:
+- **20 مسجداً** في كافة قطاعات المدينة.
+- **25 خطيباً** بمستويات وتخصصات وحدود متنوعة.
+- شهر **رمضان المبارك 1448 هـ** (5 جمعات معتمد رسمياً).
+- شهر **شوال المكرم 1448 هـ** (4 جمعات جاهز للتوليد).

@@ -1,0 +1,6 @@
+{
+  "name": "منظّم الجمعة — Friday Preachers Scheduler",
+  "description": "نظام إدارة وتنظيم وتوزيع جداول خطباء الجمعة للجمعية الشرعية على مستوى مدينة",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

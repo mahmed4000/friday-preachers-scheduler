@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'IBM Plex Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
+    background-color: #faf9f6;
+    color: #0f172a;
+  }
+  
+  h1, h2, h3, h4, .font-heading {
+    font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+  }
+}
+
+/* Tabular figures for numbers, dates, statistics */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Print & PDF Export rules */
+@media print {
+  html, body, main, #root {
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+    color: black !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .page-break-after {
+    page-break-after: always;
+  }
+  
+  /* Expand all scroll containers and PDF documents in print mode */
+  .pdf-report-document,
+  .pdf-table-container,
+  .scroll-container,
+  .table-scroll-container,
+  .overflow-auto,
+  .overflow-x-auto,
+  .overflow-y-auto,
+  .overflow-hidden,
+  .overflow-scroll {
+    overflow: visible !important;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    width: 100% !important;
+  }
+
+  .sticky,
+  [class*="sticky"] {
+    position: static !important;
+  }
+
+  ::-webkit-scrollbar,
+  *::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+    background: transparent !important;
+  }
+
+  table, .pdf-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  tr, .pdf-table tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  thead, .pdf-table thead {
+    display: table-header-group !important;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
+
+/* Specific classes for PDF export snapshot mode */
+.pdf-export-active,
+.pdf-export-active * {
+  box-shadow: none !important;
+}
+
+.pdf-export-active .no-print {
+  display: none !important;
+}
+
+.pdf-export-active,
+.pdf-export-active .pdf-report-document,
+.pdf-export-active .pdf-table-container,
+.pdf-export-active .scroll-container,
+.pdf-export-active .table-scroll-container,
+.pdf-export-active .overflow-auto,
+.pdf-export-active .overflow-x-auto,
+.pdf-export-active .overflow-y-auto,
+.pdf-export-active .overflow-hidden,
+.pdf-export-active .overflow-scroll {
+  overflow: visible !important;
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  height: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+.pdf-export-active .sticky,
+.pdf-export-active [class*="sticky"] {
+  position: static !important;
+}
+
+.pdf-export-active ::-webkit-scrollbar,
+.pdf-export-active *::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
