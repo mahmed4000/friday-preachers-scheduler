@@ -39,6 +39,7 @@ import { Input } from '../ui/Input.tsx';
 import { Select } from '../ui/Select.tsx';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
 import { ImportExportCenter } from '../import-export/ImportExportCenter.tsx';
+import { SupabaseCloudSettings } from './SupabaseCloudSettings.tsx';
 
 interface SettingsViewProps {
   settings: OrganizationSettings;
@@ -46,7 +47,7 @@ interface SettingsViewProps {
   onClose?: () => void;
 }
 
-type SettingsSection = 'association' | 'location' | 'calendar' | 'scheduling' | 'printing' | 'whatsapp' | 'import-export' | 'system';
+type SettingsSection = 'association' | 'location' | 'calendar' | 'scheduling' | 'printing' | 'whatsapp' | 'import-export' | 'cloud' | 'system';
 
 export function SettingsView({ settings, onSaveSettings, onClose }: SettingsViewProps) {
   const [activeSection, setActiveSection] = useState<SettingsSection>('association');
@@ -205,6 +206,7 @@ export function SettingsView({ settings, onSaveSettings, onClose }: SettingsView
     { id: 'printing', label: 'التقارير والطباعة', icon: Printer },
     { id: 'whatsapp', label: 'الواتساب والرسائل', icon: Send },
     { id: 'import-export', label: 'استيراد وتصدير البيانات', icon: FileSpreadsheet },
+    { id: 'cloud', label: 'سحابة Supabase', icon: Database },
     { id: 'system', label: 'النظام والأمان', icon: ShieldCheck },
   ];
 
@@ -762,6 +764,11 @@ export function SettingsView({ settings, onSaveSettings, onClose }: SettingsView
           {/* SECTION: IMPORT & EXPORT CENTER */}
           {activeSection === 'import-export' && (
             <ImportExportCenter />
+          )}
+
+          {/* SECTION: SUPABASE CLOUD INTEGRATION */}
+          {activeSection === 'cloud' && (
+            <SupabaseCloudSettings />
           )}
 
           {/* SECTION 5: SYSTEM & SECURITY */}

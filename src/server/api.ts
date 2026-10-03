@@ -4312,6 +4312,37 @@ api.post('/system/export-seed', async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: 'تعذر حفظ وتثبيت المعطيات الحالية', details: error.message });
+// -------------------------------------------------------------
+// 8. Supabase Cloud Database Integration & Sync Endpoints
+// -------------------------------------------------------------
+api.get('/supabase/status', async (_req: Request, res: Response) => {
+  try {
+    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
+    const status = await SupabaseSyncService.checkConnection();
+    res.json(status);
+  } catch (err: any) {
+    res.status(500).json({ configured: false, connected: false, error: err.message, message: 'فشل فحص اتصال Supabase' });
+  }
+});
+
+api.post('/supabase/test', async (_req: Request, res: Response) => {
+  try {
+    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
+    const result = await SupabaseSyncService.checkConnection();
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+api.post('/supabase/sync', async (req: AuthRequest, res: Response) => {
+  try {
+    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
+    const result = await SupabaseSyncService.pushLocalToSupabase();
+    await logAudit(req, 'SUPABASE_SYNC', 'SYSTEM', 1, result);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, message: 'تعذر إتمام المزامنة مع سحابة Supabase' });
   }
 });
 

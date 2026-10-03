@@ -534,6 +534,7 @@ export function AssignmentCellDrawer({
                 );
               })}
             </div>
+            )}
           </div>
 
           {/* Override Checkbox */}
