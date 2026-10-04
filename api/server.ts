@@ -34,4 +34,6 @@ app.use((req: Request, res: Response) => {
   res.status(404).json({ error: `المسار غير موجود على Vercel: ${req.method} ${req.path}` });
 });
 
-export default app;
+export default (req: any, res: any) => {
+  return app(req, res);
+};

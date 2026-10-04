@@ -1,5 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { Pool, PoolConfig } from 'pg';
+import pg from 'pg';
+import type { PoolConfig, Pool as PgPool } from 'pg';
+const { Pool } = pg;
 import * as schema from './schema.ts';
 
 declare global {
