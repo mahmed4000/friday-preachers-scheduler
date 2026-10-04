@@ -1989,7 +1989,7 @@ api.get('/schedules', async (_req: Request, res: Response) => {
         futureFridaysCount: monthDetails.futureFridaysCount,
       };
     });
-    res.json(enrichedList);
+    res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error: any) {
     console.warn('DB fetch for schedules failed, falling back to memory store:', error?.message);
     res.json(memoryStore.getSchedules());
@@ -3204,13 +3204,58 @@ api.patch('/distribution/log/:id', async (req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 6. Reports & Audit Trail
 // -------------------------------------------------------------
-api.get('/reports/summary', async (_req: Request, res: Response) => {
+api.get('/reports/summary', async (req: Request, res: Response) => {
+  const scheduleIdParam = req.query.scheduleId as string | undefined;
   try {
-    const allAssignments = await db.select().from(assignments);
+    const list = await db.select().from(monthlySchedules);
+    const enrichedList = list.map((s) => {
+      const monthDetails = CalendarService.getHijriMonthDetails(s.hijriYear, s.hijriMonth, {
+        provider: (s.calendarProvider as any) || (cachedOrganizationSettings.calendarProvider as any) || 'UMM_AL_QURA',
+        timezone: s.timezone || cachedOrganizationSettings.timezone || 'Asia/Riyadh',
+      });
+      return {
+        ...s,
+        periodStatus: monthDetails.periodStatus,
+        statusLabelArabic: monthDetails.statusLabelArabic,
+        isPast: monthDetails.isPast,
+        isCurrent: monthDetails.isCurrent,
+        isFuture: monthDetails.isFuture,
+      };
+    });
+    const sortedSchedules = CalendarService.sortSchedulesChronologically(enrichedList);
+    const currentDT = CalendarService.getCurrentDateTime();
+    const currentSchedule =
+      sortedSchedules.find((s) => s.isCurrent || (s.hijriYear === currentDT.hijri.year && s.hijriMonth === currentDT.hijri.month)) ||
+      sortedSchedules[0] ||
+      null;
+
+    const isAll = scheduleIdParam === 'all' || scheduleIdParam === 'ALL' || scheduleIdParam === '0';
+    let targetSchedule: any = null;
+
+    if (!isAll) {
+      if (scheduleIdParam !== undefined && scheduleIdParam !== null && scheduleIdParam !== '') {
+        const parsedId = Number(scheduleIdParam);
+        targetSchedule = sortedSchedules.find((s) => s.id === parsedId) || currentSchedule;
+      } else {
+        targetSchedule = currentSchedule;
+      }
+    }
+
+    let allAssignments = await db.select().from(assignments);
+    if (targetSchedule) {
+      allAssignments = allAssignments.filter((a) => a.scheduleId === targetSchedule.id);
+    }
+
     const allImams = await db.select().from(imams);
     const allMosques = await db.select().from(mosques);
-    const allConflicts = await db.select().from(conflicts);
-    const allOverrides = await db.select().from(overrides);
+    let allConflicts = await db.select().from(conflicts);
+    if (targetSchedule) {
+      allConflicts = allConflicts.filter((c) => c.scheduleId === targetSchedule.id);
+    }
+    let allOverrides = await db.select().from(overrides);
+    if (targetSchedule) {
+      allOverrides = allOverrides.filter((o) => o.scheduleId === targetSchedule.id);
+    }
     const allHistory = await db.select().from(assignmentHistory);
 
     // Imam loads
@@ -3240,18 +3285,65 @@ api.get('/reports/summary', async (_req: Request, res: Response) => {
       };
     });
 
+    const underCount = imamLoads.filter((i: any) => i.status === 'UNDER').length;
+    const balancedCount = imamLoads.filter((i: any) => i.status === 'BALANCED').length;
+    const overCount = imamLoads.filter((i: any) => i.status === 'OVER').length;
+    const totalAssigned = allAssignments.filter((a) => a.imamId !== null).length;
+
     res.json({
+      selectedSchedule: targetSchedule
+        ? {
+            id: targetSchedule.id,
+            monthName: targetSchedule.monthName,
+            hijriYear: targetSchedule.hijriYear,
+            hijriMonth: targetSchedule.hijriMonth,
+            fridaysCount: targetSchedule.fridaysCount,
+            status: targetSchedule.status,
+            periodStatus: targetSchedule.periodStatus,
+            isCurrent: targetSchedule.isCurrent,
+            isPast: targetSchedule.isPast,
+            isFuture: targetSchedule.isFuture,
+          }
+        : {
+            id: 'all',
+            monthName: 'الإجمالي التراكمي لكافة الشهور',
+            hijriYear: 0,
+            hijriMonth: 0,
+            fridaysCount: 0,
+            status: 'ALL',
+            periodStatus: 'ALL',
+            isCurrent: false,
+            isPast: false,
+            isFuture: false,
+          },
+      availableSchedules: sortedSchedules.map((s) => ({
+        id: s.id,
+        monthName: s.monthName,
+        hijriYear: s.hijriYear,
+        hijriMonth: s.hijriMonth,
+        fridaysCount: s.fridaysCount,
+        status: s.status,
+        periodStatus: s.periodStatus,
+        isCurrent: s.isCurrent,
+        isPast: s.isPast,
+        isFuture: s.isFuture,
+      })),
+      isAll,
       imamLoads,
       mosqueLoads,
+      balancedCount,
+      underCount,
+      overCount,
+      totalAssigned,
       totalConflicts: allConflicts.length,
       criticalConflicts: allConflicts.filter((c) => c.severity === 'CRITICAL').length,
       warningConflicts: allConflicts.filter((c) => c.severity === 'WARNING').length,
       overridesCount: allOverrides.length,
-      manualChangesCount: allHistory.length,
+      manualChangesCount: allAssignments.filter((a) => a.source === 'MANUAL').length,
     });
   } catch (error: any) {
     console.warn('DB fetch for reports summary failed, falling back to memory store:', error?.message);
-    res.json(memoryStore.getReportsSummary());
+    res.json(memoryStore.getReportsSummary(scheduleIdParam));
   }
 });
 

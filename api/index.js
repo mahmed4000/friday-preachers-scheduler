@@ -124635,6 +124635,30 @@ var CalendarService = class {
     this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
     return this.getCurrentDateTime(options);
   }
+  /**
+   * ترتيب الجداول الشهرية بحسب السياسة المعتمدة:
+   * 1. الشهر الحالي في المقدمة دائماً (Rank 0).
+   * 2. الشهور القادمة تالياً مرتبة تصاعدياً بحسب التاريخ الهجري (Rank 1).
+   * 3. الشهور السابقة (الأرشيف) في النهاية مرتبة تنازلياً (الأحدث ماضياً أولاً) (Rank 2).
+   */
+  static sortSchedulesChronologically(schedules) {
+    return [...schedules].sort((a, b) => {
+      const aIsCurrent = a.isCurrent ?? a.periodStatus === "CURRENT";
+      const bIsCurrent = b.isCurrent ?? b.periodStatus === "CURRENT";
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+      const aIsPast = a.isPast ?? a.periodStatus === "PAST";
+      const bIsPast = b.isPast ?? b.periodStatus === "PAST";
+      if (!aIsPast && bIsPast) return -1;
+      if (aIsPast && !bIsPast) return 1;
+      const aVal = (a.hijriYear || 0) * 12 + (a.hijriMonth || 0);
+      const bVal = (b.hijriYear || 0) * 12 + (b.hijriMonth || 0);
+      if (aIsPast && bIsPast) {
+        return bVal - aVal;
+      }
+      return aVal - bVal;
+    });
+  }
 };
 
 // src/services/location/egyptLocationService.ts
@@ -133809,7 +133833,7 @@ var memoryStore = {
     return [...memoryRules];
   },
   getSchedules() {
-    return memorySchedules.map((s2) => {
+    const enriched = memorySchedules.map((s2) => {
       const monthDetails = CalendarService.getHijriMonthDetails(s2.hijriYear, s2.hijriMonth, {
         provider: s2.calendarProvider || "UMM_AL_QURA",
         timezone: s2.timezone || "Africa/Cairo"
@@ -133827,6 +133851,7 @@ var memoryStore = {
         futureFridaysCount: monthDetails.futureFridaysCount
       };
     });
+    return CalendarService.sortSchedulesChronologically(enriched);
   },
   getScheduleDetails(id) {
     const schedule = memorySchedules.find((s2) => s2.id === id) || memorySchedules[0];
@@ -134226,9 +134251,25 @@ var memoryStore = {
       fridaysCount: pattern.fridaysCount
     };
   },
-  getReportsSummary() {
+  getReportsSummary(scheduleIdParam) {
+    const allSchedules = this.getSchedules();
+    const currentDT = CalendarService.getCurrentDateTime();
+    const currentSchedule = allSchedules.find((s2) => s2.isCurrent || s2.hijriYear === currentDT.hijri.year && s2.hijriMonth === currentDT.hijri.month) || allSchedules[0] || null;
+    const isAll = scheduleIdParam === "all" || scheduleIdParam === "ALL" || scheduleIdParam === 0 || scheduleIdParam === "0";
+    let targetSchedule = null;
+    if (!isAll) {
+      if (scheduleIdParam !== void 0 && scheduleIdParam !== null && scheduleIdParam !== "") {
+        const parsedId = Number(scheduleIdParam);
+        targetSchedule = allSchedules.find((s2) => s2.id === parsedId) || currentSchedule;
+      } else {
+        targetSchedule = currentSchedule;
+      }
+    }
+    const filteredAssignments = targetSchedule ? memoryAssignments.filter((a) => a.scheduleId === targetSchedule.id) : memoryAssignments;
+    const filteredConflicts = targetSchedule ? memoryConflicts.filter((c) => c.scheduleId === targetSchedule.id) : memoryConflicts;
+    const filteredOverrides = targetSchedule ? memoryOverrides.filter((o) => o.scheduleId === targetSchedule.id) : memoryOverrides;
     const imamLoads = memoryImams.map((i2) => {
-      const assigned = memoryAssignments.filter((a) => a.imamId === i2.id).length;
+      const assigned = filteredAssignments.filter((a) => a.imamId === i2.id).length;
       return {
         id: i2.id,
         name: i2.name,
@@ -134241,7 +134282,7 @@ var memoryStore = {
       };
     });
     const mosqueLoads = memoryMosques.map((m2) => {
-      const assignedCount = memoryAssignments.filter((a) => a.mosqueId === m2.id).length;
+      const assignedCount = filteredAssignments.filter((a) => a.mosqueId === m2.id).length;
       return {
         id: m2.id,
         name: m2.name,
@@ -134250,14 +134291,58 @@ var memoryStore = {
         assignedCount
       };
     });
+    const underCount = imamLoads.filter((i2) => i2.status === "UNDER").length;
+    const balancedCount = imamLoads.filter((i2) => i2.status === "BALANCED").length;
+    const overCount = imamLoads.filter((i2) => i2.status === "OVER").length;
+    const totalAssigned = filteredAssignments.filter((a) => a.imamId !== null).length;
     return {
+      selectedSchedule: targetSchedule ? {
+        id: targetSchedule.id,
+        monthName: targetSchedule.monthName,
+        hijriYear: targetSchedule.hijriYear,
+        hijriMonth: targetSchedule.hijriMonth,
+        fridaysCount: targetSchedule.fridaysCount,
+        status: targetSchedule.status,
+        periodStatus: targetSchedule.periodStatus,
+        isCurrent: targetSchedule.isCurrent,
+        isPast: targetSchedule.isPast,
+        isFuture: targetSchedule.isFuture
+      } : {
+        id: "all",
+        monthName: "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0631\u0627\u0643\u0645\u064A \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u0634\u0647\u0648\u0631",
+        hijriYear: 0,
+        hijriMonth: 0,
+        fridaysCount: 0,
+        status: "ALL",
+        periodStatus: "ALL",
+        isCurrent: false,
+        isPast: false,
+        isFuture: false
+      },
+      availableSchedules: allSchedules.map((s2) => ({
+        id: s2.id,
+        monthName: s2.monthName,
+        hijriYear: s2.hijriYear,
+        hijriMonth: s2.hijriMonth,
+        fridaysCount: s2.fridaysCount,
+        status: s2.status,
+        periodStatus: s2.periodStatus,
+        isCurrent: s2.isCurrent,
+        isPast: s2.isPast,
+        isFuture: s2.isFuture
+      })),
+      isAll,
       imamLoads,
       mosqueLoads,
-      totalConflicts: memoryConflicts.length,
+      balancedCount,
+      underCount,
+      overCount,
+      totalAssigned,
+      totalConflicts: filteredConflicts.length,
       criticalConflicts: 0,
       warningConflicts: 0,
-      overridesCount: memoryOverrides.length,
-      manualChangesCount: 0
+      overridesCount: filteredOverrides.length,
+      manualChangesCount: filteredAssignments.filter((a) => a.source === "MANUAL").length
     };
   },
   getAuditLogs() {
@@ -136673,7 +136758,7 @@ api.get("/schedules", async (_req, res) => {
         futureFridaysCount: monthDetails.futureFridaysCount
       };
     });
-    res.json(enrichedList);
+    res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error) {
     console.warn("DB fetch for schedules failed, falling back to memory store:", error?.message);
     res.json(memoryStore.getSchedules());
@@ -137669,13 +137754,51 @@ api.patch("/distribution/log/:id", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0645\u0633\u062A\u0644\u0645", details: error.message });
   }
 });
-api.get("/reports/summary", async (_req, res) => {
+api.get("/reports/summary", async (req, res) => {
+  const scheduleIdParam = req.query.scheduleId;
   try {
-    const allAssignments = await db.select().from(assignments);
+    const list = await db.select().from(monthlySchedules);
+    const enrichedList = list.map((s2) => {
+      const monthDetails = CalendarService.getHijriMonthDetails(s2.hijriYear, s2.hijriMonth, {
+        provider: s2.calendarProvider || cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
+        timezone: s2.timezone || cachedOrganizationSettings.timezone || "Asia/Riyadh"
+      });
+      return {
+        ...s2,
+        periodStatus: monthDetails.periodStatus,
+        statusLabelArabic: monthDetails.statusLabelArabic,
+        isPast: monthDetails.isPast,
+        isCurrent: monthDetails.isCurrent,
+        isFuture: monthDetails.isFuture
+      };
+    });
+    const sortedSchedules = CalendarService.sortSchedulesChronologically(enrichedList);
+    const currentDT = CalendarService.getCurrentDateTime();
+    const currentSchedule = sortedSchedules.find((s2) => s2.isCurrent || s2.hijriYear === currentDT.hijri.year && s2.hijriMonth === currentDT.hijri.month) || sortedSchedules[0] || null;
+    const isAll = scheduleIdParam === "all" || scheduleIdParam === "ALL" || scheduleIdParam === "0";
+    let targetSchedule = null;
+    if (!isAll) {
+      if (scheduleIdParam !== void 0 && scheduleIdParam !== null && scheduleIdParam !== "") {
+        const parsedId = Number(scheduleIdParam);
+        targetSchedule = sortedSchedules.find((s2) => s2.id === parsedId) || currentSchedule;
+      } else {
+        targetSchedule = currentSchedule;
+      }
+    }
+    let allAssignments = await db.select().from(assignments);
+    if (targetSchedule) {
+      allAssignments = allAssignments.filter((a) => a.scheduleId === targetSchedule.id);
+    }
     const allImams = await db.select().from(imams);
     const allMosques = await db.select().from(mosques);
-    const allConflicts = await db.select().from(conflicts);
-    const allOverrides = await db.select().from(overrides);
+    let allConflicts = await db.select().from(conflicts);
+    if (targetSchedule) {
+      allConflicts = allConflicts.filter((c) => c.scheduleId === targetSchedule.id);
+    }
+    let allOverrides = await db.select().from(overrides);
+    if (targetSchedule) {
+      allOverrides = allOverrides.filter((o) => o.scheduleId === targetSchedule.id);
+    }
     const allHistory = await db.select().from(assignmentHistory);
     const imamLoads = allImams.map((i2) => {
       const assigned = allAssignments.filter((a) => a.imamId === i2.id).length;
@@ -137700,18 +137823,62 @@ api.get("/reports/summary", async (_req, res) => {
         assignedCount
       };
     });
+    const underCount = imamLoads.filter((i2) => i2.status === "UNDER").length;
+    const balancedCount = imamLoads.filter((i2) => i2.status === "BALANCED").length;
+    const overCount = imamLoads.filter((i2) => i2.status === "OVER").length;
+    const totalAssigned = allAssignments.filter((a) => a.imamId !== null).length;
     res.json({
+      selectedSchedule: targetSchedule ? {
+        id: targetSchedule.id,
+        monthName: targetSchedule.monthName,
+        hijriYear: targetSchedule.hijriYear,
+        hijriMonth: targetSchedule.hijriMonth,
+        fridaysCount: targetSchedule.fridaysCount,
+        status: targetSchedule.status,
+        periodStatus: targetSchedule.periodStatus,
+        isCurrent: targetSchedule.isCurrent,
+        isPast: targetSchedule.isPast,
+        isFuture: targetSchedule.isFuture
+      } : {
+        id: "all",
+        monthName: "\u0627\u0644\u0625\u062C\u0645\u0627\u0644\u064A \u0627\u0644\u062A\u0631\u0627\u0643\u0645\u064A \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u0634\u0647\u0648\u0631",
+        hijriYear: 0,
+        hijriMonth: 0,
+        fridaysCount: 0,
+        status: "ALL",
+        periodStatus: "ALL",
+        isCurrent: false,
+        isPast: false,
+        isFuture: false
+      },
+      availableSchedules: sortedSchedules.map((s2) => ({
+        id: s2.id,
+        monthName: s2.monthName,
+        hijriYear: s2.hijriYear,
+        hijriMonth: s2.hijriMonth,
+        fridaysCount: s2.fridaysCount,
+        status: s2.status,
+        periodStatus: s2.periodStatus,
+        isCurrent: s2.isCurrent,
+        isPast: s2.isPast,
+        isFuture: s2.isFuture
+      })),
+      isAll,
       imamLoads,
       mosqueLoads,
+      balancedCount,
+      underCount,
+      overCount,
+      totalAssigned,
       totalConflicts: allConflicts.length,
       criticalConflicts: allConflicts.filter((c) => c.severity === "CRITICAL").length,
       warningConflicts: allConflicts.filter((c) => c.severity === "WARNING").length,
       overridesCount: allOverrides.length,
-      manualChangesCount: allHistory.length
+      manualChangesCount: allAssignments.filter((a) => a.source === "MANUAL").length
     });
   } catch (error) {
     console.warn("DB fetch for reports summary failed, falling back to memory store:", error?.message);
-    res.json(memoryStore.getReportsSummary());
+    res.json(memoryStore.getReportsSummary(scheduleIdParam));
   }
 });
 api.get("/audit-logs", async (_req, res) => {

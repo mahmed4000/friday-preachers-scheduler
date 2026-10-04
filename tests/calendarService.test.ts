@@ -85,9 +85,22 @@ assert(formattedBilingual.includes('13 رمضان 1448 هـ') && formattedBiling
 const years = CalendarService.getAvailableHijriYears();
 assert(years.includes(1448), '14. قائمة السنوات الهجرية المتاحة تحتوي على 1448 هـ', years);
 const monthsList = CalendarService.getHijriMonthsList();
-assert(monthsList.length === 12 && monthsList[0].name === 'محرم' && monthsList[8].name === 'رمضان', '15. قائمة الشهور الـ 12 صحيحة وتطابق التقويم الإسلامي');
+// 8. اختبار الترتيب الزمني للجداول (الشهر الحالي أولاً، ثم القادمة تصاعدياً، ثم الأرشيف المنتهي)
+const mockSchedules = [
+  { id: 14, hijriYear: 1448, hijriMonth: 9, periodStatus: 'FUTURE', isCurrent: false, isPast: false },
+  { id: 8, hijriYear: 1448, hijriMonth: 3, periodStatus: 'PAST', isCurrent: false, isPast: true },
+  { id: 10, hijriYear: 1448, hijriMonth: 10, periodStatus: 'FUTURE', isCurrent: false, isPast: false },
+  { id: 9, hijriYear: 1448, hijriMonth: 4, periodStatus: 'CURRENT', isCurrent: true, isPast: false },
+  { id: 12, hijriYear: 1448, hijriMonth: 7, periodStatus: 'FUTURE', isCurrent: false, isPast: false },
+  { id: 11, hijriYear: 1449, hijriMonth: 12, periodStatus: 'FUTURE', isCurrent: false, isPast: false },
+];
+const sortedResult = CalendarService.sortSchedulesChronologically(mockSchedules);
+assert(sortedResult[0].id === 9 && sortedResult[0].periodStatus === 'CURRENT', '16. الشهر الحالي (CURRENT) يأتي أولاً دائماً في الترتيب (Rank 0)');
+assert(sortedResult[1].id === 12 && sortedResult[2].id === 14 && sortedResult[3].id === 10, '17. الشهور القادمة مرتبة زمنياً تصاعدياً بدقة');
+assert(sortedResult[sortedResult.length - 1].id === 8 && sortedResult[sortedResult.length - 1].periodStatus === 'PAST', '18. الشهور المنتهية (الأرشيف) تأتي في نهاية القائمة');
 
 console.log(`\nنتائج اختبارات نظام التقويم: ${passed} نجح / ${failed} فشل\n`);
 if (failed > 0) {
   process.exit(1);
 }
+

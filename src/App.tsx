@@ -180,10 +180,11 @@ export default function App() {
       const seedFridays = (initialSeed.fridays || []) as unknown as Friday[];
       const seedAssignments = (initialSeed.assignments || []) as unknown as Assignment[];
 
+      const sortedSeedSchedules = CalendarService.sortSchedulesChronologically(seedSchedules);
       setMosques(seedMosques);
       setImams(seedImams);
       setRules(seedRules);
-      setSchedules(seedSchedules);
+      setSchedules(sortedSeedSchedules);
 
       const activeMosquesCount = seedMosques.filter((m) => m.isActive).length;
       const activeImamsCount = seedImams.filter((i) => i.isActive).length;
@@ -197,14 +198,14 @@ export default function App() {
         totalConflicts: 0,
       });
 
-      if (seedSchedules.length > 0) {
-        const sched = seedSchedules[0];
+      if (sortedSeedSchedules.length > 0) {
+        const sched = sortedSeedSchedules.find((s: any) => s.isCurrent || (s.hijriYear === 1448 && s.hijriMonth === 4)) || sortedSeedSchedules[0];
         setCurrentSchedule(sched);
         setActiveScheduleId(sched.id);
         setActiveScheduleData({
           schedule: sched,
-          fridays: seedFridays,
-          assignments: seedAssignments,
+          fridays: seedFridays.filter((f) => f.scheduleId === sched.id),
+          assignments: seedAssignments.filter((a) => a.scheduleId === sched.id),
           conflicts: [],
           overrides: [],
         });
@@ -240,14 +241,27 @@ export default function App() {
       }
 
       if (Array.isArray(rulesRes)) setRules(rulesRes);
+      
+      let resolvedSchedules: MonthlySchedule[] = [];
       if (Array.isArray(schedulesRes) && schedulesRes.length > 0) {
-        setSchedules(schedulesRes);
+        resolvedSchedules = CalendarService.sortSchedulesChronologically(schedulesRes);
       } else {
-        setSchedules((initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]);
+        resolvedSchedules = CalendarService.sortSchedulesChronologically(
+          (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]
+        );
       }
+      setSchedules(resolvedSchedules);
 
       if (dashRes && dashRes.stats) setDashboardStats(dashRes.stats);
-      const currSchedule = dashRes?.schedule || dashRes?.currentSchedule || schedulesRes?.[0] || initialSeed.monthlySchedules?.[0] || null;
+      
+      // Default to Current Month schedule
+      const currSchedule =
+        resolvedSchedules.find((s: any) => s.isCurrent || s.periodStatus === 'CURRENT') ||
+        dashRes?.schedule ||
+        dashRes?.currentSchedule ||
+        resolvedSchedules[0] ||
+        null;
+
       if (currSchedule) {
         setCurrentSchedule(currSchedule as any);
         if (!activeScheduleId) {

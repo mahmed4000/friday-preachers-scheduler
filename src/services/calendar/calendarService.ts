@@ -303,6 +303,43 @@ export class CalendarService {
     this.lastSyncTimestamp = new Date().toISOString();
     return this.getCurrentDateTime(options);
   }
+
+  /**
+   * ترتيب الجداول الشهرية بحسب السياسة المعتمدة:
+   * 1. الشهر الحالي في المقدمة دائماً (Rank 0).
+   * 2. الشهور القادمة تالياً مرتبة تصاعدياً بحسب التاريخ الهجري (Rank 1).
+   * 3. الشهور السابقة (الأرشيف) في النهاية مرتبة تنازلياً (الأحدث ماضياً أولاً) (Rank 2).
+   */
+  public static sortSchedulesChronologically<T extends {
+    hijriYear?: number;
+    hijriMonth?: number;
+    isCurrent?: boolean;
+    isPast?: boolean;
+    isFuture?: boolean;
+    periodStatus?: string;
+  }>(schedules: T[]): T[] {
+    return [...schedules].sort((a, b) => {
+      const aIsCurrent = a.isCurrent ?? (a.periodStatus === 'CURRENT');
+      const bIsCurrent = b.isCurrent ?? (b.periodStatus === 'CURRENT');
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+
+      const aIsPast = a.isPast ?? (a.periodStatus === 'PAST');
+      const bIsPast = b.isPast ?? (b.periodStatus === 'PAST');
+
+      if (!aIsPast && bIsPast) return -1;
+      if (aIsPast && !bIsPast) return 1;
+
+      const aVal = (a.hijriYear || 0) * 12 + (a.hijriMonth || 0);
+      const bVal = (b.hijriYear || 0) * 12 + (b.hijriMonth || 0);
+
+      if (aIsPast && bIsPast) {
+        return bVal - aVal;
+      }
+
+      return aVal - bVal;
+    });
+  }
 }
 
 export {
