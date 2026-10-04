@@ -444,7 +444,7 @@ export default function App() {
         navigateBack,
       }}
     >
-      <div className="flex h-screen overflow-hidden bg-slate-50 font-sans text-slate-900 print:h-auto print:overflow-visible print:bg-white" dir="rtl" lang="ar">
+      <div className="flex h-screen overflow-hidden bg-[#FCFBF8] dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 print:h-auto print:overflow-visible print:bg-white selection:bg-emerald-200 selection:text-emerald-900" dir="rtl" lang="ar">
         {/* Sidebar */}
         <div className="no-print">
           <Sidebar
@@ -513,9 +513,12 @@ export default function App() {
                   stats={dashboardStats}
                   currentSchedule={currentSchedule}
                   upcomingSchedule={upcomingSchedule}
+                  mosques={mosques}
+                  imams={imams}
                   onNavigateToSchedule={handleNavigateToSchedule}
                   onOpenWizard={() => setIsWizardOpen(true)}
                   onNavigateToTab={handleTabChange}
+                  onRefreshData={loadInitialData}
                 />
               )}
 

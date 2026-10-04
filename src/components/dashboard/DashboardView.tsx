@@ -23,8 +23,19 @@ import {
   Plus,
   Upload,
   Check,
+  Smartphone,
+  Printer,
+  FileText,
+  Award,
 } from 'lucide-react';
-import { MonthlySchedule, DashboardAlert } from '../../types/index.ts';
+import {
+  MonthlySchedule,
+  DashboardAlert,
+  Mosque,
+  Imam,
+  Friday,
+  Assignment,
+} from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import initialSeed from '../../db/initialSeed.json';
 import { buildWhatsAppLink } from '../../lib/whatsapp.ts';
@@ -34,6 +45,8 @@ import { Button } from '../ui/Button.tsx';
 import { Badge } from '../ui/Badge.tsx';
 import { Card } from '../ui/Card.tsx';
 import { ClickableMosque, ClickableImam } from '../../context/ProfileNavigationContext.tsx';
+import { OfficialDecreeModal } from '../decree/OfficialDecreeModal.tsx';
+import { PreacherMobileCardModal } from '../portal/PreacherMobileCardModal.tsx';
 
 interface DashboardProps {
   stats: {
@@ -46,9 +59,12 @@ interface DashboardProps {
   };
   currentSchedule: MonthlySchedule | null;
   upcomingSchedule: MonthlySchedule | null;
+  mosques?: Mosque[];
+  imams?: Imam[];
   onNavigateToSchedule: (scheduleId: number) => void;
   onOpenWizard: () => void;
   onNavigateToTab: (tab: any) => void;
+  onRefreshData?: () => void;
 }
 
 interface DashboardPeriod {
@@ -130,11 +146,53 @@ export function DashboardView({
   onNavigateToSchedule,
   onOpenWizard,
   onNavigateToTab,
+  mosques = [],
+  imams = [],
+  onRefreshData,
 }: DashboardProps) {
   // Live Date Time State
   const [liveDT, setLiveDT] = useState<CurrentDateTimeInfo>(() =>
     CalendarService.getCurrentDateTime()
   );
+
+  // Modal states for Official Decree and Preacher Mobile Card
+  const [mobileCardData, setMobileCardData] = useState<{
+    assignment: Assignment;
+    mosque: Mosque;
+    imam: Imam;
+    friday: Friday;
+  } | null>(null);
+  const [isDecreeModalOpen, setIsDecreeModalOpen] = useState(false);
+  const [fullScheduleForDecree, setFullScheduleForDecree] = useState<{
+    schedule: MonthlySchedule;
+    fridays: Friday[];
+    assignments: Assignment[];
+    mosques: Mosque[];
+    imams: Imam[];
+  } | null>(null);
+  const [loadingDecree, setLoadingDecree] = useState(false);
+
+  const handleOpenOfficialDecree = async () => {
+    if (!scheduleData?.id) return;
+    setLoadingDecree(true);
+    try {
+      const res = await fetchApi<any>(`/api/schedules/${scheduleData.id}`);
+      if (res && res.schedule) {
+        setFullScheduleForDecree({
+          schedule: res.schedule,
+          fridays: res.fridays || [],
+          assignments: res.assignments || [],
+          mosques: res.mosques || mosques,
+          imams: res.imams || imams,
+        });
+        setIsDecreeModalOpen(true);
+      }
+    } catch (e) {
+      console.error('Failed to load schedule for decree:', e);
+    } finally {
+      setLoadingDecree(false);
+    }
+  };
 
   // Selected Hijri Year and Month (Default to current real-time month)
   const [selectedYear, setSelectedYear] = useState<number>(() => liveDT.hijri.year);
@@ -582,18 +640,22 @@ export function DashboardView({
         )}
 
       {/* 3. Hero Card for Selected Month Schedule */}
-      <div className="rounded-2xl bg-gradient-to-r from-emerald-950 via-emerald-900 to-slate-900 text-white p-6 sm:p-7 shadow-md border border-emerald-800/50 relative overflow-hidden">
+      <div className="rounded-3xl bg-gradient-to-br from-[#022c22] via-[#054536] to-[#011c15] text-white p-6 sm:p-8 shadow-2xl border-2 border-amber-400/30 ring-2 ring-emerald-500/20 relative overflow-hidden">
         {/* Subtle Islamic Geometric Pattern Overlay */}
-        <div className="absolute inset-0 pointer-events-none opacity-[0.04] flex items-center justify-end pr-10">
-          <svg width="400" height="400" viewBox="0 0 100 100" fill="currentColor">
-            <polygon points="50 0, 62 38, 100 50, 62 62, 50 100, 38 62, 0 50, 38 38" />
-          </svg>
-        </div>
+        <div className="absolute inset-0 pointer-events-none islamic-pattern opacity-15"></div>
+        <div className="absolute top-0 right-0 w-96 h-96 bg-amber-400/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-3">
+            {/* Quranic Verse Banner */}
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-400/10 border border-amber-400/30 text-amber-300 text-xs font-amiri tracking-wide">
+              <span className="font-bold">﷽</span>
+              <span>﴿ يَا أَيُّهَا الَّذِينَ آمَنُوا إِذَا نُودِيَ لِلصَّلَاةِ مِن يَوْمِ الْجُمُعَةِ فَاسْعَوْا إِلَىٰ ذِكْرِ اللَّهِ ﴾</span>
+            </div>
+
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
+              <span className="text-[11px] font-bold px-3 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/40">
                 جدول شهر {period?.monthNameAr || ''} {selectedYear} هـ
               </span>
 
@@ -624,7 +686,7 @@ export function DashboardView({
               )}
 
               {period?.isPast && (
-                <span className="text-xs px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 font-mono flex items-center gap-1 border border-slate-700">
+                <span className="text-xs px-2.5 py-0.5 rounded-full bg-slate-800/80 text-slate-300 font-mono flex items-center gap-1 border border-slate-700">
                   <Lock className="w-3 h-3 text-amber-400" />
                   <span>شهر سابق (وضع الاطلاع)</span>
                 </span>
@@ -632,28 +694,28 @@ export function DashboardView({
             </div>
 
             <div>
-              <h3 className="text-2xl sm:text-3xl font-bold font-heading tracking-tight text-white">
-                جدول {period?.monthNameAr || ''} {selectedYear} هـ
+              <h3 className="text-2xl sm:text-3xl font-extrabold font-heading tracking-tight text-white drop-shadow-sm">
+                منظومة توزيع خطباء الجمعة — {period?.monthNameAr || ''} {selectedYear} هـ
               </h3>
-              <p className="text-xs text-emerald-100/80 mt-1 max-w-2xl leading-relaxed">
+              <p className="text-xs sm:text-sm text-emerald-100/90 mt-1 max-w-2xl leading-relaxed">
                 {scheduleData
-                  ? `جدول خطباء الجمعة لشهر ${period?.monthNameAr} معتمد بالإصدار (V${scheduleData.currentVersion || 1}). يحتوي الشهر على ${period?.fridaysCount || 5} جمعات متتالية.`
+                  ? `جدول خطباء الجمعة لشهر ${period?.monthNameAr} معتمد بالإصدار (V${scheduleData.currentVersion || 1}). يحتوي الشهر على ${period?.fridaysCount || 5} جمعات متتالية لجميع جوامع ومساجد الجمعية.`
                   : `لم يتم إنشاء أو توليد جدول لتكليفات خطباء الجمعة لشهر ${period?.monthNameAr} ${selectedYear} هـ حتى الآن.`}
               </p>
             </div>
 
             {/* Month Dates Info Row */}
             {period && (
-              <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-emerald-100/90 font-mono">
-                <div className="bg-white/10 px-3 py-1 rounded-lg border border-white/15">
-                  <span className="text-slate-300 ml-1">تاريخ الشهر:</span>
+              <div className="flex flex-wrap items-center gap-3 pt-1 text-xs text-emerald-100 font-mono">
+                <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 backdrop-blur-xs flex items-center gap-1.5">
+                  <span className="text-emerald-200/80">تاريخ الشهر:</span>
                   <span className="font-bold text-amber-300">
                     {period.startDateHijri} — {period.endDateHijri}
                   </span>
                 </div>
 
-                <div className="bg-white/10 px-3 py-1 rounded-lg border border-white/15">
-                  <span className="text-slate-300 ml-1">الموافق ميلادياً:</span>
+                <div className="bg-white/10 px-3 py-1.5 rounded-xl border border-white/15 backdrop-blur-xs flex items-center gap-1.5">
+                  <span className="text-emerald-200/80">الموافق ميلادياً:</span>
                   <span className="font-bold text-white">
                     {period.startDateGregorian} حتى {period.endDateGregorian}
                   </span>
@@ -666,6 +728,16 @@ export function DashboardView({
           <div className="flex flex-col sm:flex-row lg:flex-col gap-2.5 shrink-0">
             {scheduleData ? (
               <>
+                <button
+                  type="button"
+                  onClick={handleOpenOfficialDecree}
+                  disabled={loadingDecree}
+                  className="px-4 py-2.5 rounded-xl bg-gradient-to-l from-amber-600 to-amber-700 hover:from-amber-700 hover:to-amber-800 text-white text-xs font-bold font-heading shadow-md shadow-amber-950/40 flex items-center justify-center gap-2 border border-amber-400/40 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                >
+                  <FileText className="w-4 h-4 text-amber-200" />
+                  <span>{loadingDecree ? 'جارٍ التجهيز...' : 'الكشف الوزاري الرسمي (A4) 📄'}</span>
+                </button>
+
                 <Button
                   variant="secondary"
                   size="md"
@@ -1080,6 +1152,59 @@ export function DashboardView({
                             )}
                           </button>
 
+                          <button
+                            type="button"
+                            title="بطاقة الخطيب الذكية وتأكيد الحضور"
+                            onClick={() => {
+                              const m = mosques.find((item) => item.id === a.mosqueId) || ({
+                                id: a.mosqueId,
+                                name: a.mosqueName,
+                                code: a.mosqueCode,
+                                region: a.mosqueRegion,
+                                phone: a.managerPhone,
+                                address: '',
+                                googleMapsUrl: `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(a.mosqueName)}`,
+                                isActive: true,
+                                capacity: 500,
+                              } as Mosque);
+                              const im = imams.find((item) => item.id === a.imamId) || ({
+                                id: a.imamId || 1,
+                                name: a.imamName,
+                                phone: a.imamPhone,
+                                email: '',
+                                tier: 'PRIMARY',
+                                preferredMosqueIds: [],
+                                forbiddenMosqueIds: [],
+                                maxFridaysPerMonth: 4,
+                                isActive: true,
+                              } as Imam);
+                              const fr: Friday = {
+                                id: a.fridayIndex,
+                                scheduleId: scheduleData?.id || 1,
+                                fridayIndex: a.fridayIndex,
+                                ordinalName: nextFriday?.ordinalName || 'الجمعة',
+                                hijriDate: nextFriday?.hijriDate || '',
+                                gregorianDate: nextFriday?.gregorianDate || '',
+                                gregorianIso: '',
+                                isHoliday: false,
+                              };
+                              const assign: Assignment = {
+                                id: a.id,
+                                scheduleId: scheduleData?.id || 1,
+                                mosqueId: a.mosqueId,
+                                imamId: a.imamId,
+                                fridayIndex: a.fridayIndex,
+                                source: a.assignmentSource as any,
+                                isLocked: a.isLocked,
+                                status: 'CONFIRMED',
+                              };
+                              setMobileCardData({ assignment: assign, mosque: m, imam: im, friday: fr });
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-md transition-colors cursor-pointer"
+                          >
+                            <Smartphone className="w-3.5 h-3.5 text-emerald-700" />
+                          </button>
+
                           {a.imamPhone && (
                             <a
                               href={buildWhatsAppLink(
@@ -1214,6 +1339,45 @@ export function DashboardView({
           </table>
         </div>
       </Card>
+
+      {/* Official Certified Decree Modal */}
+      {fullScheduleForDecree && (
+        <OfficialDecreeModal
+          isOpen={isDecreeModalOpen}
+          onClose={() => setIsDecreeModalOpen(false)}
+          schedule={fullScheduleForDecree.schedule}
+          fridays={fullScheduleForDecree.fridays}
+          assignments={fullScheduleForDecree.assignments}
+          mosques={fullScheduleForDecree.mosques}
+          imams={fullScheduleForDecree.imams}
+        />
+      )}
+
+      {/* Instant Preacher Mobile Portal Modal */}
+      {mobileCardData && (
+        <PreacherMobileCardModal
+          isOpen={Boolean(mobileCardData)}
+          onClose={() => setMobileCardData(null)}
+          assignment={mobileCardData.assignment}
+          mosque={mobileCardData.mosque}
+          imam={mobileCardData.imam}
+          friday={mobileCardData.friday}
+          schedule={
+            scheduleData ||
+            ({
+              id: 1,
+              hijriMonth: selectedMonth,
+              hijriYear: selectedYear,
+              name: period?.monthNameAr,
+              status: 'APPROVED',
+            } as any)
+          }
+          onStatusUpdated={() => {
+            if (onRefreshData) onRefreshData();
+            loadDashboardData(selectedYear, selectedMonth);
+          }}
+        />
+      )}
     </div>
   );
 }
