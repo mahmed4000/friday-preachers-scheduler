@@ -554,81 +554,170 @@ export function ImamProfileView({
 
       {/* 4. Tab Contents */}
       {/* TAB 1: UPCOMING FRIDAYS */}
-      {activeTab === 'upcoming' && (
-        <Card variant="default" className="p-5 space-y-4">
-          <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold font-heading text-slate-900 flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-emerald-800" />
-                <span>
-                  الجمعات القادمة للخطيب لشهر {activeSchedule?.monthName || stats.currentMonthName || 'الحالي'} {activeSchedule?.hijriYear || stats.currentHijriYear || 1448} هـ
+      {activeTab === 'upcoming' && (() => {
+        const currentDT = CalendarService.getCurrentDateTime();
+        const selectedScheduleObj = availableSchedules.find((s) => s.id === (activeSchedule?.id || selectedScheduleId));
+        const activeHijriYear = activeSchedule?.hijriYear || selectedScheduleObj?.hijriYear || currentDT.hijri.year;
+        const activeHijriMonth = (activeSchedule as any)?.hijriMonth || selectedScheduleObj?.hijriMonth || currentDT.hijri.month;
+
+        const pastAssignmentsCount = upcomingAssignments.filter((a) => {
+          const y = a.hijriYear || activeHijriYear;
+          const m = (a as any).hijriMonth || activeHijriMonth;
+          return CalendarService.validateFridayAction(y, m, a.fridayIndex).isPastFriday;
+        }).length;
+
+        const futureAssignmentsCount = upcomingAssignments.length - pastAssignmentsCount;
+
+        return (
+          <Card variant="default" className="p-5 space-y-4">
+            <div className="border-b border-slate-100 pb-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold font-heading text-slate-900 flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-emerald-800" />
+                  <span>
+                    جمعات وتكليفات الخطيب لشهر {activeSchedule?.monthName || stats.currentMonthName || 'الحالي'} {activeSchedule?.hijriYear || stats.currentHijriYear || 1448} هـ
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  بيان جمعات الشهر المعتمدة (يحتوي الشهر على {activeSchedule?.fridaysCount || stats.currentScheduleFridaysTotal || 5} جمعات — الجمع المنتهية تظهر بلون رمادي مؤرشف والجمعة القادمة بلون أخضر زمردي مميز)
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-auto flex-wrap">
+                <span className="text-xs font-bold text-emerald-950 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 flex items-center gap-1.5 shadow-2xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-600 inline-block animate-pulse"></span>
+                  <span>{futureAssignmentsCount} قادمة نشطة</span>
                 </span>
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                جدول التكليفات المعتمدة لشهر {activeSchedule?.monthName || 'رمضان'} (يحتوي الشهر على {activeSchedule?.fridaysCount || stats.currentScheduleFridaysTotal || 5} جمعات فقط وفق القواعد الشرعية والتشغيلية)
-              </p>
+                {pastAssignmentsCount > 0 && (
+                  <span className="text-xs font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-300 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3 text-slate-500" />
+                    <span>{pastAssignmentsCount} منتهية</span>
+                  </span>
+                )}
+                <span className="text-[11px] text-slate-400 font-medium">
+                  (إجمالي {upcomingAssignments.length} جمعات)
+                </span>
+              </div>
             </div>
-            <span className="text-xs font-bold text-emerald-950 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200 shrink-0 self-start sm:self-auto">
-              {upcomingAssignments.length} من {activeSchedule?.fridaysCount || stats.currentScheduleFridaysTotal || 5} جمعات
-            </span>
-          </div>
 
-          {upcomingAssignments.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-400">
-              لا توجد جمعات مستقبلية مسندة لهذا الخطيب في الوقت الحالي.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {upcomingAssignments.map((a) => (
-                <div
-                  key={a.id}
-                  className="p-4 rounded-xl border border-slate-200 bg-[#fdfbf7] flex items-center justify-between shadow-2xs hover:border-emerald-700/40 transition-all"
-                >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-emerald-950 font-heading">
-                        الجمعة ({a.fridayIndex})
-                      </span>
-                      <span className="text-xs text-slate-500 font-mono">{a.hijriDate}</span>
-                    </div>
+            {upcomingAssignments.length === 0 ? (
+              <div className="py-8 text-center text-xs text-slate-400">
+                لا توجد جمعات مسندة لهذا الخطيب في الوقت الحالي.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {upcomingAssignments.map((a) => {
+                  const y = a.hijriYear || activeHijriYear;
+                  const m = (a as any).hijriMonth || activeHijriMonth;
+                  const fridayCheck = CalendarService.validateFridayAction(y, m, a.fridayIndex);
+                  const isPast = fridayCheck.isPastFriday;
 
-                    <div className="pt-1">
-                      <span className="text-xs text-slate-500 block">المسجد المكلف به:</span>
-                      <ClickableMosque
-                        id={a.mosqueId}
-                        name={a.mosqueName}
-                        code={a.mosqueCode}
-                        showCode
-                        className="text-sm text-slate-900 hover:text-emerald-800"
-                      />
-                      <span className="text-[11px] text-slate-400 block font-normal mt-0.5">
-                        المنطقة: {a.mosqueRegion}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="text-left space-y-1.5 flex flex-col items-end">
-                    <Badge variant={a.source === 'FIXED' ? 'fixed' : 'preferred'} size="sm">
-                      {a.source === 'FIXED' ? 'راتب' : a.source === 'PREFERENCE' ? 'مفضل' : 'متوازن'}
-                    </Badge>
-                    <button
-                      onClick={() => handleOpenSmartCard(a)}
-                      className="px-2 py-0.5 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black rounded-md text-[11px] flex items-center gap-1 cursor-pointer shadow-2xs border border-amber-500/40"
-                      title="فتح الكارت الذهبي لهذه الجمعة"
+                  return isPast ? (
+                    /* PAST FRIDAY - MUTED ARCHIVED SLATE STYLING */
+                    <div
+                      key={a.id}
+                      className="p-4 rounded-xl border border-slate-300/80 bg-slate-100/85 hover:bg-slate-100 flex items-center justify-between shadow-2xs transition-all relative overflow-hidden"
                     >
-                      <Sparkles className="w-2.5 h-2.5 text-amber-950" />
-                      <span>الكارت الذهبي 📱</span>
-                    </button>
-                    <span className="text-[10px] text-slate-400 block font-mono">
-                      شهر {a.monthName}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-slate-700 font-heading">
+                            الجمعة ({a.fridayIndex})
+                          </span>
+                          <span className="text-xs text-slate-500 font-mono">{a.hijriDate}</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-700 border border-slate-300">
+                            <Clock className="w-2.5 h-2.5 text-slate-500" />
+                            <span>جمعة منتهية</span>
+                          </span>
+                        </div>
+
+                        <div className="pt-0.5">
+                          <span className="text-[11px] text-slate-500 block">المسجد المكلف به:</span>
+                          <ClickableMosque
+                            id={a.mosqueId}
+                            name={a.mosqueName}
+                            code={a.mosqueCode}
+                            showCode
+                            className="text-sm font-semibold text-slate-800 hover:text-slate-950"
+                          />
+                          <span className="text-[11px] text-slate-400 block font-normal mt-0.5">
+                            المنطقة: {a.mosqueRegion}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-left space-y-1.5 flex flex-col items-end shrink-0">
+                        <Badge variant="inactive" size="sm">
+                          {a.source === 'FIXED' ? 'راتب' : a.source === 'PREFERENCE' ? 'مفضل' : 'متوازن'}
+                        </Badge>
+                        <button
+                          onClick={() => handleOpenSmartCard(a)}
+                          className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-md text-[11px] flex items-center gap-1 cursor-pointer border border-slate-300 transition-colors shadow-2xs"
+                          title="عرض أرشيف الكارت لهذه الجمعة المنتهية"
+                        >
+                          <Clock className="w-2.5 h-2.5 text-slate-500" />
+                          <span>أرشيف الكارت 📱</span>
+                        </button>
+                        <span className="text-[10px] text-slate-400 block font-mono">
+                          شهر {a.monthName}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* UPCOMING FRIDAY - VIBRANT GLOWING EMERALD & GOLD STYLING */
+                    <div
+                      key={a.id}
+                      className="p-4 rounded-xl border-2 border-emerald-500/90 bg-gradient-to-br from-emerald-50/90 via-white to-amber-50/60 flex items-center justify-between shadow-md ring-2 ring-emerald-500/20 hover:border-emerald-600 transition-all relative overflow-hidden"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-black text-emerald-950 font-heading">
+                            الجمعة ({a.fridayIndex})
+                          </span>
+                          <span className="text-xs text-emerald-800 font-mono font-bold">{a.hijriDate}</span>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-600 text-white shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+                            <span>الجمعة القادمة (نشطة)</span>
+                          </span>
+                        </div>
+
+                        <div className="pt-0.5">
+                          <span className="text-[11px] text-emerald-800 font-bold block">المسجد المكلف به:</span>
+                          <ClickableMosque
+                            id={a.mosqueId}
+                            name={a.mosqueName}
+                            code={a.mosqueCode}
+                            showCode
+                            className="text-sm font-bold text-slate-900 hover:text-emerald-800"
+                          />
+                          <span className="text-[11px] text-slate-500 block font-normal mt-0.5">
+                            المنطقة: {a.mosqueRegion}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="text-left space-y-1.5 flex flex-col items-end shrink-0">
+                        <Badge variant={a.source === 'FIXED' ? 'fixed' : a.source === 'PREFERENCE' ? 'preferred' : 'balanced'} size="sm">
+                          {a.source === 'FIXED' ? 'راتب' : a.source === 'PREFERENCE' ? 'مفضل' : 'متوازن'}
+                        </Badge>
+                        <button
+                          onClick={() => handleOpenSmartCard(a)}
+                          className="px-2.5 py-1 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-200 hover:from-amber-300 hover:to-amber-100 text-slate-950 font-black rounded-lg text-[11px] flex items-center gap-1.5 cursor-pointer shadow-xs border border-amber-500/50 ring-1 ring-amber-400/40"
+                          title="فتح الكارت الذهبي لهذه الجمعة القادمة"
+                        >
+                          <Sparkles className="w-3 h-3 text-amber-950" />
+                          <span>الكارت الذهبي 📱</span>
+                        </button>
+                        <span className="text-[10px] text-emerald-800 font-bold block font-mono">
+                          شهر {a.monthName}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        );
+      })()}
 
       {/* TAB 2: FULL SCHEDULE */}
       {activeTab === 'schedule' && (

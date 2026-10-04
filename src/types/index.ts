@@ -292,6 +292,7 @@ export interface ProfileAssignmentItem {
   gregorianDate?: string;
   monthName: string;
   hijriYear: number;
+  hijriMonth?: number;
   scheduleStatus: string;
   mosqueId: number;
   mosqueName: string;

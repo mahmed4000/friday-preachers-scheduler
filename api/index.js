@@ -135783,6 +135783,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
         gregorianDate: f3?.gregorianDate || void 0,
         monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
         hijriYear: s2?.hijriYear || 1448,
+        hijriMonth: s2?.hijriMonth,
         scheduleStatus: s2?.status || "APPROVED",
         mosqueId: mosque.id,
         mosqueName: mosque.name,
@@ -135867,6 +135868,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,
+        hijriMonth: s2.hijriMonth,
         fridaysCount: s2.fridaysCount,
         status: s2.status
       })),
@@ -136571,6 +136573,7 @@ api.get("/imams/:id/profile", async (req, res) => {
         gregorianDate: f3?.gregorianDate || void 0,
         monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
         hijriYear: s2?.hijriYear || 1448,
+        hijriMonth: s2?.hijriMonth,
         scheduleStatus: s2?.status || "APPROVED",
         mosqueId: a.mosqueId,
         mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
@@ -136663,6 +136666,7 @@ api.get("/imams/:id/profile", async (req, res) => {
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,
+        hijriMonth: s2.hijriMonth,
         fridaysCount: s2.fridaysCount,
         status: s2.status
       })),
