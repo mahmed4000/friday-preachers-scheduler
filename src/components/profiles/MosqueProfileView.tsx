@@ -39,6 +39,8 @@ import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
 import { FileText } from 'lucide-react';
 
 import { getFallbackMosqueProfile } from '../../lib/profileFallbacks.ts';
+import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from '../../lib/defaultLogo.ts';
+import { CalendarService } from '../../services/calendar/calendarService.ts';
 
 interface MosqueProfileViewProps {
   mosqueId: number;
@@ -119,6 +121,41 @@ export function MosqueProfileView({
     }
 
     try {
+      let orgSettings = DEFAULT_ORGANIZATION_SETTINGS;
+      try {
+        const saved = localStorage.getItem('sharia_org_settings');
+        if (saved) orgSettings = { ...DEFAULT_ORGANIZATION_SETTINGS, ...JSON.parse(saved) };
+      } catch {
+        // fallback
+      }
+      const logoUrl = orgSettings.logoUrl && !orgSettings.logoUrl.startsWith('data:image/svg+xml')
+        ? orgSettings.logoUrl
+        : DEFAULT_SHARIA_LOGO;
+
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+
+      const sortedAssignments = [...(data.assignments || [])].sort((x: any, y: any) => {
+        const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+        const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+
+        const xIsCurrent = xVal === currVal;
+        const yIsCurrent = yVal === currVal;
+        if (xIsCurrent && !yIsCurrent) return -1;
+        if (!xIsCurrent && yIsCurrent) return 1;
+
+        const xIsPast = xVal < currVal;
+        const yIsPast = yVal < currVal;
+        if (!xIsPast && yIsPast) return -1;
+        if (xIsPast && !yIsPast) return 1;
+
+        if (xVal !== yVal) {
+          if (xIsPast && yIsPast) return yVal - xVal;
+          return xVal - yVal;
+        }
+        return (x.fridayIndex || 0) - (y.fridayIndex || 0);
+      });
+
       const printWin = window.open('', '_blank');
       if (printWin) {
         printWin.document.write(`
@@ -136,55 +173,92 @@ export function MosqueProfileView({
             </head>
             <body>
               <div class="max-w-4xl mx-auto p-6 space-y-6">
-                <div class="flex items-center justify-between border-b-2 border-emerald-800 pb-4">
-                  <div>
-                    <h1 class="text-xl font-black text-emerald-900 font-heading">الجمعية الشرعية الرئيسية</h1>
-                    <p class="text-sm font-bold text-slate-600">أمانة شؤون المساجد والجوامع</p>
+                <!-- Official Header with Association Logo & Hierarchy -->
+                <div class="flex items-center justify-between border-b-2 border-emerald-800 pb-4 gap-4">
+                  <div class="flex items-center gap-3.5">
+                    <div class="w-16 h-16 rounded-full bg-white border-2 border-amber-500 p-0.5 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+                      <img src="${logoUrl}" alt="شعار الجمعية" class="w-full h-full object-contain rounded-full" />
+                    </div>
+                    <div>
+                      <h1 class="text-lg font-black text-emerald-950 font-heading leading-tight">${orgSettings.associationName || 'الجمعية الشرعية'}</h1>
+                      <p class="text-xs font-bold text-emerald-800 leading-tight mt-0.5">${orgSettings.branchName || 'فرع منشأة البكاري'}</p>
+                      <p class="text-[11px] font-semibold text-slate-500 leading-tight mt-0.5">${orgSettings.departmentName || 'أمانة شؤون المساجد والجوامع'}</p>
+                    </div>
                   </div>
-                  <div class="text-left font-mono text-xs text-slate-600">
-                    <p class="font-bold text-slate-900">بطاقة تعريف وجدول كشوف مسجد</p>
-                    <p>كود المسجد: <strong class="text-emerald-900">${data.mosque.code}</strong></p>
-                    <p>تاريخ الاصدار: ${new Date().toLocaleDateString('ar-EG')}</p>
+
+                  <div class="text-left font-mono text-xs text-slate-600 shrink-0">
+                    <p class="font-bold text-slate-900 text-sm">بطاقة تعريف وجدول كشوف مسجد</p>
+                    <p class="mt-0.5">كود المسجد: <strong class="text-emerald-900 font-bold">${data.mosque.code}</strong></p>
+                    <p class="text-[11px] text-slate-500">تاريخ الإصدار: ${new Date().toLocaleDateString('ar-EG')}</p>
                   </div>
                 </div>
 
+                <!-- Mosque Details Card -->
                 <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-2 gap-4 text-xs">
                   <div><span class="text-slate-500 font-semibold block">اسم المسجد:</span><strong class="text-base text-slate-900">${data.mosque.name}</strong></div>
                   <div><span class="text-slate-500 font-semibold block">المشرف المسؤول:</span><strong class="text-emerald-800">${data.mosque.managerName || '—'}</strong></div>
                   <div><span class="text-slate-500 font-semibold block">هاتف التواصل:</span><strong class="text-slate-900 font-mono">${data.mosque.phone || '—'}</strong></div>
-                  <div><span class="text-slate-500 font-semibold block">العنوان والتسجيل:</span><strong class="text-slate-900">${data.mosque.formattedAddress || data.mosque.region || 'الجيزة'}</strong></div>
+                  <div><span class="text-slate-500 font-semibold block">العنوان والتسجيل:</span><strong class="text-slate-900">${data.mosque.formattedAddress || data.mosque.region || 'منشأة البكاري — الجيزة'}</strong></div>
                 </div>
 
+                <!-- Chronological Assignments Table -->
                 <div class="space-y-2">
-                  <h3 class="text-xs font-bold text-slate-900">جدول الخطباء المعتمد لهذا الشهر:</h3>
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-bold text-slate-900">
+                      جدول الخطباء المعتمد للمسجد (مرتب زمنياً من الشهر الحالي والقريب):
+                    </h3>
+                    <span class="text-[11px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      إجمالي ${sortedAssignments.length} جمعة مسجلة
+                    </span>
+                  </div>
+
                   <table class="w-full text-right text-xs border-collapse border border-slate-200">
                     <thead>
                       <tr class="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
-                        <th class="p-2 border-r border-slate-200 text-center">الجمعة</th>
-                        <th class="p-2 border-r border-slate-200">التاريخ الهجري</th>
+                        <th class="p-2 border-r border-slate-200 text-center w-20">الجمعة</th>
+                        <th class="p-2 border-r border-slate-200">التاريخ الهجري والشهر</th>
                         <th class="p-2 border-r border-slate-200">اسم الخطيب المكلف</th>
-                        <th class="p-2 border-r border-slate-200">هاتف التواصل</th>
+                        <th class="p-2 border-r border-slate-200 text-center w-28">هاتف التواصل</th>
                         <th class="p-2 border-r border-slate-200">نوع التكليف</th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${data.assignments.map((as, idx) => `
-                        <tr class="border-b border-slate-100">
-                          <td class="p-2 border-r border-slate-200 text-center font-bold">${as.fridayIndex || idx + 1}</td>
-                          <td class="p-2 border-r border-slate-200">${as.hijriDate || `الجمعة ${idx + 1}`}</td>
-                          <td class="p-2 border-r border-slate-200 font-bold text-emerald-950">${as.imamName || 'خطيب معتمد'}</td>
-                          <td class="p-2 border-r border-slate-200 font-mono">${as.imamPhone || '—'}</td>
-                          <td class="p-2 border-r border-slate-200">${(as as any).assignmentSource === 'FIXED' ? 'خطيب ثابت' : 'توزيع تلقائي'}</td>
-                        </tr>
-                      `).join('')}
+                      ${sortedAssignments.map((as: any, idx: number) => {
+                        const isCurrentMonth = as.hijriYear === currentDT.hijri.year && as.hijriMonth === currentDT.hijri.month;
+                        return `
+                          <tr class="border-b border-slate-100 ${isCurrentMonth ? 'bg-emerald-50/50' : ''}">
+                            <td class="p-2 border-r border-slate-200 text-center font-bold">
+                              ${as.fridayIndex || idx + 1}
+                              ${isCurrentMonth ? '<span class="block text-[9px] text-emerald-700 font-bold font-sans">(الشهر الحالي)</span>' : ''}
+                            </td>
+                            <td class="p-2 border-r border-slate-200 font-medium">
+                              <span class="font-bold text-slate-900 block">${as.hijriDate || `الجمعة ${idx + 1}`}</span>
+                              <span class="text-[10px] text-slate-500 font-normal">شهر ${as.monthName || ''} ${as.hijriYear || 1448} هـ</span>
+                            </td>
+                            <td class="p-2 border-r border-slate-200 font-bold text-emerald-950">${as.imamName || 'خطيب معتمد'}</td>
+                            <td class="p-2 border-r border-slate-200 font-mono text-center">${as.imamPhone || '—'}</td>
+                            <td class="p-2 border-r border-slate-200">${as.assignmentSource === 'FIXED' ? 'خطيب راتب (ثابت)' : 'توزيع واعتماد تلقائي'}</td>
+                          </tr>
+                        `;
+                      }).join('')}
                     </tbody>
                   </table>
                 </div>
 
+                <!-- Signatures Footer -->
                 <div class="pt-8 border-t-2 border-slate-200 grid grid-cols-3 text-center text-xs font-bold text-slate-800">
-                  <div><p class="text-slate-500 font-normal mb-8">مشرف المسجد</p><p>.......................................</p></div>
-                  <div><p class="text-slate-500 font-normal mb-8">أمانة شؤون المساجد</p><p>.......................................</p></div>
-                  <div><p class="text-slate-500 font-normal mb-8">خاتم الاعتماد الرسمي</p><p>[ الختم الرسمي ]</p></div>
+                  <div>
+                    <p class="text-slate-500 font-normal mb-8">${orgSettings.schedulePreparerTitle || 'مشرف المساجد'}</p>
+                    <p>.......................................</p>
+                  </div>
+                  <div>
+                    <p class="text-slate-500 font-normal mb-8">${orgSettings.managerTitle || 'أمانة شؤون المساجد'}</p>
+                    <p>.......................................</p>
+                  </div>
+                  <div>
+                    <p class="text-slate-500 font-normal mb-8">${orgSettings.boardPresidentTitle || 'خاتم الاعتماد الرسمي'}</p>
+                    <p class="text-emerald-900 font-bold">[ الختم الرسمي ]</p>
+                  </div>
                 </div>
               </div>
               <script>

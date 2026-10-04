@@ -134016,7 +134016,22 @@ var memoryStore = {
         isUpcoming
       };
     }).sort((x2, y) => {
-      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal;
+        return xVal - yVal;
+      }
       return x2.fridayIndex - y.fridayIndex;
     });
     const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
@@ -134120,7 +134135,22 @@ var memoryStore = {
         isUpcoming
       };
     }).sort((x2, y) => {
-      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal;
+        return xVal - yVal;
+      }
       return x2.fridayIndex - y.fridayIndex;
     });
     const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
@@ -135660,7 +135690,22 @@ api.get("/mosques/:id/profile", async (req, res) => {
         isUpcoming
       };
     }).sort((x2, y) => {
-      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal;
+        return xVal - yVal;
+      }
       return x2.fridayIndex - y.fridayIndex;
     });
     const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
@@ -136432,7 +136477,22 @@ api.get("/imams/:id/profile", async (req, res) => {
         isUpcoming
       };
     }).sort((x2, y) => {
-      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal;
+        return xVal - yVal;
+      }
       return x2.fridayIndex - y.fridayIndex;
     });
     const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);

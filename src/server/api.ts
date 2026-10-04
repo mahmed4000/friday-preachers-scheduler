@@ -738,7 +738,25 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
         isUpcoming,
       };
     }).sort((x, y) => {
-      if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal; // Most recent past first
+        return xVal - yVal; // Nearest upcoming first
+      }
       return x.fridayIndex - y.fridayIndex;
     });
 
@@ -1649,7 +1667,25 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
         isUpcoming,
       };
     }).sort((x, y) => {
-      if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
+      const currentDT = CalendarService.getCurrentDateTime();
+      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+      const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+
+      const xIsCurrent = xVal === currVal;
+      const yIsCurrent = yVal === currVal;
+      if (xIsCurrent && !yIsCurrent) return -1;
+      if (!xIsCurrent && yIsCurrent) return 1;
+
+      const xIsPast = xVal < currVal;
+      const yIsPast = yVal < currVal;
+      if (!xIsPast && yIsPast) return -1;
+      if (xIsPast && !yIsPast) return 1;
+
+      if (xVal !== yVal) {
+        if (xIsPast && yIsPast) return yVal - xVal; // Most recent past first
+        return xVal - yVal; // Nearest upcoming first
+      }
       return x.fridayIndex - y.fridayIndex;
     });
 

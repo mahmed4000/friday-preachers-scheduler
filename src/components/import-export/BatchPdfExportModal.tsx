@@ -16,6 +16,7 @@ import {
 import { fetchApi } from '../../lib/api.ts';
 import { Button } from '../ui/Button.tsx';
 import { Imam, Mosque } from '../../types/index.ts';
+import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from '../../lib/defaultLogo.ts';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -282,12 +283,18 @@ export function BatchPdfExportModal({
                       {/* Official Header */}
                       <div className="flex items-center justify-between border-b-2 border-emerald-800 pb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-xl shadow-xs">
-                            ج
-                          </div>
+                          <img
+                            src={DEFAULT_SHARIA_LOGO}
+                            alt="شعار الجمعية الشرعية"
+                            className="w-14 h-14 rounded-full object-cover border-2 border-amber-600/40 shadow-xs"
+                          />
                           <div>
-                            <h2 className="text-base font-black text-emerald-950 font-heading">الجمعية الشرعية الرئيسية</h2>
-                            <p className="text-xs font-bold text-slate-600">أمانة شؤون المساجد والدعوة والخطباء</p>
+                            <h2 className="text-base font-black text-emerald-950 font-heading">
+                              {DEFAULT_ORGANIZATION_SETTINGS.branchName}
+                            </h2>
+                            <p className="text-xs font-bold text-slate-600">
+                              {DEFAULT_ORGANIZATION_SETTINGS.appName} v2
+                            </p>
                           </div>
                         </div>
 
@@ -422,12 +429,18 @@ export function BatchPdfExportModal({
                       {/* Official Header */}
                       <div className="flex items-center justify-between border-b-2 border-emerald-800 pb-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-xl bg-emerald-800 text-white flex items-center justify-center font-bold text-xl shadow-xs">
-                            ج
-                          </div>
+                          <img
+                            src={DEFAULT_SHARIA_LOGO}
+                            alt="شعار الجمعية الشرعية"
+                            className="w-14 h-14 rounded-full object-cover border-2 border-amber-600/40 shadow-xs"
+                          />
                           <div>
-                            <h2 className="text-base font-black text-emerald-950 font-heading">الجمعية الشرعية الرئيسية</h2>
-                            <p className="text-xs font-bold text-slate-600">أمانة شؤون المساجد والجوامع</p>
+                            <h2 className="text-base font-black text-emerald-950 font-heading">
+                              {DEFAULT_ORGANIZATION_SETTINGS.branchName}
+                            </h2>
+                            <p className="text-xs font-bold text-slate-600">
+                              {DEFAULT_ORGANIZATION_SETTINGS.appName} v2
+                            </p>
                           </div>
                         </div>
 
