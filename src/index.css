@@ -4,10 +4,11 @@
 
 @layer base {
   body {
-    font-family: 'IBM Plex Sans Arabic', 'Tajawal', system-ui, -apple-system, sans-serif;
-    background-color: #faf9f6;
+    font-family: 'Alexandria', 'Cairo', 'Tajawal', 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
+    background-color: #fcfbf8;
     color: #0f172a;
     transition: background-color 0.2s ease, color 0.2s ease;
+    letter-spacing: -0.01em;
   }
 
   html.dark body {
@@ -16,8 +17,27 @@
   }
   
   h1, h2, h3, h4, .font-heading {
-    font-family: 'Tajawal', 'IBM Plex Sans Arabic', system-ui, sans-serif;
+    font-family: 'Cairo', 'Tajawal', 'Alexandria', system-ui, sans-serif;
+    letter-spacing: -0.02em;
   }
+}
+
+.font-amiri {
+  font-family: 'Amiri', serif;
+}
+
+.font-alexandria {
+  font-family: 'Alexandria', sans-serif;
+}
+
+.font-cairo {
+  font-family: 'Cairo', sans-serif;
+}
+
+/* Subtle Royal Islamic Geometry Motif */
+.islamic-pattern {
+  background-image: radial-gradient(rgba(4, 120, 87, 0.04) 1px, transparent 1px);
+  background-size: 16px 16px;
 }
 
 /* Tabular figures for numbers, dates, statistics */

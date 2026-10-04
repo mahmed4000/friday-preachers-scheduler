@@ -25,10 +25,17 @@ import {
   Filter,
   Check,
   ShieldCheck,
+  Award,
+  BookOpen,
+  Smartphone,
+  Printer,
 } from 'lucide-react';
 import { Badge } from '../common/Badge.tsx';
 import { AssignmentCellDrawer } from './AssignmentCellDrawer.tsx';
 import { ConflictCenterModal } from './ConflictCenterModal.tsx';
+import { OfficialDecreeModal } from '../decree/OfficialDecreeModal.tsx';
+import { KhutbahTopicsModal } from '../topics/KhutbahTopicsModal.tsx';
+import { PreacherMobileCardModal } from '../portal/PreacherMobileCardModal.tsx';
 import { fetchApi } from '../../lib/api.ts';
 import { ClickableMosque, ClickableImam } from '../../context/ProfileNavigationContext.tsx';
 
@@ -66,6 +73,14 @@ export function ScheduleReviewBoard({
   const [isConflictModalOpen, setIsConflictModalOpen] = useState(false);
   const [isRedistributeModalOpen, setIsRedistributeModalOpen] = useState(false);
   const [isApproveModalOpen, setIsApproveModalOpen] = useState(false);
+  const [isDecreeModalOpen, setIsDecreeModalOpen] = useState(false);
+  const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false);
+  const [mobileCardData, setMobileCardData] = useState<{
+    assignment: Assignment;
+    mosque: Mosque;
+    imam: Imam;
+    friday: Friday;
+  } | null>(null);
 
   // Drag-and-Drop state
   const [draggedAssignment, setDraggedAssignment] = useState<Assignment | null>(null);
@@ -439,13 +454,31 @@ export function ScheduleReviewBoard({
             <span>{isScheduleApproved ? 'معتمد رسمي (إعادة اعتماد)' : 'اعتماد الجدول'}</span>
           </button>
 
+          {/* Khutbah Topics Button */}
+          <button
+            onClick={() => setIsTopicsModalOpen(true)}
+            className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+            <span>موضوعات الخطب</span>
+          </button>
+
+          {/* Official Waqf Decree & Printable A4 */}
+          <button
+            onClick={() => setIsDecreeModalOpen(true)}
+            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Award className="w-3.5 h-3.5 text-amber-300" />
+            <span>الكشف الرسمي (A4)</span>
+          </button>
+
           {/* Publishing Center */}
           <button
             onClick={onNavigateToPublishing}
             className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>النشر والطباعة</span>
+            <span>النشر والرسائل</span>
           </button>
         </div>
       </div>
@@ -580,7 +613,27 @@ export function ScheduleReviewBoard({
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-1 mb-1">
-                                  {getSourceIconBadge(assignment?.source || 'BALANCED')}
+                                  <div className="flex items-center gap-1">
+                                    {getSourceIconBadge(assignment?.source || 'BALANCED')}
+                                    <button
+                                      type="button"
+                                      title="بطاقة الخطيب الذكية ومشاركة واتساب"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (assignment && mosque && assignedImam) {
+                                          setMobileCardData({
+                                            assignment,
+                                            mosque,
+                                            imam: assignedImam,
+                                            friday,
+                                          });
+                                        }
+                                      }}
+                                      className="p-0.5 text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer rounded hover:bg-slate-100 dark:hover:bg-slate-700"
+                                    >
+                                      <Smartphone className="w-3 h-3" />
+                                    </button>
+                                  </div>
                                   {isLocked ? (
                                     <Lock className="w-3 h-3 text-purple-700 dark:text-purple-400 shrink-0" />
                                   ) : (
@@ -780,11 +833,32 @@ export function ScheduleReviewBoard({
 
                     <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
                       {assignedImam ? (
-                        <ClickableImam
-                          id={assignedImam.id}
-                          name={assignedImam.name}
-                          className="text-xs font-bold text-emerald-900 dark:text-emerald-300 hover:text-emerald-700 dark:hover:text-emerald-400"
-                        />
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <ClickableImam
+                            id={assignedImam.id}
+                            name={assignedImam.name}
+                            className="text-xs font-bold text-emerald-900 dark:text-emerald-300 hover:text-emerald-700 dark:hover:text-emerald-400 truncate"
+                          />
+                          <button
+                            type="button"
+                            title="بطاقة الخطيب الذكية ومشاركة واتساب"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const friday = fridays.find((f) => f.fridayIndex === selectedFridayFilter);
+                              if (assignment && mosque && assignedImam && friday) {
+                                setMobileCardData({
+                                  assignment,
+                                  mosque,
+                                  imam: assignedImam,
+                                  friday,
+                                });
+                              }
+                            }}
+                            className="p-1 text-slate-400 hover:text-emerald-700 dark:hover:text-emerald-400 transition-colors cursor-pointer rounded hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+                          >
+                            <Smartphone className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       ) : (
                         <span className="text-xs font-bold text-rose-600 dark:text-rose-400">شاغر ⚠️</span>
                       )}
@@ -1055,6 +1129,39 @@ export function ScheduleReviewBoard({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Official Certified Decree Modal */}
+      <OfficialDecreeModal
+        isOpen={isDecreeModalOpen}
+        onClose={() => setIsDecreeModalOpen(false)}
+        schedule={schedule}
+        fridays={fridays}
+        assignments={assignments}
+        mosques={mosques}
+        imams={imams}
+      />
+
+      {/* Unified Khutbah Topics Modal */}
+      <KhutbahTopicsModal
+        isOpen={isTopicsModalOpen}
+        onClose={() => setIsTopicsModalOpen(false)}
+        schedule={schedule}
+        fridays={fridays}
+      />
+
+      {/* Instant Preacher Mobile Portal Modal */}
+      {mobileCardData && (
+        <PreacherMobileCardModal
+          isOpen={Boolean(mobileCardData)}
+          onClose={() => setMobileCardData(null)}
+          assignment={mobileCardData.assignment}
+          mosque={mobileCardData.mosque}
+          imam={mobileCardData.imam}
+          friday={mobileCardData.friday}
+          schedule={schedule}
+          onStatusUpdated={onRefreshData}
+        />
       )}
     </div>
   );
