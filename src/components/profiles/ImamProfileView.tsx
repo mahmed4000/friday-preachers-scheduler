@@ -154,6 +154,7 @@ export function ImamProfileView({
               <style>
                 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
                 body { font-family: 'Cairo', sans-serif; background-color: white; margin: 0; padding: 20px; }
+                .print-logo-box, .print-logo-box * { width: 60px !important; height: 60px !important; max-width: 60px !important; max-height: 60px !important; }
                 @media print { body { padding: 0; } .no-print { display: none !important; } }
               </style>
             </head>
@@ -162,8 +163,8 @@ export function ImamProfileView({
                 <!-- Official Header with Association Logo & Hierarchy -->
                 <div class="flex items-center justify-between border-b-2 border-emerald-800 pb-4 gap-4">
                   <div class="flex items-center gap-3.5">
-                    <div class="w-16 h-16 rounded-full bg-white border-2 border-amber-500 p-0.5 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
-                      <img src="${logoUrl}" alt="شعار الجمعية" class="w-full h-full object-contain rounded-full" />
+                    <div class="print-logo-box w-16 h-16 rounded-full bg-white border-2 border-amber-500 p-0.5 flex items-center justify-center overflow-hidden shrink-0 shadow-sm" style="width:60px; height:60px; min-width:60px; min-height:60px; max-width:60px; max-height:60px;">
+                      <img src="${logoUrl}" alt="شعار الجمعية" width="56" height="56" class="w-full h-full object-contain rounded-full" style="width:56px; height:56px; max-width:56px; max-height:56px; object-fit:contain;" />
                     </div>
                     <div>
                       <h1 class="text-lg font-black text-emerald-950 font-heading leading-tight">${orgSettings.associationName || 'الجمعية الشرعية'}</h1>

@@ -80,14 +80,14 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
         }}
       >
         {/* Subtle Islamic Geometric Pattern Overlay */}
-        <IslamicPatternOverlay className="opacity-[0.04]" />
+        <IslamicPatternOverlay className="opacity-[0.04] no-print" />
 
         {/* Bottom Mosque & Palm Silhouette Accent */}
-        <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none" />
+        <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none no-print" />
 
         {/* Inner Fine Gold Border Frame with Corner Indents */}
         <div
-          className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60"
+          className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60 no-print"
           aria-hidden="true"
         />
 
@@ -99,11 +99,17 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
           <div className="w-[220px] shrink-0 text-right space-y-1">
             <div className="flex items-center gap-3">
               {settings.logoUrl && (
-                <div className="w-14 h-14 shrink-0 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
+                <div
+                  className="print-logo-box w-14 h-14 shrink-0 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden"
+                  style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px', maxWidth: '56px', maxHeight: '56px' }}
+                >
                   <img
                     src={settings.logoUrl}
                     alt="شعار الجمعية"
-                    className="w-full h-full object-contain rounded-full"
+                    width={52}
+                    height={52}
+                    className="print-logo-img w-full h-full object-contain rounded-full"
+                    style={{ width: '52px', height: '52px', minWidth: '52px', minHeight: '52px', maxWidth: '52px', maxHeight: '52px' }}
                   />
                 </div>
               )}

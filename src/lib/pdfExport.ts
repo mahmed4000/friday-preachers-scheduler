@@ -241,7 +241,6 @@ export function downloadPrintableHtml(
     .overflow-auto,
     .overflow-x-auto,
     .overflow-y-auto,
-    .overflow-hidden,
     .overflow-scroll {
       overflow: visible !important;
       overflow-x: visible !important;
@@ -250,6 +249,34 @@ export function downloadPrintableHtml(
       max-height: none !important;
       min-height: 0 !important;
       width: 100% !important;
+    }
+    .print-logo-box,
+    .print-logo-box div,
+    [class*="print-logo-box"] {
+      width: 60px !important;
+      height: 60px !important;
+      max-width: 60px !important;
+      max-height: 60px !important;
+      min-width: 60px !important;
+      min-height: 60px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 auto 6px auto !important;
+      border-radius: 9999px !important;
+      overflow: hidden !important;
+    }
+    .print-logo-box img,
+    .print-logo-img {
+      width: 56px !important;
+      height: 56px !important;
+      max-width: 56px !important;
+      max-height: 56px !important;
+      min-width: 56px !important;
+      min-height: 56px !important;
+      object-fit: contain !important;
+      border-radius: 9999px !important;
+      display: block !important;
     }
     .sticky, [class*="sticky"] { position: static !important; }
     ::-webkit-scrollbar, *::-webkit-scrollbar {
@@ -326,23 +353,65 @@ export function triggerPrintWindow(
       font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
       direction: rtl;
       margin: 0;
-      padding: 10mm;
+      padding: 0;
       color: #0f172a;
       background: white;
       width: 100% !important;
       height: auto !important;
       overflow: visible !important;
     }
-    @page { size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'}; margin: 8mm; }
+    @page {
+      size: ${orientation === 'landscape' ? 'A4 landscape' : 'A4 portrait'};
+      margin: 6mm 4mm;
+    }
     .no-print { display: none !important; }
-    .pdf-report-document,
+    
+    /* Strict logo constraint in print mode */
+    .print-logo-box,
+    .print-logo-box div,
+    [class*="print-logo-box"] {
+      width: 60px !important;
+      height: 60px !important;
+      max-width: 60px !important;
+      max-height: 60px !important;
+      min-width: 60px !important;
+      min-height: 60px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      margin: 0 auto 6px auto !important;
+      border-radius: 9999px !important;
+      overflow: hidden !important;
+    }
+    .print-logo-box img,
+    .print-logo-img {
+      width: 56px !important;
+      height: 56px !important;
+      max-width: 56px !important;
+      max-height: 56px !important;
+      min-width: 56px !important;
+      min-height: 56px !important;
+      object-fit: contain !important;
+      border-radius: 9999px !important;
+      display: block !important;
+    }
+
+    .pdf-report-document {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 auto !important;
+      padding: 2mm 0 !important;
+      background: white !important;
+      border: none !important;
+      box-shadow: none !important;
+    }
+
     .pdf-table-container,
     .scroll-container,
     .table-scroll-container,
     .overflow-auto,
     .overflow-x-auto,
     .overflow-y-auto,
-    .overflow-hidden,
     .overflow-scroll {
       overflow: visible !important;
       overflow-x: visible !important;
@@ -362,6 +431,18 @@ export function triggerPrintWindow(
     table, .pdf-table {
       width: 100% !important;
       border-collapse: collapse !important;
+      font-size: 11px !important;
+    }
+    th, td {
+      border: 1px solid #94a3b8 !important;
+      padding: 4px 6px !important;
+    }
+    th {
+      background-color: #064e3b !important;
+      color: white !important;
+      font-weight: 700 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
     }
     tr, .pdf-table tr {
       break-inside: avoid !important;

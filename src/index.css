@@ -88,7 +88,7 @@
     page-break-after: always;
   }
   
-  /* Expand all scroll containers and PDF documents in print mode */
+  /* Expand only table/scroll containers in print mode (never generic overflow-hidden elements) */
   .pdf-report-document,
   .pdf-table-container,
   .scroll-container,
@@ -96,7 +96,6 @@
   .overflow-auto,
   .overflow-x-auto,
   .overflow-y-auto,
-  .overflow-hidden,
   .overflow-scroll {
     overflow: visible !important;
     overflow-x: visible !important;
@@ -105,6 +104,37 @@
     max-height: none !important;
     min-height: 0 !important;
     width: 100% !important;
+  }
+
+  /* Strict logo sizing in print mode */
+  .print-logo-box,
+  .print-logo-box div,
+  [class*="print-logo-box"] {
+    width: 60px !important;
+    height: 60px !important;
+    max-width: 60px !important;
+    max-height: 60px !important;
+    min-width: 60px !important;
+    min-height: 60px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    margin: 0 auto 6px auto !important;
+    border-radius: 9999px !important;
+    overflow: hidden !important;
+  }
+
+  .print-logo-box img,
+  .print-logo-img {
+    width: 56px !important;
+    height: 56px !important;
+    max-width: 56px !important;
+    max-height: 56px !important;
+    min-width: 56px !important;
+    min-height: 56px !important;
+    object-fit: contain !important;
+    border-radius: 9999px !important;
+    display: block !important;
   }
 
   .sticky,

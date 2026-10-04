@@ -420,19 +420,25 @@ export function PublishingCenterView({
             dir="rtl"
             style={{ fontFamily: "'IBM Plex Sans Arabic', 'Tajawal', sans-serif" }}
           >
-            <IslamicPatternOverlay className="opacity-[0.04]" />
-            <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none" />
-            <div className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60" aria-hidden="true" />
+            <IslamicPatternOverlay className="opacity-[0.04] no-print" />
+            <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-40 pointer-events-none no-print" />
+            <div className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60 no-print" aria-hidden="true" />
 
             {/* 1. Official Header */}
             <div className="relative z-10 text-center space-y-2 pb-3">
               {/* Logo in top center */}
               {settings.logoUrl && (
-                <div className="w-16 h-16 mx-auto mb-2 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
+                <div
+                  className="print-logo-box w-16 h-16 mx-auto mb-2 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden"
+                  style={{ width: '60px', height: '60px', minWidth: '60px', minHeight: '60px', maxWidth: '60px', maxHeight: '60px' }}
+                >
                   <img
                     src={settings.logoUrl}
                     alt="شعار الجمعية"
-                    className="w-full h-full object-contain rounded-full"
+                    width={56}
+                    height={56}
+                    className="print-logo-img w-full h-full object-contain rounded-full"
+                    style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px', maxWidth: '56px', maxHeight: '56px' }}
                   />
                 </div>
               )}
@@ -620,15 +626,25 @@ export function PublishingCenterView({
             dir="rtl"
             style={{ fontFamily: "'IBM Plex Sans Arabic', 'Tajawal', sans-serif" }}
           >
-            <IslamicPatternOverlay className="opacity-[0.04]" />
-            <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none" />
-            <div className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60" aria-hidden="true" />
+            <IslamicPatternOverlay className="opacity-[0.04] no-print" />
+            <MosqueSkylineSilhouette className="absolute bottom-0 left-0 right-0 h-32 pointer-events-none no-print" />
+            <div className="pointer-events-none absolute inset-3 rounded-xl border border-[#d8c399]/60 no-print" aria-hidden="true" />
 
             {/* Header */}
             <div className="relative z-10 text-center space-y-2 pb-3">
               {settings.logoUrl && (
-                <div className="w-14 h-14 mx-auto mb-1 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
-                  <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain rounded-full" />
+                <div
+                  className="print-logo-box w-14 h-14 mx-auto mb-1 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden"
+                  style={{ width: '56px', height: '56px', minWidth: '56px', minHeight: '56px', maxWidth: '56px', maxHeight: '56px' }}
+                >
+                  <img
+                    src={settings.logoUrl}
+                    alt="Logo"
+                    width={52}
+                    height={52}
+                    className="print-logo-img w-full h-full object-contain rounded-full"
+                    style={{ width: '52px', height: '52px', minWidth: '52px', minHeight: '52px', maxWidth: '52px', maxHeight: '52px' }}
+                  />
                 </div>
               )}
               <h2 className="text-lg font-bold font-heading text-slate-900">

@@ -178,6 +178,7 @@ export function BatchPdfExportModal({
               break-after: page;
               margin-bottom: 2rem;
             }
+            .pdf-page-item img { width: 56px !important; height: 56px !important; max-width: 56px !important; max-height: 56px !important; object-fit: contain !important; border-radius: 9999px !important; }
             @media print {
               body { padding: 0; }
               .pdf-page-item {
@@ -286,7 +287,10 @@ export function BatchPdfExportModal({
                           <img
                             src={DEFAULT_SHARIA_LOGO}
                             alt="شعار الجمعية الشرعية"
+                            width={56}
+                            height={56}
                             className="w-14 h-14 rounded-full object-cover border-2 border-amber-600/40 shadow-xs"
+                            style={{ width: '56px', height: '56px', maxWidth: '56px', maxHeight: '56px', objectFit: 'cover' }}
                           />
                           <div>
                             <h2 className="text-base font-black text-emerald-950 font-heading">
@@ -432,7 +436,10 @@ export function BatchPdfExportModal({
                           <img
                             src={DEFAULT_SHARIA_LOGO}
                             alt="شعار الجمعية الشرعية"
+                            width={56}
+                            height={56}
                             className="w-14 h-14 rounded-full object-cover border-2 border-amber-600/40 shadow-xs"
+                            style={{ width: '56px', height: '56px', maxWidth: '56px', maxHeight: '56px', objectFit: 'cover' }}
                           />
                           <div>
                             <h2 className="text-base font-black text-emerald-950 font-heading">
