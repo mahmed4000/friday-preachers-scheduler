@@ -428,11 +428,11 @@ export function PublishingCenterView({
             <div className="relative z-10 text-center space-y-2 pb-3">
               {/* Logo in top center */}
               {settings.logoUrl && (
-                <div className="w-16 h-16 mx-auto mb-2 flex items-center justify-center p-1 rounded-xl bg-white border border-[#c5a059]/40 shadow-2xs">
+                <div className="w-16 h-16 mx-auto mb-2 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
                   <img
                     src={settings.logoUrl}
                     alt="شعار الجمعية"
-                    className="max-w-full max-h-full object-contain"
+                    className="w-full h-full object-contain rounded-full"
                   />
                 </div>
               )}
@@ -627,8 +627,8 @@ export function PublishingCenterView({
             {/* Header */}
             <div className="relative z-10 text-center space-y-2 pb-3">
               {settings.logoUrl && (
-                <div className="w-14 h-14 mx-auto mb-1 flex items-center justify-center p-1 rounded-xl bg-white border border-[#c5a059]/40 shadow-2xs">
-                  <img src={settings.logoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                <div className="w-14 h-14 mx-auto mb-1 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
+                  <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain rounded-full" />
                 </div>
               )}
               <h2 className="text-lg font-bold font-heading text-slate-900">

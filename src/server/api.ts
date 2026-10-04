@@ -553,6 +553,9 @@ api.get('/locations/default', async (_req: Request, res: Response) => {
 
 // Settings Endpoints
 api.get('/settings', async (_req: Request, res: Response) => {
+  if (!cachedOrganizationSettings.logoUrl || cachedOrganizationSettings.logoUrl.startsWith('data:image/svg+xml')) {
+    cachedOrganizationSettings.logoUrl = DEFAULT_SHARIA_LOGO;
+  }
   res.json(cachedOrganizationSettings);
 });
 

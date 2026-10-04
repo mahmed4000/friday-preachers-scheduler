@@ -99,11 +99,11 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
           <div className="w-[220px] shrink-0 text-right space-y-1">
             <div className="flex items-center gap-3">
               {settings.logoUrl && (
-                <div className="w-14 h-14 shrink-0 flex items-center justify-center p-1 rounded-xl bg-white border border-[#c5a059]/40 shadow-2xs">
+                <div className="w-14 h-14 shrink-0 flex items-center justify-center p-0.5 rounded-full bg-white border-2 border-[#c5a059]/70 shadow-xs overflow-hidden">
                   <img
                     src={settings.logoUrl}
                     alt="شعار الجمعية"
-                    className="max-w-full max-h-full object-contain"
+                    className="w-full h-full object-contain rounded-full"
                   />
                 </div>
               )}

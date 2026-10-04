@@ -53,6 +53,7 @@ export function SettingsView({ settings, onSaveSettings, onClose }: SettingsView
   const [activeSection, setActiveSection] = useState<SettingsSection>('association');
   const [formData, setFormData] = useState<OrganizationSettings>({
     ...settings,
+    logoUrl: (!settings.logoUrl || settings.logoUrl.startsWith('data:image/svg+xml')) ? DEFAULT_SHARIA_LOGO : settings.logoUrl,
     calendarProvider: settings.calendarProvider || 'UMM_AL_QURA',
     timezone: settings.timezone || 'Africa/Cairo',
     countryId: settings.countryId || 1,
@@ -316,9 +317,9 @@ export function SettingsView({ settings, onSaveSettings, onClose }: SettingsView
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 items-center p-4 bg-[#fdfbf7] rounded-xl border border-amber-900/10">
                 <div className="text-center flex flex-col items-center justify-center space-y-2">
                   <span className="text-xs font-bold text-slate-700">معاينة الشعار الحالي</span>
-                  <div className="w-24 h-24 rounded-xl bg-white border border-slate-200 p-2 shadow-2xs flex items-center justify-center overflow-hidden">
+                  <div className="w-24 h-24 rounded-full bg-white border-2 border-amber-400/80 p-1 shadow-md flex items-center justify-center overflow-hidden ring-4 ring-emerald-500/10">
                     {formData.logoUrl ? (
-                      <img src={formData.logoUrl} alt="شعار الجمعية" className="max-w-full max-h-full object-contain" />
+                      <img src={formData.logoUrl} alt="شعار الجمعية" className="w-full h-full object-contain rounded-full" />
                     ) : (
                       <Building2 className="w-10 h-10 text-slate-300" />
                     )}

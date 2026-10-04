@@ -1,4 +1,5 @@
 import React from 'react';
+import { DEFAULT_SHARIA_LOGO } from '../../lib/defaultLogo.ts';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -58,39 +59,57 @@ export function Sidebar({
     { id: 'audit', label: 'سجل العمليات', icon: ScrollText },
   ];
 
+  const effectiveLogo = logoUrl || DEFAULT_SHARIA_LOGO;
+
   return (
     <aside
-      className="w-68 bg-gradient-to-b from-[#03261e] via-[#053d30] to-[#021c15] text-slate-100 border-l border-emerald-900/70 flex flex-col h-screen shrink-0 sticky top-0 select-none shadow-2xl z-40 relative overflow-hidden"
+      className="w-72 bg-gradient-to-b from-[#03261e] via-[#053d30] to-[#021c15] text-slate-100 border-l border-emerald-900/70 flex flex-col h-screen shrink-0 sticky top-0 select-none shadow-2xl z-40 relative overflow-hidden"
       dir="rtl"
     >
       {/* Decorative Islamic Geometric Pattern Watermark */}
       <div className="absolute inset-0 pointer-events-none islamic-pattern opacity-20"></div>
 
-      {/* Brand Zone */}
-      <div className="relative p-4 border-b border-emerald-900/80 bg-black/20 backdrop-blur-xs">
-        <div className="flex items-center gap-3">
-          {logoUrl ? (
-            <div className="w-12 h-12 rounded-xl bg-white p-1.5 flex items-center justify-center overflow-hidden shrink-0 shadow-lg border border-amber-400/40 ring-2 ring-emerald-500/20">
-              <img src={logoUrl} alt="شعار الجمعية" className="max-w-full max-h-full object-contain" />
-            </div>
-          ) : (
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-700 to-emerald-950 text-white flex items-center justify-center shadow-lg shadow-emerald-950/80 shrink-0 border border-amber-400/30 ring-2 ring-amber-400/20">
-              <Building2 className="w-6 h-6 text-amber-300 drop-shadow-xs" />
-            </div>
-          )}
+      {/* Brand Zone - Centered Hierarchy: Emblem -> الجمعية الشرعية - فرع منشأة البكاري -> برنامج منظم الجمعة -> v2 */}
+      <div className="relative p-5 pb-4 border-b border-emerald-900/80 bg-black/30 backdrop-blur-md flex flex-col items-center text-center">
+        {/* Emblem / Logo Centered on Top */}
+        <div
+          className="relative mb-3 group cursor-pointer"
+          onClick={() => onTabChange('dashboard')}
+          title="الرئيسية - منظّم الجمعة"
+        >
+          <div className="w-20 h-20 rounded-full bg-white p-1.5 flex items-center justify-center overflow-hidden shadow-2xl border-2 border-amber-400/80 ring-4 ring-emerald-500/30 group-hover:scale-105 group-hover:border-amber-300 transition-all duration-300">
+            <img
+              src={effectiveLogo}
+              alt="شعار الجمعية الشرعية"
+              className="w-full h-full object-contain rounded-full"
+            />
+          </div>
+          {/* Subtle Golden Glow behind logo */}
+          <div className="absolute inset-0 rounded-full bg-amber-400/20 filter blur-md -z-10 group-hover:bg-amber-400/35 transition-all"></div>
+        </div>
 
-          <div className="min-w-0">
-            <h1 className="font-heading font-extrabold text-white text-sm leading-tight truncate tracking-tight">
-              {associationName || 'الجمعية الشرعية'}
-            </h1>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-400/30 font-medium">
-                منظّم الجمعة
-              </span>
-              <span className="text-[10px] text-emerald-200/70 truncate">
-                {branchName || 'إدارة المساجد'}
-              </span>
-            </div>
+        {/* Text Stack Centered */}
+        <div className="flex flex-col items-center w-full px-1">
+          {/* الجمعية الشرعية - فرع منشأة البكاري */}
+          <h1 className="font-heading font-extrabold text-white text-[14px] sm:text-[15px] leading-tight tracking-tight drop-shadow-sm">
+            {associationName && branchName
+              ? `${associationName.replace(/لـ?مدينة\s*/g, '')} - ${branchName.split('—')[0].trim()}`
+              : 'الجمعية الشرعية - فرع منشأة البكاري'}
+          </h1>
+
+          {/* برنامج منظم الجمعة */}
+          <div className="mt-1 flex items-center justify-center gap-1.5">
+            <span className="text-xs font-bold text-amber-300 tracking-wide font-heading">
+              برنامج منظّم الجمعة
+            </span>
+          </div>
+
+          {/* v2 Pill Badge */}
+          <div className="mt-1.5 flex items-center justify-center">
+            <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-emerald-500/20 border border-amber-400/50 text-[11px] font-mono font-bold text-amber-200 shadow-inner">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+              v2
+            </span>
           </div>
         </div>
       </div>

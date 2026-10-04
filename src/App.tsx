@@ -69,7 +69,14 @@ export default function App() {
   const [organizationSettings, setOrganizationSettings] = useState<OrganizationSettings>(() => {
     try {
       const saved = localStorage.getItem('sharia_org_settings');
-      return saved ? JSON.parse(saved) : DEFAULT_ORGANIZATION_SETTINGS;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.logoUrl || parsed.logoUrl.startsWith('data:image/svg+xml')) {
+          parsed.logoUrl = DEFAULT_SHARIA_LOGO;
+        }
+        return parsed;
+      }
+      return DEFAULT_ORGANIZATION_SETTINGS;
     } catch {
       return DEFAULT_ORGANIZATION_SETTINGS;
     }
@@ -79,6 +86,9 @@ export default function App() {
     fetchApi<OrganizationSettings>('/api/settings')
       .then((res) => {
         if (res && res.associationName) {
+          if (!res.logoUrl || res.logoUrl.startsWith('data:image/svg+xml')) {
+            res.logoUrl = DEFAULT_SHARIA_LOGO;
+          }
           setOrganizationSettings(res);
           localStorage.setItem('sharia_org_settings', JSON.stringify(res));
         }
