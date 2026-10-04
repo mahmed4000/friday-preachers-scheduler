@@ -11,11 +11,20 @@ var __require = /* @__PURE__ */ ((x2) => typeof require !== "undefined" ? requir
   if (typeof require !== "undefined") return require.apply(this, arguments);
   throw Error('Dynamic require of "' + x2 + '" is not supported');
 });
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e2) {
+    throw err = [e2], e2;
+  }
 };
 var __commonJS = (cb, mod3) => function __require2() {
-  return mod3 || (0, cb[__getOwnPropNames(cb)[0]])((mod3 = { exports: {} }).exports, mod3), mod3.exports;
+  try {
+    return mod3 || (0, cb[__getOwnPropNames(cb)[0]])((mod3 = { exports: {} }).exports, mod3), mod3.exports;
+  } catch (e2) {
+    throw mod3 = 0, e2;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -15309,7 +15318,7 @@ var require_shams = __commonJS({
         return true;
       }
       var obj = {};
-      var sym = Symbol("test");
+      var sym = /* @__PURE__ */ Symbol("test");
       var symObj = Object(sym);
       if (typeof sym === "string") {
         return false;
@@ -15368,7 +15377,7 @@ var require_has_symbols = __commonJS({
       if (typeof origSymbol("foo") !== "symbol") {
         return false;
       }
-      if (typeof Symbol("bar") !== "symbol") {
+      if (typeof /* @__PURE__ */ Symbol("bar") !== "symbol") {
         return false;
       }
       return hasSymbolSham();
@@ -26054,8 +26063,8 @@ var require_split2 = __commonJS({
     "use strict";
     var { Transform } = __require("stream");
     var { StringDecoder } = __require("string_decoder");
-    var kLast = Symbol("last");
-    var kDecoder = Symbol("decoder");
+    var kLast = /* @__PURE__ */ Symbol("last");
+    var kDecoder = /* @__PURE__ */ Symbol("decoder");
     function transform2(chunk, enc, cb) {
       let list;
       if (this.overflow) {
@@ -28063,11 +28072,10 @@ function is(value, type) {
   }
   return false;
 }
-var entityKind, hasOwnEntityKind;
+var entityKind;
 var init_entity = __esm({
   "node_modules/drizzle-orm/entity.js"() {
-    entityKind = Symbol.for("drizzle:entityKind");
-    hasOwnEntityKind = Symbol.for("drizzle:hasOwnEntityKind");
+    entityKind = /* @__PURE__ */ Symbol.for("drizzle:entityKind");
   }
 });
 
@@ -28308,7 +28316,7 @@ var init_column_builder = __esm({
 var TableName;
 var init_table_utils = __esm({
   "node_modules/drizzle-orm/table.utils.js"() {
-    TableName = Symbol.for("drizzle:Name");
+    TableName = /* @__PURE__ */ Symbol.for("drizzle:Name");
   }
 });
 
@@ -28777,7 +28785,7 @@ var init_enum = __esm({
         return this.enum.enumName;
       }
     };
-    isPgEnumSym = Symbol.for("drizzle:isPgEnum");
+    isPgEnumSym = /* @__PURE__ */ Symbol.for("drizzle:isPgEnum");
     PgEnumColumnBuilder = class extends PgColumnBuilder {
       static [entityKind] = "PgEnumColumnBuilder";
       constructor(name, enumInstance) {
@@ -28886,7 +28894,7 @@ var init_tracing = __esm({
 var ViewBaseConfig;
 var init_view_common = __esm({
   "node_modules/drizzle-orm/view-common.js"() {
-    ViewBaseConfig = Symbol.for("drizzle:ViewBaseConfig");
+    ViewBaseConfig = /* @__PURE__ */ Symbol.for("drizzle:ViewBaseConfig");
   }
 });
 
@@ -28902,14 +28910,14 @@ var init_table = __esm({
   "node_modules/drizzle-orm/table.js"() {
     init_entity();
     init_table_utils();
-    Schema = Symbol.for("drizzle:Schema");
-    Columns = Symbol.for("drizzle:Columns");
-    ExtraConfigColumns = Symbol.for("drizzle:ExtraConfigColumns");
-    OriginalName = Symbol.for("drizzle:OriginalName");
-    BaseName = Symbol.for("drizzle:BaseName");
-    IsAlias = Symbol.for("drizzle:IsAlias");
-    ExtraConfigBuilder = Symbol.for("drizzle:ExtraConfigBuilder");
-    IsDrizzleTable = Symbol.for("drizzle:IsDrizzleTable");
+    Schema = /* @__PURE__ */ Symbol.for("drizzle:Schema");
+    Columns = /* @__PURE__ */ Symbol.for("drizzle:Columns");
+    ExtraConfigColumns = /* @__PURE__ */ Symbol.for("drizzle:ExtraConfigColumns");
+    OriginalName = /* @__PURE__ */ Symbol.for("drizzle:OriginalName");
+    BaseName = /* @__PURE__ */ Symbol.for("drizzle:BaseName");
+    IsAlias = /* @__PURE__ */ Symbol.for("drizzle:IsAlias");
+    ExtraConfigBuilder = /* @__PURE__ */ Symbol.for("drizzle:ExtraConfigBuilder");
+    IsDrizzleTable = /* @__PURE__ */ Symbol.for("drizzle:IsDrizzleTable");
     Table = class {
       static [entityKind] = "Table";
       /** @internal */
@@ -29331,7 +29339,7 @@ var init_sql = __esm({
         return new SQL([this]);
       }
     };
-    IsDrizzleView = Symbol.for("drizzle:IsDrizzleView");
+    IsDrizzleView = /* @__PURE__ */ Symbol.for("drizzle:IsDrizzleView");
     View = class {
       static [entityKind] = "View";
       /** @internal */
@@ -31413,8 +31421,8 @@ var init_table2 = __esm({
     init_entity();
     init_table();
     init_all();
-    InlineForeignKeys = Symbol.for("drizzle:PgInlineForeignKeys");
-    EnableRLS = Symbol.for("drizzle:EnableRLS");
+    InlineForeignKeys = /* @__PURE__ */ Symbol.for("drizzle:PgInlineForeignKeys");
+    EnableRLS = /* @__PURE__ */ Symbol.for("drizzle:EnableRLS");
     PgTable = class extends Table {
       static [entityKind] = "PgTable";
       /** @internal */
@@ -31695,7 +31703,7 @@ var init_primary_keys = __esm({
 var PgViewConfig;
 var init_view_common2 = __esm({
   "node_modules/drizzle-orm/pg-core/view-common.js"() {
-    PgViewConfig = Symbol.for("drizzle:PgViewConfig");
+    PgViewConfig = /* @__PURE__ */ Symbol.for("drizzle:PgViewConfig");
   }
 });
 
@@ -34563,7 +34571,7 @@ var init_view = __esm({
         }
       }
     };
-    PgMaterializedViewConfig = Symbol.for("drizzle:PgMaterializedViewConfig");
+    PgMaterializedViewConfig = /* @__PURE__ */ Symbol.for("drizzle:PgMaterializedViewConfig");
     PgMaterializedView = class extends PgViewBase {
       static [entityKind] = "PgMaterializedView";
       [PgMaterializedViewConfig];
@@ -37135,7 +37143,7 @@ var require_common = __commonJS({
     var extend_1 = __importDefault2(require_extend());
     var util_cjs_1 = __importDefault2(require_util());
     var pkg = util_cjs_1.default.pkg;
-    exports.GAXIOS_ERROR_SYMBOL = Symbol.for(`${pkg.name}-gaxios-error`);
+    exports.GAXIOS_ERROR_SYMBOL = /* @__PURE__ */ Symbol.for(`${pkg.name}-gaxios-error`);
     var GaxiosError = class _GaxiosError extends Error {
       config;
       response;
@@ -38239,7 +38247,7 @@ var require_dist2 = __commonJS({
     var http3 = __importStar2(__require("http"));
     var https_1 = __require("https");
     __exportStar2(require_helpers(), exports);
-    var INTERNAL = Symbol("AgentBaseInternalState");
+    var INTERNAL = /* @__PURE__ */ Symbol("AgentBaseInternalState");
     var Agent = class extends http3.Agent {
       constructor(opts) {
         super(opts);
@@ -38810,11 +38818,11 @@ var require_ponyfill_es2018 = __commonJS({
           return front._elements[cursor];
         }
       }
-      const AbortSteps = Symbol("[[AbortSteps]]");
-      const ErrorSteps = Symbol("[[ErrorSteps]]");
-      const CancelSteps = Symbol("[[CancelSteps]]");
-      const PullSteps = Symbol("[[PullSteps]]");
-      const ReleaseSteps = Symbol("[[ReleaseSteps]]");
+      const AbortSteps = /* @__PURE__ */ Symbol("[[AbortSteps]]");
+      const ErrorSteps = /* @__PURE__ */ Symbol("[[ErrorSteps]]");
+      const CancelSteps = /* @__PURE__ */ Symbol("[[CancelSteps]]");
+      const PullSteps = /* @__PURE__ */ Symbol("[[PullSteps]]");
+      const ReleaseSteps = /* @__PURE__ */ Symbol("[[ReleaseSteps]]");
       function ReadableStreamReaderGenericInitialize(reader, stream) {
         reader._ownerReadableStream = stream;
         stream._reader = reader;
@@ -43878,7 +43886,7 @@ var init_body = __esm({
     init_base();
     init_is();
     pipeline = promisify(Stream.pipeline);
-    INTERNALS = Symbol("Body internals");
+    INTERNALS = /* @__PURE__ */ Symbol("Body internals");
     Body = class {
       constructor(body, {
         size = 0
@@ -44248,7 +44256,7 @@ var init_headers = __esm({
       /**
        * For better console.log(headers) and also to convert Headers into Node.js Request compatible format
        */
-      [Symbol.for("nodejs.util.inspect.custom")]() {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
         return [...this.keys()].reduce((result, key) => {
           const values = this.getAll(key);
           if (key === "host") {
@@ -44288,7 +44296,7 @@ var init_response = __esm({
     init_headers();
     init_body();
     init_is_redirect();
-    INTERNALS2 = Symbol("Response internals");
+    INTERNALS2 = /* @__PURE__ */ Symbol("Response internals");
     Response2 = class _Response extends Body {
       constructor(body = null, options = {}) {
         super(body, options);
@@ -44578,7 +44586,7 @@ var init_request = __esm({
     init_is();
     init_get_search();
     init_referrer();
-    INTERNALS3 = Symbol("Request internals");
+    INTERNALS3 = /* @__PURE__ */ Symbol("Request internals");
     isRequest = (object) => {
       return typeof object === "object" && typeof object[INTERNALS3] === "object";
     };
@@ -44759,7 +44767,7 @@ var init_request = __esm({
         path: parsedURL.pathname + search,
         // The following options are not expressed in the URL
         method: request.method,
-        headers: headers[Symbol.for("nodejs.util.inspect.custom")](),
+        headers: headers[/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")](),
         insecureHTTPParser: request.insecureHTTPParser,
         agent
       };
@@ -48845,8 +48853,8 @@ var require_authclient = __commonJS({
        * making an RPC call, for logging purposes, as well as a string ID that can be
        * used to correlate calls and responses.
        */
-      static RequestMethodNameSymbol = Symbol("request method name");
-      static RequestLogIdSymbol = Symbol("request log id");
+      static RequestMethodNameSymbol = /* @__PURE__ */ Symbol("request method name");
+      static RequestLogIdSymbol = /* @__PURE__ */ Symbol("request log id");
       constructor(opts = {}) {
         super();
         const options = (0, util_1.originalOrCamelOptions)(opts);
@@ -54056,7 +54064,7 @@ var require_gdchclient = __commonJS({
           }
         };
       }
-      [Symbol.for("nodejs.util.inspect.custom")]() {
+      [/* @__PURE__ */ Symbol.for("nodejs.util.inspect.custom")]() {
         return this.toJSON();
       }
       base64UrlEncode(str) {
@@ -65880,7 +65888,7 @@ var require_range2 = __commonJS({
 var require_comparator = __commonJS({
   "node_modules/semver/classes/comparator.js"(exports, module) {
     "use strict";
-    var ANY = Symbol("SemVer ANY");
+    var ANY = /* @__PURE__ */ Symbol("SemVer ANY");
     var Comparator = class _Comparator {
       static get ANY() {
         return ANY;
@@ -114335,7 +114343,7 @@ var require_helpers2 = __commonJS({
       return timeNow + expiresIn;
     }
     function generateCallbackId() {
-      return Symbol("auth-callback");
+      return /* @__PURE__ */ Symbol("auth-callback");
     }
     var isBrowser = () => typeof window !== "undefined" && typeof document !== "undefined";
     exports.isBrowser = isBrowser;
@@ -125515,7 +125523,7 @@ __export(dist_exports, {
 });
 
 // node_modules/@supabase/supabase-js/dist/tracingRegistry.mjs
-var EXTRACTOR_KEY = Symbol.for("@supabase/supabase-js.traceContextExtractor");
+var EXTRACTOR_KEY = /* @__PURE__ */ Symbol.for("@supabase/supabase-js.traceContextExtractor");
 function getTraceContextExtractor() {
   return globalThis[EXTRACTOR_KEY];
 }
