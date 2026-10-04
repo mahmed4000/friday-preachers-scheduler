@@ -69646,7 +69646,7 @@ function parseProtectedHeader(encodedProtected) {
 function encodeJsonUnencodedPayload(payload) {
   const invalid2 = /[\p{Cs}\p{Cn}]/u.exec(payload)?.[0];
   if (invalid2 !== void 0)
-    throw new JWSInvalid(/\p{Cs}/u.test(invalid2) ? "JWS Payload must be a well-formed Unicode string" : "JWS Payload must not contain unassigned Unicode code points");
+    throw new JWSInvalid(new RegExp("\\p{Cs}", "u").test(invalid2) ? "JWS Payload must be a well-formed Unicode string" : "JWS Payload must not contain unassigned Unicode code points");
   return encoder.encode(payload);
 }
 function encodeCompactUnencodedPayload(payload) {
