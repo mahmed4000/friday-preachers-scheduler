@@ -125,13 +125,14 @@ api.post('/calendar/sync', async (req: AuthRequest, res: Response) => {
 });
 
 api.get('/dashboard', async (req: Request, res: Response) => {
-  try {
-    const currentDT = CalendarService.getCurrentDateTime();
-    let hijriYear = req.query.hijriYear ? Number(req.query.hijriYear) : currentDT.hijri.year;
-    let hijriMonth = req.query.hijriMonth ? Number(req.query.hijriMonth) : currentDT.hijri.month;
+  const currentDT = CalendarService.getCurrentDateTime();
+  let hijriYear = req.query.hijriYear ? Number(req.query.hijriYear) : currentDT.hijri.year;
+  let hijriMonth = req.query.hijriMonth ? Number(req.query.hijriMonth) : currentDT.hijri.month;
 
-    if (isNaN(hijriYear) || hijriYear < 1300 || hijriYear > 1600) hijriYear = currentDT.hijri.year;
-    if (isNaN(hijriMonth) || hijriMonth < 1 || hijriMonth > 12) hijriMonth = currentDT.hijri.month;
+  if (isNaN(hijriYear) || hijriYear < 1300 || hijriYear > 1600) hijriYear = currentDT.hijri.year;
+  if (isNaN(hijriMonth) || hijriMonth < 1 || hijriMonth > 12) hijriMonth = currentDT.hijri.month;
+
+  try {
 
     // 1. Central Hijri Month Details from CalendarService
     const monthDetails = CalendarService.getHijriMonthDetails(hijriYear, hijriMonth);
@@ -601,10 +602,10 @@ api.put('/settings', async (req: AuthRequest, res: Response) => {
 // 2. Mosques Endpoints
 // -------------------------------------------------------------
 api.get('/mosques', async (req: Request, res: Response) => {
-  try {
-    const search = (req.query.search as string) || '';
-    const region = (req.query.region as string) || '';
+  const search = (req.query.search as string) || '';
+  const region = (req.query.region as string) || '';
 
+  try {
     const list = await db.select().from(mosques).orderBy(asc(mosques.id));
     const allImams = await db.select().from(imams);
     const imamMap = new Map(allImams.map((i) => [i.id, i.name]));
@@ -1489,10 +1490,10 @@ api.delete('/rules/:id', async (req: AuthRequest, res: Response) => {
 // 3. Imams Endpoints
 // -------------------------------------------------------------
 api.get('/imams', async (req: Request, res: Response) => {
-  try {
-    const search = (req.query.search as string) || '';
-    const type = (req.query.type as string) || '';
+  const search = (req.query.search as string) || '';
+  const type = (req.query.type as string) || '';
 
+  try {
     const list = await db.select().from(imams).orderBy(asc(imams.id));
     let filtered = list;
 
@@ -4312,6 +4313,9 @@ api.post('/system/export-seed', async (req: AuthRequest, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ error: 'تعذر حفظ وتثبيت المعطيات الحالية', details: error.message });
+  }
+});
+
 // -------------------------------------------------------------
 // 8. Supabase Cloud Database Integration & Sync Endpoints
 // -------------------------------------------------------------

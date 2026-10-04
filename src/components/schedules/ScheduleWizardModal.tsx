@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Modal } from '../common/Modal.tsx';
-import { Mosque, Imam } from '../../types/index.ts';
+import { Mosque, Imam, MosqueImamRule } from '../../types/index.ts';
 import {
   CalendarDays,
   CheckCircle2,
@@ -25,6 +25,7 @@ interface ScheduleWizardModalProps {
   onClose: () => void;
   mosques: Mosque[];
   imams: Imam[];
+  rules?: MosqueImamRule[];
   onScheduleCreated: (newScheduleId: number) => void;
 }
 
@@ -33,6 +34,7 @@ export function ScheduleWizardModal({
   onClose,
   mosques,
   imams,
+  rules = [],
   onScheduleCreated,
 }: ScheduleWizardModalProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);

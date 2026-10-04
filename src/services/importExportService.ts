@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import {
+import type {
   ImportExportEntityType,
   ImportExportFormat,
   ImportMode,
@@ -84,8 +84,11 @@ export function isValidEgyptianPhone(phone: any): boolean {
   if (!phone) return true; // Optional field validity
   const clean = normalizePhoneNumber(phone);
   if (!clean) return true;
-  // Valid phone number length check (7 to 15 digits)
-  return /^[0-9+]{7,15}$/.test(clean);
+  // Egyptian mobiles: 010, 011, 012, 015 followed by 8 digits (11 digits total)
+  if (/^01[0125][0-9]{8}$/.test(clean)) return true;
+  // Egyptian landlines: 02, 03, 04x, etc. (8 to 10 digits)
+  if (/^0[2-9][0-9]{7,8}$/.test(clean) && !clean.startsWith('01')) return true;
+  return false;
 }
 
 // -------------------------------------------------------------

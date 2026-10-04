@@ -639,6 +639,7 @@ export default function App() {
         onClose={() => setIsWizardOpen(false)}
         mosques={mosques}
         imams={imams}
+        rules={rules}
         onScheduleCreated={(newId) => {
           loadInitialData().then(() => {
             setActiveScheduleId(newId);

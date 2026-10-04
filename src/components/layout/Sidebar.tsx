@@ -10,6 +10,7 @@ import {
   ScrollText,
   Settings as SettingsIcon,
   ShieldCheck,
+  Database,
 } from 'lucide-react';
 
 export type NavItem =

@@ -33,6 +33,7 @@ test('Phase 2 Drag & Drop and Mutual Swap Validation', async (t) => {
     assert.ok(swapResult, 'Swap result must not be null');
 
     const updatedDetails = memoryStore.getScheduleDetails(sched.id);
+    assert.ok(updatedDetails, 'Updated details must exist');
     const updatedA1 = updatedDetails.assignments.find((a: Assignment) => a.id === a1.id);
     const updatedA2 = updatedDetails.assignments.find((a: Assignment) => a.id === a2.id);
 
@@ -50,6 +51,7 @@ test('Phase 2 Drag & Drop and Mutual Swap Validation', async (t) => {
     memoryStore.generateSchedule(sched.id, 'Balanced Random');
 
     const details = memoryStore.getScheduleDetails(sched.id);
+    assert.ok(details);
     const assigns = details.assignments.filter((a: Assignment) => a.fridayIndex === 2);
     assert.ok(assigns.length >= 2);
 
@@ -63,6 +65,7 @@ test('Phase 2 Drag & Drop and Mutual Swap Validation', async (t) => {
     memoryStore.swapAssignments(sched.id, occupied.id, vacant.id, 'Move to vacant slot');
 
     const afterDetails = memoryStore.getScheduleDetails(sched.id);
+    assert.ok(afterDetails);
     const afterOccupied = afterDetails.assignments.find((a: Assignment) => a.id === occupied.id);
     const afterVacant = afterDetails.assignments.find((a: Assignment) => a.id === vacant.id);
 
@@ -78,6 +81,7 @@ test('Phase 2 Drag & Drop and Mutual Swap Validation', async (t) => {
     memoryStore.generateSchedule(sched.id, 'Balanced Random');
 
     const details = memoryStore.getScheduleDetails(sched.id);
+    assert.ok(details);
     const firstAssign = details.assignments[0];
     assert.ok(firstAssign);
 
