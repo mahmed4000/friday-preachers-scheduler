@@ -297,6 +297,13 @@ export class CalendarService {
   }
 
   /**
+   * جلب اسم الشهر الهجري بدلالة رقمه
+   */
+  public static getHijriMonthName(monthNumber: number): string {
+    return HIJRI_MONTH_NAMES[monthNumber] || `الشهر ${monthNumber}`;
+  }
+
+  /**
    * مزامنة وتحديث حالة التقويم والوقت
    */
   public static syncCalendar(options?: CalendarServiceOptions): CurrentDateTimeInfo {

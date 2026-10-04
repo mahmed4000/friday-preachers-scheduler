@@ -657,9 +657,12 @@ export default function App() {
         mosques={mosques}
         imams={imams}
         rules={rules}
+        schedules={schedules}
         onScheduleCreated={(newId) => {
+          setIsWizardOpen(false);
           loadInitialData().then(() => {
             setActiveScheduleId(newId);
+            loadScheduleDetails(newId);
             setCurrentTab('schedules');
           });
         }}

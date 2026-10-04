@@ -38,6 +38,7 @@ import { KhutbahTopicsModal } from '../topics/KhutbahTopicsModal.tsx';
 import { PreacherMobileCardModal } from '../portal/PreacherMobileCardModal.tsx';
 import { fetchApi } from '../../lib/api.ts';
 import { ClickableMosque, ClickableImam } from '../../context/ProfileNavigationContext.tsx';
+import { CalendarService } from '../../services/calendar/calendarService.ts';
 
 interface ScheduleReviewBoardProps {
   schedule: MonthlySchedule;
@@ -349,137 +350,147 @@ export function ScheduleReviewBoard({
       )}
 
       {/* Top Header Card */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xs space-y-3">
+        {/* Row 1: Title, Month, Version, Badges & Back Button */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <button
               onClick={onBackToList}
-              className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1 text-xs font-semibold"
+              className="p-1.5 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold shrink-0 cursor-pointer"
             >
               <ArrowRight className="w-4 h-4" />
               <span>الجداول</span>
             </button>
-            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700"></div>
-            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100 font-heading">
-              جدول شهر {schedule.monthName} {schedule.hijriYear} هـ
+            <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 shrink-0"></div>
+            
+            <h3 className="text-xl font-extrabold text-slate-900 dark:text-slate-100 font-heading whitespace-nowrap flex items-center gap-2">
+              <span>جدول شهر {schedule.monthName || CalendarService.getHijriMonthName(schedule.hijriMonth)}</span>
+              <span className="text-emerald-700 dark:text-emerald-400">{schedule.hijriYear} هـ</span>
             </h3>
-            <span className="text-xs font-mono text-slate-500 dark:text-slate-400">· الإصدار V{schedule.currentVersion}</span>
-            {schedule.status === 'APPROVED' && <Badge variant="success">معتمد 🟢</Badge>}
-            {schedule.status === 'PUBLISHED' && <Badge variant="purple">منشور 🟣</Badge>}
-            {schedule.status === 'NEEDS_REAPPROVAL' && <Badge variant="warning">بحاجة لإعادة اعتماد ⚠️</Badge>}
-            {schedule.status === 'REVIEW' && <Badge variant="info">قيد المراجعة 🔵</Badge>}
+
+            <span className="text-xs font-mono text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 whitespace-nowrap">
+              الإصدار V{schedule.currentVersion}
+            </span>
+
+            <div className="whitespace-nowrap shrink-0">
+              {schedule.status === 'APPROVED' && <Badge variant="success">معتمد 🟢</Badge>}
+              {schedule.status === 'PUBLISHED' && <Badge variant="purple">منشور 🟣</Badge>}
+              {schedule.status === 'NEEDS_REAPPROVAL' && <Badge variant="warning">بحاجة لإعادة اعتماد ⚠️</Badge>}
+              {schedule.status === 'REVIEW' && <Badge variant="info">قيد المراجعة 🔵</Badge>}
+            </div>
           </div>
 
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-xs font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
             {schedule.fridaysCount} جمعات · {mosques.filter((m) => m.isActive).length} مسجداً ·{' '}
             {assignments.length} تعييناً
           </p>
         </div>
 
-        {/* View Switcher & Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Row 2: View Switchers & Action Buttons */}
+        <div className="flex flex-wrap items-center justify-between gap-2.5">
           {/* View Mode Tabs */}
           <div className="flex items-center p-0.5 bg-slate-100 dark:bg-slate-800 rounded-lg">
             <button
               onClick={() => setViewMode('byMosque')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'byMosque'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Building2 className="w-3.5 h-3.5" />
+              <Building2 className="w-3.5 h-3.5 text-emerald-700" />
               <span>حسب المساجد</span>
             </button>
             <button
               onClick={() => setViewMode('byImam')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'byImam'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Users2 className="w-3.5 h-3.5" />
+              <Users2 className="w-3.5 h-3.5 text-sky-700" />
               <span>حسب الخطباء</span>
             </button>
             <button
               onClick={() => setViewMode('byFriday')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all flex items-center gap-1.5 cursor-pointer ${
                 viewMode === 'byFriday'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100 shadow-xs font-bold'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
               }`}
             >
-              <Calendar className="w-3.5 h-3.5" />
+              <Calendar className="w-3.5 h-3.5 text-amber-700" />
               <span>حسب الجمعة</span>
             </button>
           </div>
 
-          <div className="h-5 w-px bg-slate-200 dark:bg-slate-700"></div>
+          {/* Action Tools */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Conflict Center Trigger */}
+            <button
+              onClick={() => setIsConflictModalOpen(true)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 border cursor-pointer ${
+                criticalConflicts.length > 0
+                  ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs animate-pulse'
+                  : conflicts.length > 0
+                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>مركز التعارضات ({conflicts.length})</span>
+            </button>
 
-          {/* Conflict Center Trigger */}
-          <button
-            onClick={() => setIsConflictModalOpen(true)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 border ${
-              criticalConflicts.length > 0
-                ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 border-rose-300 dark:border-rose-700 shadow-xs animate-pulse'
-                : conflicts.length > 0
-                ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 border-amber-300 dark:border-amber-700'
-                : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
-            }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            <span>مركز التعارضات ({conflicts.length})</span>
-          </button>
+            {/* Redistribute Trigger */}
+            <button
+              onClick={() => setIsRedistributeModalOpen(true)}
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
+            >
+              <RotateCw className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
+              <span>إعادة التوزيع</span>
+            </button>
 
-          {/* Redistribute Trigger */}
-          <button
-            onClick={() => setIsRedistributeModalOpen(true)}
-            className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700 cursor-pointer"
-          >
-            <RotateCw className="w-3.5 h-3.5 text-slate-600 dark:text-slate-400" />
-            <span>إعادة التوزيع</span>
-          </button>
+            {/* Approval Trigger */}
+            <button
+              onClick={() => setIsApproveModalOpen(true)}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs cursor-pointer ${
+                isScheduleApproved
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                  : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{isScheduleApproved ? 'معتمد رسمي (إعادة اعتماد)' : 'اعتماد الجدول'}</span>
+            </button>
 
-          {/* Approval Trigger */}
-          <button
-            onClick={() => setIsApproveModalOpen(true)}
-            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-xs ${
-              isScheduleApproved
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
-                : 'bg-emerald-700 hover:bg-emerald-800 text-white'
-            }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>{isScheduleApproved ? 'معتمد رسمي (إعادة اعتماد)' : 'اعتماد الجدول'}</span>
-          </button>
+            {/* Khutbah Topics Button */}
+            <button
+              onClick={() => setIsTopicsModalOpen(true)}
+              className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-amber-700" />
+              <span>موضوعات الخطب</span>
+            </button>
 
-          {/* Khutbah Topics Button */}
-          <button
-            onClick={() => setIsTopicsModalOpen(true)}
-            className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:bg-amber-100 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <BookOpen className="w-3.5 h-3.5 text-amber-700" />
-            <span>موضوعات الخطب</span>
-          </button>
+            {/* Official Waqf Decree & Printable A4 */}
+            <button
+              onClick={() => setIsDecreeModalOpen(true)}
+              className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Award className="w-3.5 h-3.5 text-amber-300" />
+              <span>الكشف الرسمي (A4)</span>
+            </button>
 
-          {/* Official Waqf Decree & Printable A4 */}
-          <button
-            onClick={() => setIsDecreeModalOpen(true)}
-            className="px-3 py-1.5 bg-emerald-800 hover:bg-emerald-900 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-          >
-            <Award className="w-3.5 h-3.5 text-amber-300" />
-            <span>الكشف الرسمي (A4)</span>
-          </button>
-
-          {/* Publishing Center */}
-          <button
-            onClick={onNavigateToPublishing}
-            className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>النشر والرسائل</span>
-          </button>
+            {/* Publishing Center */}
+            <button
+              onClick={onNavigateToPublishing}
+              className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 dark:bg-emerald-700 dark:hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>النشر والرسائل</span>
+            </button>
+          </div>
         </div>
       </div>
 

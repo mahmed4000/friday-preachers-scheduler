@@ -124637,6 +124637,12 @@ var CalendarService = class {
     }));
   }
   /**
+   * جلب اسم الشهر الهجري بدلالة رقمه
+   */
+  static getHijriMonthName(monthNumber) {
+    return HIJRI_MONTH_NAMES[monthNumber] || `\u0627\u0644\u0634\u0647\u0631 ${monthNumber}`;
+  }
+  /**
    * مزامنة وتحديث حالة التقويم والوقت
    */
   static syncCalendar(options) {
@@ -136798,8 +136804,12 @@ api.post("/schedules", async (req, res) => {
       )
     );
     if (existing.length > 0) {
-      return res.status(400).json({
-        error: `\u064A\u0648\u062C\u062F \u0628\u0627\u0644\u0641\u0639\u0644 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 ${existing[0].monthName} ${hYear} \u0647\u0640 (\u0627\u0644\u062C\u062F\u0648\u0644 #${existing[0].id})`
+      return res.status(200).json({
+        ...existing[0],
+        isExisting: true,
+        periodStatus: periodValidation.periodStatus,
+        statusLabelArabic: periodValidation.monthDetails.statusLabelArabic,
+        monthDetails: periodValidation.monthDetails
       });
     }
     const monthDetails = periodValidation.monthDetails;
@@ -136856,7 +136866,7 @@ api.post("/schedules", async (req, res) => {
         req.user?.email
       );
       if (fallbackResult.isDuplicate) {
-        return res.status(400).json({ error: fallbackResult.error });
+        return res.status(200).json({ ...fallbackResult.schedule, isExisting: true });
       }
       return res.status(201).json(fallbackResult);
     } catch (fbError) {

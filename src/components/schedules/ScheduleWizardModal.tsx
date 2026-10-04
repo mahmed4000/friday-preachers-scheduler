@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Modal } from '../common/Modal.tsx';
-import { Mosque, Imam, MosqueImamRule } from '../../types/index.ts';
+import { Mosque, Imam, MosqueImamRule, MonthlySchedule } from '../../types/index.ts';
 import {
   CalendarDays,
   CheckCircle2,
@@ -26,6 +26,7 @@ interface ScheduleWizardModalProps {
   mosques: Mosque[];
   imams: Imam[];
   rules?: MosqueImamRule[];
+  schedules?: MonthlySchedule[];
   onScheduleCreated: (newScheduleId: number) => void;
 }
 
@@ -35,6 +36,7 @@ export function ScheduleWizardModal({
   mosques,
   imams,
   rules = [],
+  schedules = [],
   onScheduleCreated,
 }: ScheduleWizardModalProps) {
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
@@ -51,6 +53,21 @@ export function ScheduleWizardModal({
   // Step 1: Hijri-First Month selection
   const [hijriYear, setHijriYear] = useState<number>(initialDefault.hijriYear);
   const [hijriMonth, setHijriMonth] = useState<number>(initialDefault.hijriMonth);
+
+  // Critical UX Fix: Whenever the wizard opens, ALWAYS reset cleanly to Step 1
+  useEffect(() => {
+    if (isOpen) {
+      setStep(1);
+      setPastMonthAttemptError(null);
+      setGenerationPhase(0);
+      setGenerationLog([]);
+      setGenerationResult(null);
+      setCreatedScheduleId(null);
+      const def = CalendarService.getDefaultWizardMonth();
+      setHijriYear(def.hijriYear);
+      setHijriMonth(def.hijriMonth);
+    }
+  }, [isOpen]);
 
   // Dynamically calculate authoritative month details via Calendar Provider
   const monthDetails: HijriMonthDetails = useMemo(() => {
@@ -237,7 +254,9 @@ export function ScheduleWizardModal({
           '✓ فحص النتائج وكشف التعارضات والتأكد من سلامة الجداول...',
           '✅ اكتمل التوزيع بنجاح وفق تقويم أم القرى (وضع التشغيل المباشر)!',
         ]);
-        setCreatedScheduleId(createdScheduleId || 1);
+        const existingSched = schedules?.find((s) => s.hijriYear === hijriYear && s.hijriMonth === hijriMonth);
+        const resolvedId = createdScheduleId || existingSched?.id || null;
+        if (resolvedId) setCreatedScheduleId(resolvedId);
         setGenerationResult(clientResult);
         setStep(5);
       } catch (localErr: any) {
@@ -250,8 +269,10 @@ export function ScheduleWizardModal({
   };
 
   const handleFinish = () => {
-    if (createdScheduleId) {
-      onScheduleCreated(createdScheduleId);
+    const existingSched = schedules?.find((s) => s.hijriYear === hijriYear && s.hijriMonth === hijriMonth);
+    const targetId = createdScheduleId || existingSched?.id;
+    if (targetId) {
+      onScheduleCreated(targetId);
     }
     onClose();
   };
@@ -405,16 +426,19 @@ export function ScheduleWizardModal({
                   const isPast = m.isPast;
                   const isCurrent = m.isCurrent;
                   const isFuture = m.isFuture;
+                  const hasSchedule = schedules?.some(
+                    (s) => s.hijriYear === hijriYear && s.hijriMonth === m.number
+                  );
 
                   let badgeColor = 'bg-slate-100 text-slate-500 border-slate-200';
                   if (isCurrent) badgeColor = 'bg-emerald-100 text-emerald-900 border-emerald-300 font-bold';
                   if (isFuture) badgeColor = 'bg-sky-50 text-sky-800 border-sky-200';
 
-                  let btnStyle = 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 cursor-pointer';
+                  let btnStyle = 'bg-white text-slate-700 border-slate-200 hover:border-emerald-400 hover:bg-slate-50 cursor-pointer shadow-2xs';
                   if (isSelected) {
-                    btnStyle = 'bg-emerald-950 text-white border-emerald-900 font-bold shadow-sm cursor-pointer';
+                    btnStyle = 'bg-gradient-to-br from-emerald-900 to-emerald-950 text-white border-2 border-amber-400 ring-2 ring-emerald-500/30 font-bold shadow-md cursor-pointer scale-[1.02]';
                   } else if (isPast) {
-                    btnStyle = 'bg-slate-100/70 text-slate-400 border-slate-200/80 cursor-not-allowed opacity-60';
+                    btnStyle = 'bg-slate-100/70 text-slate-400 border-slate-200/80 cursor-not-allowed opacity-50';
                   }
 
                   return (
@@ -422,23 +446,30 @@ export function ScheduleWizardModal({
                       key={m.number}
                       type="button"
                       onClick={() => handleSelectMonth(m)}
-                      className={`p-2 rounded-xl border text-right transition-all flex flex-col justify-between h-20 ${btnStyle}`}
+                      className={`p-2.5 rounded-xl border text-right transition-all flex flex-col justify-between h-22 ${btnStyle}`}
                       title={isPast ? 'هذا الشهر انتهى بالفعل ولا يمكن إنشاء جدول جديد له' : m.name}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <span className="text-[10px] font-mono opacity-70">#{m.number}</span>
-                        <span
-                          className={`text-[9px] px-1.5 py-0.2 rounded border ${
-                            isSelected ? 'bg-amber-400/30 text-amber-200 border-amber-300/40' : badgeColor
-                          }`}
-                        >
-                          {m.statusLabelArabic}
-                        </span>
+                        <span className={`text-[10px] font-mono ${isSelected ? 'text-amber-300' : 'opacity-70'}`}>#{m.number}</span>
+                        <div className="flex items-center gap-1">
+                          {hasSchedule && (
+                            <span className="text-[8px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                              مُنشأ
+                            </span>
+                          )}
+                          <span
+                            className={`text-[9px] px-1.5 py-0.2 rounded border ${
+                              isSelected ? 'bg-amber-400/30 text-amber-200 border-amber-300/40' : badgeColor
+                            }`}
+                          >
+                            {m.statusLabelArabic}
+                          </span>
+                        </div>
                       </div>
 
                       <div>
                         <span className="text-xs font-bold block font-heading">{m.name}</span>
-                        <span className="text-[10px] block opacity-80 mt-0.5">
+                        <span className={`text-[10px] block mt-0.5 ${isSelected ? 'text-emerald-200' : 'opacity-80'}`}>
                           {isPast
                             ? 'غير متاح للجدولة'
                             : `${m.fridaysCount} جمعات ${isCurrent ? `(${m.futureFridaysCount} قادمة)` : ''}`}

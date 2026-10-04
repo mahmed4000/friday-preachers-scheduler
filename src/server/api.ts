@@ -2029,8 +2029,12 @@ api.post('/schedules', async (req: AuthRequest, res: Response) => {
     );
 
     if (existing.length > 0) {
-      return res.status(400).json({
-        error: `يوجد بالفعل جدول لشهر ${existing[0].monthName} ${hYear} هـ (الجدول #${existing[0].id})`,
+      return res.status(200).json({
+        ...existing[0],
+        isExisting: true,
+        periodStatus: periodValidation.periodStatus,
+        statusLabelArabic: periodValidation.monthDetails.statusLabelArabic,
+        monthDetails: periodValidation.monthDetails,
       });
     }
 
@@ -2095,7 +2099,7 @@ api.post('/schedules', async (req: AuthRequest, res: Response) => {
         req.user?.email
       );
       if (fallbackResult.isDuplicate) {
-        return res.status(400).json({ error: fallbackResult.error });
+        return res.status(200).json({ ...fallbackResult.schedule, isExisting: true });
       }
       return res.status(201).json(fallbackResult);
     } catch (fbError: any) {
