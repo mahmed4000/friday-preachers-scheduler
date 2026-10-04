@@ -134938,6 +134938,108 @@ var SupabaseSyncService = {
     };
   }
 };
+var SupabaseRealtimeSync = {
+  async syncMosque(mosque) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from("mosques").upsert(
+        {
+          id: mosque.id,
+          name: mosque.name,
+          code: mosque.code,
+          region: mosque.region || "\u0627\u0644\u0648\u0633\u0637",
+          address: mosque.formattedAddress || mosque.address || null,
+          manager_name: mosque.managerName || null,
+          phone: mosque.phone || null,
+          whatsapp: mosque.whatsapp || null,
+          fixed_imam_id: mosque.fixedImamId || null,
+          is_active: mosque.isActive ?? true,
+          notes: mosque.notes || null,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Realtime sync mosque error:", err.message);
+    }
+  },
+  async syncImam(imam) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from("imams").upsert(
+        {
+          id: imam.id,
+          name: imam.name,
+          phone: imam.phone || null,
+          whatsapp: imam.whatsapp || null,
+          type: imam.type || "FLEXIBLE",
+          region: imam.region || "\u0627\u0644\u0648\u0633\u0637",
+          min_fridays: imam.minFridays || 1,
+          max_fridays: imam.maxFridays || 4,
+          target_fridays: imam.targetFridays || 2,
+          is_active: imam.isActive ?? true,
+          notes: imam.notes || null,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Realtime sync imam error:", err.message);
+    }
+  },
+  async syncRule(rule) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from("mosque_imam_rules").upsert(
+        {
+          id: rule.id,
+          mosque_id: rule.mosqueId,
+          imam_id: rule.imamId,
+          relationship_type: rule.relationshipType,
+          priority: rule.priority || 1,
+          notes: rule.notes || null
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Realtime sync rule error:", err.message);
+    }
+  },
+  async deleteRule(ruleId) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from("mosque_imam_rules").delete().eq("id", ruleId);
+    } catch (err) {
+      console.warn("Realtime delete rule error:", err.message);
+    }
+  },
+  async syncAssignment(assignment) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from("assignments").upsert(
+        {
+          id: assignment.id,
+          schedule_id: assignment.scheduleId,
+          mosque_id: assignment.mosqueId,
+          friday_index: assignment.fridayIndex,
+          imam_id: assignment.imamId || null,
+          is_locked: assignment.isLocked || false,
+          source: assignment.source || "BALANCED",
+          notes: assignment.notes || null,
+          updated_at: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        { onConflict: "id" }
+      );
+    } catch (err) {
+      console.warn("Realtime sync assignment error:", err.message);
+    }
+  }
+};
 
 // src/server/api.ts
 var api = import_express.default.Router({ mergeParams: true });
@@ -135645,11 +135747,13 @@ api.post("/mosques", async (req, res) => {
       notes
     }).returning();
     await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created.id, { name, code });
+    SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
   } catch (error) {
     console.warn("DB create mosque failed, falling back to memoryStore:", error?.message);
     try {
       const created = memoryStore.createMosque(req.body);
+      SupabaseRealtimeSync.syncMosque(created);
       return res.status(201).json(created);
     } catch (fbErr) {
       console.error("Fallback createMosque failed:", fbErr);
@@ -135693,12 +135797,16 @@ api.patch("/mosques/:id", async (req, res) => {
       fixedCount: data.fixedCount !== void 0 ? Number(data.fixedCount) : void 0
     }).where(eq(mosques.id, id)).returning();
     await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
+    SupabaseRealtimeSync.syncMosque(updated);
     res.json(updated);
   } catch (error) {
     console.warn("DB patch mosque failed, falling back to memoryStore:", error?.message);
     try {
       const updated = memoryStore.updateMosque(Number(req.params.id), req.body);
-      if (updated) return res.json(updated);
+      if (updated) {
+        SupabaseRealtimeSync.syncMosque(updated);
+        return res.json(updated);
+      }
     } catch (fbErr) {
       console.error("Fallback updateMosque failed:", fbErr);
     }
@@ -135760,6 +135868,7 @@ api.post("/mosques/:id/rules", async (req, res) => {
       }).returning();
     }
     await logAudit(req, "UPDATE_MOSQUE_RULE", "MOSQUE_RULE", saved.id, { mosqueId, imamId, relationshipType });
+    SupabaseRealtimeSync.syncRule(saved);
     res.json(saved);
   } catch (error) {
     console.warn("DB rule save failed, falling back to memoryStore:", error?.message);
@@ -135770,6 +135879,7 @@ api.post("/mosques/:id/rules", async (req, res) => {
       priority: priority ? Number(priority) : 1,
       notes
     });
+    SupabaseRealtimeSync.syncRule(fallbackSaved);
     res.json(fallbackSaved);
   }
 });
@@ -135777,10 +135887,12 @@ api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
   const ruleId = Number(req.params.ruleId);
   try {
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
+    SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error) {
     console.warn("DB rule delete failed, falling back to memoryStore:", error?.message);
     memoryStore.deleteRule(ruleId);
+    SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   }
 });
@@ -136412,11 +136524,13 @@ api.post("/imams", async (req, res) => {
       notes
     }).returning();
     await logAudit(req, "CREATE_IMAM", "IMAM", created.id, { name });
+    SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
   } catch (error) {
     console.warn("DB create imam failed, falling back to memoryStore:", error?.message);
     try {
       const created = memoryStore.createImam(req.body);
+      SupabaseRealtimeSync.syncImam(created);
       return res.status(201).json(created);
     } catch (fbErr) {
       console.error("Fallback createImam failed:", fbErr);
@@ -136461,12 +136575,16 @@ api.patch("/imams/:id", async (req, res) => {
       maxFridays: data.maxFridays !== void 0 ? Number(data.maxFridays) : void 0
     }).where(eq(imams.id, id)).returning();
     await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
+    SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
   } catch (error) {
     console.warn("DB patch imam failed, falling back to memoryStore:", error?.message);
     try {
       const updated = memoryStore.updateImam(Number(req.params.id), req.body);
-      if (updated) return res.json(updated);
+      if (updated) {
+        SupabaseRealtimeSync.syncImam(updated);
+        return res.json(updated);
+      }
     } catch (fbErr) {
       console.error("Fallback updateImam failed:", fbErr);
     }
@@ -137206,6 +137324,7 @@ api.post("/schedules/:id/assignment", async (req, res) => {
       newImamId: targetImamId,
       reason
     });
+    SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error) {
     console.warn("DB assignment update failed, falling back to memoryStore:", error?.message);
@@ -137219,6 +137338,7 @@ api.post("/schedules/:id/assignment", async (req, res) => {
         reason
       );
       if (fallbackUpdated) {
+        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
         return res.json(fallbackUpdated);
       }
     } catch (fbErr) {
@@ -137249,6 +137369,7 @@ api.post("/schedules/:id/lock-toggle", async (req, res) => {
       }
     }
     const [updated] = await db.update(assignments).set({ isLocked: !found.isLocked }).where(eq(assignments.id, found.id)).returning();
+    SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error) {
     console.warn("DB toggle lock failed, falling back to memoryStore:", error?.message);
@@ -137257,6 +137378,7 @@ api.post("/schedules/:id/lock-toggle", async (req, res) => {
       const { assignmentId } = req.body;
       const fallbackUpdated = memoryStore.toggleLock(scheduleId, Number(assignmentId));
       if (fallbackUpdated) {
+        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
         return res.json(fallbackUpdated);
       }
     } catch (fbErr) {
@@ -137348,6 +137470,8 @@ api.post("/schedules/:id/swap-assignments", async (req, res) => {
       sourceImam: oldSourceImam,
       targetImam: oldTargetImam
     });
+    SupabaseRealtimeSync.syncAssignment(updatedSource);
+    SupabaseRealtimeSync.syncAssignment(updatedTarget);
     res.json({ success: true, sourceAssignment: updatedSource, targetAssignment: updatedTarget });
   } catch (error) {
     console.warn("DB swap assignments failed, falling back to memoryStore:", error?.message);
@@ -137361,6 +137485,8 @@ api.post("/schedules/:id/swap-assignments", async (req, res) => {
         reason
       );
       if (fallbackResult) {
+        if (fallbackResult.assignment1) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment1);
+        if (fallbackResult.assignment2) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment2);
         return res.json({ success: true, ...fallbackResult });
       }
     } catch (fbErr) {

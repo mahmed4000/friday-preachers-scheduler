@@ -257,3 +257,110 @@ export const SupabaseSyncService = {
     };
   },
 };
+
+export const SupabaseRealtimeSync = {
+  async syncMosque(mosque: any) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('mosques').upsert(
+        {
+          id: mosque.id,
+          name: mosque.name,
+          code: mosque.code,
+          region: mosque.region || 'الوسط',
+          address: mosque.formattedAddress || mosque.address || null,
+          manager_name: mosque.managerName || null,
+          phone: mosque.phone || null,
+          whatsapp: mosque.whatsapp || null,
+          fixed_imam_id: mosque.fixedImamId || null,
+          is_active: mosque.isActive ?? true,
+          notes: mosque.notes || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch (err: any) {
+      console.warn('Realtime sync mosque error:', err.message);
+    }
+  },
+
+  async syncImam(imam: any) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('imams').upsert(
+        {
+          id: imam.id,
+          name: imam.name,
+          phone: imam.phone || null,
+          whatsapp: imam.whatsapp || null,
+          type: imam.type || 'FLEXIBLE',
+          region: imam.region || 'الوسط',
+          min_fridays: imam.minFridays || 1,
+          max_fridays: imam.maxFridays || 4,
+          target_fridays: imam.targetFridays || 2,
+          is_active: imam.isActive ?? true,
+          notes: imam.notes || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch (err: any) {
+      console.warn('Realtime sync imam error:', err.message);
+    }
+  },
+
+  async syncRule(rule: any) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('mosque_imam_rules').upsert(
+        {
+          id: rule.id,
+          mosque_id: rule.mosqueId,
+          imam_id: rule.imamId,
+          relationship_type: rule.relationshipType,
+          priority: rule.priority || 1,
+          notes: rule.notes || null,
+        },
+        { onConflict: 'id' }
+      );
+    } catch (err: any) {
+      console.warn('Realtime sync rule error:', err.message);
+    }
+  },
+
+  async deleteRule(ruleId: number) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('mosque_imam_rules').delete().eq('id', ruleId);
+    } catch (err: any) {
+      console.warn('Realtime delete rule error:', err.message);
+    }
+  },
+
+  async syncAssignment(assignment: any) {
+    try {
+      const client = getSupabaseClient();
+      if (!client) return;
+      await client.from('assignments').upsert(
+        {
+          id: assignment.id,
+          schedule_id: assignment.scheduleId,
+          mosque_id: assignment.mosqueId,
+          friday_index: assignment.fridayIndex,
+          imam_id: assignment.imamId || null,
+          is_locked: assignment.isLocked || false,
+          source: assignment.source || 'BALANCED',
+          notes: assignment.notes || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    } catch (err: any) {
+      console.warn('Realtime sync assignment error:', err.message);
+    }
+  },
+};

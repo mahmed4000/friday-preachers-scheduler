@@ -167,6 +167,7 @@ export interface Assignment {
   source: AssignmentSource;
   isLocked: boolean;
   notes?: string | null;
+  confirmationStatus?: 'PENDING' | 'CONFIRMED' | 'DECLINED';
 }
 
 export interface Conflict {

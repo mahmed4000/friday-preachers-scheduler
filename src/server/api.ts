@@ -43,7 +43,7 @@ import {
 } from '../services/importExportService.ts';
 import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
-import { SupabaseSyncService } from '../services/supabaseSyncService.ts';
+import { SupabaseSyncService, SupabaseRealtimeSync } from '../services/supabaseSyncService.ts';
 import { memoryStore } from './memoryStore.ts';
 
 const api = express.Router({ mergeParams: true });
@@ -902,11 +902,13 @@ api.post('/mosques', async (req: AuthRequest, res: Response) => {
     }).returning();
 
     await logAudit(req, 'CREATE_MOSQUE', 'MOSQUE', created.id, { name, code });
+    SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
   } catch (error: any) {
     console.warn('DB create mosque failed, falling back to memoryStore:', error?.message);
     try {
       const created = memoryStore.createMosque(req.body);
+      SupabaseRealtimeSync.syncMosque(created);
       return res.status(201).json(created);
     } catch (fbErr) {
       console.error('Fallback createMosque failed:', fbErr);
@@ -958,12 +960,16 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
       .returning();
 
     await logAudit(req, 'UPDATE_MOSQUE', 'MOSQUE', id, data);
+    SupabaseRealtimeSync.syncMosque(updated);
     res.json(updated);
   } catch (error: any) {
     console.warn('DB patch mosque failed, falling back to memoryStore:', error?.message);
     try {
       const updated = memoryStore.updateMosque(Number(req.params.id), req.body);
-      if (updated) return res.json(updated);
+      if (updated) {
+        SupabaseRealtimeSync.syncMosque(updated);
+        return res.json(updated);
+      }
     } catch (fbErr) {
       console.error('Fallback updateMosque failed:', fbErr);
     }
@@ -1035,6 +1041,7 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
     }
 
     await logAudit(req, 'UPDATE_MOSQUE_RULE', 'MOSQUE_RULE', saved.id, { mosqueId, imamId, relationshipType });
+    SupabaseRealtimeSync.syncRule(saved);
     res.json(saved);
   } catch (error: any) {
     console.warn('DB rule save failed, falling back to memoryStore:', error?.message);
@@ -1045,6 +1052,7 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
       priority: priority ? Number(priority) : 1,
       notes,
     });
+    SupabaseRealtimeSync.syncRule(fallbackSaved);
     res.json(fallbackSaved);
   }
 });
@@ -1053,10 +1061,12 @@ api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response)
   const ruleId = Number(req.params.ruleId);
   try {
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
+    SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error: any) {
     console.warn('DB rule delete failed, falling back to memoryStore:', error?.message);
     memoryStore.deleteRule(ruleId);
+    SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   }
 });
@@ -1808,11 +1818,13 @@ api.post('/imams', async (req: AuthRequest, res: Response) => {
     }).returning();
 
     await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
+    SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
   } catch (error: any) {
     console.warn('DB create imam failed, falling back to memoryStore:', error?.message);
     try {
       const created = memoryStore.createImam(req.body);
+      SupabaseRealtimeSync.syncImam(created);
       return res.status(201).json(created);
     } catch (fbErr) {
       console.error('Fallback createImam failed:', fbErr);
@@ -1865,12 +1877,16 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
       .returning();
 
     await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
+    SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
   } catch (error: any) {
     console.warn('DB patch imam failed, falling back to memoryStore:', error?.message);
     try {
       const updated = memoryStore.updateImam(Number(req.params.id), req.body);
-      if (updated) return res.json(updated);
+      if (updated) {
+        SupabaseRealtimeSync.syncImam(updated);
+        return res.json(updated);
+      }
     } catch (fbErr) {
       console.error('Fallback updateImam failed:', fbErr);
     }
@@ -2753,6 +2769,7 @@ api.post('/schedules/:id/assignment', async (req: AuthRequest, res: Response) =>
       reason,
     });
 
+    SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error: any) {
     console.warn('DB assignment update failed, falling back to memoryStore:', error?.message);
@@ -2766,6 +2783,7 @@ api.post('/schedules/:id/assignment', async (req: AuthRequest, res: Response) =>
         reason
       );
       if (fallbackUpdated) {
+        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
         return res.json(fallbackUpdated);
       }
     } catch (fbErr) {
@@ -2804,6 +2822,7 @@ api.post('/schedules/:id/lock-toggle', async (req: AuthRequest, res: Response) =
       .where(eq(assignments.id, found.id))
       .returning();
 
+    SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error: any) {
     console.warn('DB toggle lock failed, falling back to memoryStore:', error?.message);
@@ -2812,6 +2831,7 @@ api.post('/schedules/:id/lock-toggle', async (req: AuthRequest, res: Response) =
       const { assignmentId } = req.body;
       const fallbackUpdated = memoryStore.toggleLock(scheduleId, Number(assignmentId));
       if (fallbackUpdated) {
+        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
         return res.json(fallbackUpdated);
       }
     } catch (fbErr) {
@@ -2933,6 +2953,8 @@ api.post('/schedules/:id/swap-assignments', async (req: AuthRequest, res: Respon
       targetImam: oldTargetImam,
     });
 
+    SupabaseRealtimeSync.syncAssignment(updatedSource);
+    SupabaseRealtimeSync.syncAssignment(updatedTarget);
     res.json({ success: true, sourceAssignment: updatedSource, targetAssignment: updatedTarget });
   } catch (error: any) {
     console.warn('DB swap assignments failed, falling back to memoryStore:', error?.message);
@@ -2946,6 +2968,8 @@ api.post('/schedules/:id/swap-assignments', async (req: AuthRequest, res: Respon
         reason
       );
       if (fallbackResult) {
+        if (fallbackResult.assignment1) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment1);
+        if (fallbackResult.assignment2) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment2);
         return res.json({ success: true, ...fallbackResult });
       }
     } catch (fbErr) {
