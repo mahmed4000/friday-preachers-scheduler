@@ -303,9 +303,7 @@ export function ImamProfileView({
 
   const { imam, activeSchedule, availableSchedules, stats, assignments, linkedMosques, rules, availabilities, auditLogs } = data;
 
-  const upcomingAssignments = React.useMemo(() => {
-    return CalendarService.deduplicateAssignmentsByFriday(data.upcomingAssignments || []);
-  }, [data.upcomingAssignments]);
+  const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(data.upcomingAssignments || []);
 
   const profileTabs = [
     { id: 'upcoming', label: 'الجمعات القادمة', badge: upcomingAssignments.length },

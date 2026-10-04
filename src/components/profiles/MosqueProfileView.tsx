@@ -307,9 +307,7 @@ export function MosqueProfileView({
 
   const { mosque, fixedImam, activeSchedule, availableSchedules, stats, assignments, linkedImams, rules, auditLogs } = data;
 
-  const upcomingAssignments = React.useMemo(() => {
-    return CalendarService.deduplicateAssignmentsByFriday(data.upcomingAssignments || []);
-  }, [data.upcomingAssignments]);
+  const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(data.upcomingAssignments || []);
 
   const profileTabs = [
     { id: 'upcoming', label: 'الجمعات القادمة', badge: upcomingAssignments.length },
