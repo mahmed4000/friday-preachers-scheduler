@@ -36911,575 +36911,6 @@ var init_db2 = __esm({
   }
 });
 
-// src/services/schedulingEngine.ts
-var SeededRandom, SchedulingEngine;
-var init_schedulingEngine = __esm({
-  "src/services/schedulingEngine.ts"() {
-    SeededRandom = class {
-      constructor(seedStr = "FRIDAY-SCHEDULER-V1") {
-        let hash = 0;
-        for (let i2 = 0; i2 < seedStr.length; i2++) {
-          hash = (hash << 5) - hash + seedStr.charCodeAt(i2);
-          hash |= 0;
-        }
-        this.seed = Math.abs(hash) || 123456789;
-      }
-      next() {
-        this.seed = (this.seed * 9301 + 49297) % 233280;
-        return this.seed / 233280;
-      }
-    };
-    SchedulingEngine = class {
-      /**
-       * الدالة الرئيسية لتوليد جدول خطباء الجمعة
-       */
-      static generate(input) {
-        const rng = new SeededRandom(input.seed || `${input.monthName}-${input.hijriYear}-${input.fridaysCount}`);
-        const method = input.distributionMethod || "Balanced Random";
-        const activeMosques = input.mosques.filter((m2) => m2.isActive);
-        const activeImams = input.imams.filter((i2) => i2.isActive);
-        const imamMap = new Map(activeImams.map((i2) => [i2.id, i2]));
-        const mosqueMap = new Map(activeMosques.map((m2) => [m2.id, m2]));
-        const unavailableSet = /* @__PURE__ */ new Set();
-        for (const a of input.availabilities) {
-          if (!a.isAvailable) {
-            unavailableSet.add(`${a.imamId}:${a.fridayIndex}`);
-          }
-        }
-        const rulesMap = /* @__PURE__ */ new Map();
-        for (const r2 of input.rules) {
-          rulesMap.set(`${r2.mosqueId}:${r2.imamId}`, r2);
-        }
-        const lockedMap = /* @__PURE__ */ new Map();
-        if (input.lockedAssignments) {
-          for (const l of input.lockedAssignments) {
-            lockedMap.set(`${l.mosqueId}:${l.fridayIndex}`, l);
-          }
-        }
-        const assignmentsGrid = /* @__PURE__ */ new Map();
-        const imamFridaysCount = {};
-        for (const imam of activeImams) {
-          imamFridaysCount[imam.id] = 0;
-        }
-        const fridayImamBooking = /* @__PURE__ */ new Map();
-        const conflicts2 = [];
-        for (const [key, locked] of lockedMap.entries()) {
-          assignmentsGrid.set(key, {
-            fridayIndex: locked.fridayIndex,
-            mosqueId: locked.mosqueId,
-            imamId: locked.imamId,
-            source: locked.source || "MANUAL",
-            isLocked: true,
-            notes: locked.notes || void 0
-          });
-          if (locked.imamId) {
-            imamFridaysCount[locked.imamId] = (imamFridaysCount[locked.imamId] || 0) + 1;
-            fridayImamBooking.set(`${locked.imamId}:${locked.fridayIndex}`, locked.mosqueId);
-          }
-        }
-        const isTargetCell = (mosqueId, fridayIndex) => {
-          if (input.targetMosqueId && input.targetMosqueId !== mosqueId) return false;
-          if (input.targetFridayIndex && input.targetFridayIndex !== fridayIndex) return false;
-          return true;
-        };
-        const patternMosqueIds = /* @__PURE__ */ new Set();
-        if (input.fixedPatterns && input.fixedPatterns.length > 0) {
-          for (const pattern of input.fixedPatterns) {
-            patternMosqueIds.add(pattern.mosqueId);
-            const mosque = mosqueMap.get(pattern.mosqueId);
-            if (!mosque || !mosque.isActive) continue;
-            for (const item of pattern.items) {
-              const f3 = item.fridayIndex;
-              if (f3 > input.fridaysCount) continue;
-              const cellKey = `${pattern.mosqueId}:${f3}`;
-              if (assignmentsGrid.has(cellKey)) {
-                continue;
-              }
-              if (!isTargetCell(pattern.mosqueId, f3)) {
-                continue;
-              }
-              const imam = imamMap.get(item.imamId);
-              if (!imam || !imam.isActive) {
-                conflicts2.push({
-                  severity: "CRITICAL",
-                  mosqueId: pattern.mosqueId,
-                  fridayIndex: f3,
-                  imamId: item.imamId,
-                  ruleCode: "FIXED_IMAM_INACTIVE",
-                  message: `\u0627\u0644\u062E\u0637\u064A\u0628 \u0627\u0644\u0645\u062B\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u063A\u064A\u0631 \u0646\u0634\u0637 \u0623\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.`,
-                  possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0648\u0627\u062E\u062A\u064A\u0627\u0631 \u062E\u0637\u064A\u0628 \u0646\u0634\u0637", "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0645\u0624\u0642\u062A\u0627\u064B"]
-                });
-                continue;
-              }
-              if (unavailableSet.has(`${imam.id}:${f3}`)) {
-                conflicts2.push({
-                  severity: "CRITICAL",
-                  mosqueId: pattern.mosqueId,
-                  fridayIndex: f3,
-                  imamId: imam.id,
-                  ruleCode: "FIXED_UNAVAILABLE",
-                  message: `\u062A\u0639\u0627\u0631\u0636 \u062A\u062B\u0628\u064A\u062A: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062B\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u0644\u0643\u0646\u0647 \u0645\u0633\u062C\u0644 \u0628\u0627\u0639\u062A\u0630\u0627\u0631 \u0631\u0633\u0645\u064A / \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.`,
-                  possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0644\u062C\u0645\u0639\u0629 \u0623\u062E\u0631\u0649", "\u062A\u0643\u0644\u064A\u0641 \u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629"]
-                });
-                continue;
-              }
-              if (fridayImamBooking.has(`${imam.id}:${f3}`)) {
-                const bookedMosqueId = fridayImamBooking.get(`${imam.id}:${f3}`);
-                const bookedMosque = mosqueMap.get(bookedMosqueId);
-                conflicts2.push({
-                  severity: "CRITICAL",
-                  mosqueId: pattern.mosqueId,
-                  fridayIndex: f3,
-                  imamId: imam.id,
-                  ruleCode: "FIXED_DOUBLE_BOOKING",
-                  message: `\u062A\u0639\u0627\u0631\u0636 \u062A\u062B\u0628\u064A\u062A \u0645\u0632\u062F\u0648\u062C: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062B\u0628\u062A \u0641\u064A \u0623\u0643\u062B\u0631 \u0645\u0646 \u0645\u0633\u062C\u062F \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u2014 (${bookedMosque?.name || "\u0645\u0633\u062C\u062F \u0622\u062E\u0631"}) \u0648 (${mosque.name}).`,
-                  possibleResolutions: ["\u062A\u062F\u062E\u0644 \u0645\u062F\u064A\u0631 \u0627\u0644\u062C\u062F\u0648\u0644 \u0648\u062A\u0639\u062F\u064A\u0644 \u0623\u062D\u062F \u0627\u0644\u0645\u0633\u062C\u062F\u064A\u0646 \u064A\u062F\u0648\u064A\u0627\u064B"]
-                });
-                continue;
-              }
-              const rule = rulesMap.get(`${mosque.id}:${imam.id}`);
-              if (rule && rule.relationshipType === "FORBIDDEN") {
-                conflicts2.push({
-                  severity: "CRITICAL",
-                  mosqueId: pattern.mosqueId,
-                  fridayIndex: f3,
-                  imamId: imam.id,
-                  ruleCode: "FIXED_FORBIDDEN",
-                  message: `\u062A\u0639\u0627\u0631\u0636 \u0642\u0627\u0639\u062F\u0629: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062D\u0638\u0648\u0631 \u0645\u0646 \u0627\u0644\u062E\u0637\u0627\u0628\u0629 \u0641\u064A \u0645\u0633\u062C\u062F (${mosque.name}) \u062D\u0633\u0628 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F.`,
-                  possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0623\u0648 \u0627\u0633\u062A\u0628\u062F\u0627\u0644 \u0627\u0644\u062E\u0637\u064A\u0628"]
-                });
-                continue;
-              }
-              assignmentsGrid.set(cellKey, {
-                fridayIndex: f3,
-                mosqueId: pattern.mosqueId,
-                imamId: imam.id,
-                source: "FIXED",
-                isLocked: true,
-                notes: item.notes || `\u0645\u062B\u0628\u062A \u0628\u0627\u0644\u0646\u0645\u0637 (${pattern.patternType}) \u0644\u0644\u062C\u0645\u0639\u0629 (${f3})`
-              });
-              imamFridaysCount[imam.id] = (imamFridaysCount[imam.id] || 0) + 1;
-              fridayImamBooking.set(`${imam.id}:${f3}`, pattern.mosqueId);
-            }
-          }
-        }
-        for (const mosque of activeMosques) {
-          if (patternMosqueIds.has(mosque.id) || !mosque.fixedImamId) continue;
-          const fixedImam = imamMap.get(mosque.fixedImamId);
-          if (!fixedImam) continue;
-          const pattern = mosque.fixedPattern || "ALL";
-          const count = mosque.fixedCount || input.fridaysCount;
-          for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
-            const cellKey = `${mosque.id}:${f3}`;
-            if (assignmentsGrid.has(cellKey)) {
-              continue;
-            }
-            if (!isTargetCell(mosque.id, f3)) {
-              continue;
-            }
-            let isFixedThisFriday = false;
-            if (pattern === "ALL") {
-              isFixedThisFriday = true;
-            } else if (pattern === "FIRST_N" && f3 <= count) {
-              isFixedThisFriday = true;
-            } else if (pattern === "LAST_N" && f3 > input.fridaysCount - count) {
-              isFixedThisFriday = true;
-            } else if (pattern === "SPECIFIC_FRIDAYS" && mosque.specificFridays?.includes(f3)) {
-              isFixedThisFriday = true;
-            } else if (pattern === "ANY_N") {
-              const currentCount = imamFridaysCount[fixedImam.id] || 0;
-              if (currentCount < count) {
-                isFixedThisFriday = true;
-              }
-            }
-            if (isFixedThisFriday) {
-              const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f3}`);
-              const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f3}`);
-              if (!isUnavailable && !isAlreadyBooked) {
-                assignmentsGrid.set(cellKey, {
-                  fridayIndex: f3,
-                  mosqueId: mosque.id,
-                  imamId: fixedImam.id,
-                  source: "FIXED",
-                  isLocked: true,
-                  notes: `\u062B\u0627\u0628\u062A \u0648\u0641\u0642 \u0646\u0645\u0637 (${pattern})`
-                });
-                imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
-                fridayImamBooking.set(`${fixedImam.id}:${f3}`, mosque.id);
-              }
-            }
-          }
-        }
-        const sortedMosques = [...activeMosques].sort((a, b) => {
-          const aRules = input.rules.filter((r2) => r2.mosqueId === a.id);
-          const bRules = input.rules.filter((r2) => r2.mosqueId === b.id);
-          return bRules.length - aRules.length;
-        });
-        for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
-          for (const mosque of sortedMosques) {
-            const cellKey = `${mosque.id}:${f3}`;
-            if (assignmentsGrid.has(cellKey)) {
-              continue;
-            }
-            if (!isTargetCell(mosque.id, f3)) {
-              continue;
-            }
-            const candidates = [];
-            for (const imam of activeImams) {
-              if (unavailableSet.has(`${imam.id}:${f3}`)) {
-                continue;
-              }
-              if (fridayImamBooking.has(`${imam.id}:${f3}`)) {
-                continue;
-              }
-              const rule = rulesMap.get(`${mosque.id}:${imam.id}`);
-              if (rule && rule.relationshipType === "FORBIDDEN") {
-                continue;
-              }
-              const currentCount = imamFridaysCount[imam.id] || 0;
-              if (currentCount >= imam.maxFridays) {
-                continue;
-              }
-              const isPreferred = rule?.relationshipType === "PREFERRED";
-              const isDiscouraged = rule?.relationshipType === "DISCOURAGED";
-              const priority = rule?.priority || 999;
-              const deficitToTarget = imam.targetFridays - currentCount;
-              let score = 0;
-              if (isPreferred) {
-                score += 1e3 - Math.min(priority * 20, 500);
-              } else if (isDiscouraged) {
-                score -= 800;
-              } else {
-                score += 100;
-              }
-              if (method === "Balanced" || method === "Balanced Random") {
-                if (currentCount < imam.minFridays) {
-                  score += 400 * (imam.minFridays - currentCount);
-                }
-                score += 150 * deficitToTarget;
-              }
-              const preachedLastFridayHere = f3 > 1 && assignmentsGrid.get(`${mosque.id}:${f3 - 1}`)?.imamId === imam.id;
-              if (preachedLastFridayHere && mosque.fixedImamId !== imam.id) {
-                score -= 2e3;
-              }
-              let previousVisitsInMonth = 0;
-              for (let prevF = 1; prevF < f3; prevF++) {
-                if (assignmentsGrid.get(`${mosque.id}:${prevF}`)?.imamId === imam.id) {
-                  previousVisitsInMonth++;
-                }
-              }
-              if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id) {
-                score -= 450 * previousVisitsInMonth;
-              }
-              if (input.history && input.history.length > 0 && mosque.fixedImamId !== imam.id) {
-                const historyVisits = input.history.filter((h2) => h2.mosqueId === mosque.id && h2.imamId === imam.id).length;
-                if (historyVisits > 0) {
-                  score -= 300 * Math.min(historyVisits, 3);
-                }
-              }
-              if (imam.region && mosque.region && imam.region === mosque.region) {
-                score += 150;
-              }
-              if (method === "Random" || method === "Balanced Random") {
-                const noise = (rng.next() - 0.5) * (method === "Random" ? 300 : 25);
-                score += noise;
-              }
-              candidates.push({
-                imam,
-                rule,
-                isPreferred,
-                priority,
-                isDiscouraged,
-                score,
-                assignedCount: currentCount,
-                deficitToTarget
-              });
-            }
-            if (candidates.length > 0) {
-              candidates.sort((a, b) => b.score - a.score);
-              const best = candidates[0];
-              let source = "BALANCED_RANDOM";
-              if (best.isPreferred) {
-                source = "PREFERENCE";
-              } else if (method === "Balanced") {
-                source = "BALANCED";
-              } else if (method === "Random") {
-                source = "RANDOM";
-              }
-              assignmentsGrid.set(cellKey, {
-                fridayIndex: f3,
-                mosqueId: mosque.id,
-                imamId: best.imam.id,
-                source,
-                isLocked: false,
-                notes: best.isPreferred ? `\u062A\u0641\u0636\u064A\u0644 \u0631\u0642\u0645 (${best.priority}) \u0644\u0644\u0645\u0633\u062C\u062F` : void 0
-              });
-              imamFridaysCount[best.imam.id] = (imamFridaysCount[best.imam.id] || 0) + 1;
-              fridayImamBooking.set(`${best.imam.id}:${f3}`, mosque.id);
-            } else {
-              assignmentsGrid.set(cellKey, {
-                fridayIndex: f3,
-                mosqueId: mosque.id,
-                imamId: null,
-                source: "BALANCED_RANDOM",
-                isLocked: false,
-                notes: "\u062A\u0639\u0630\u0631 \u0625\u064A\u062C\u0627\u062F \u062E\u0637\u064A\u0628 \u0645\u0624\u0647\u0644 \u0648\u0641\u0642 \u0627\u0644\u0642\u064A\u0648\u062F \u0627\u0644\u062D\u0627\u0644\u064A\u0629"
-              });
-            }
-          }
-        }
-        for (const [key, assignment] of assignmentsGrid.entries()) {
-          if (!assignment.imamId) {
-            const [mIdStr, fIdxStr] = key.split(":");
-            const mosqueId = Number(mIdStr);
-            const fridayIndex = Number(fIdxStr);
-            const mosque = mosqueMap.get(mosqueId);
-            conflicts2.push({
-              severity: "CRITICAL",
-              mosqueId,
-              fridayIndex,
-              ruleCode: "EMPTY_MOSQUE",
-              message: `\u0627\u0644\u0645\u0633\u062C\u062F (${mosque?.name || mosqueId}) \u0628\u062F\u0648\u0646 \u062E\u0637\u064A\u0628 \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${fridayIndex})`,
-              possibleResolutions: [
-                "\u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0623\u062D\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u0631\u0646\u064A\u0646 \u0627\u0644\u0645\u0624\u0647\u0644\u064A\u0646",
-                "\u0627\u0644\u0633\u0645\u0627\u062D \u0628\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0641\u0636\u0644 \u0645\u0624\u0642\u062A\u0627\u064B",
-                "\u062A\u0639\u064A\u064A\u0646 \u062E\u0637\u064A\u0628 \u064A\u062F\u0648\u064A\u0627\u064B \u0648\u062A\u0623\u0643\u064A\u062F \u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A"
-              ]
-            });
-          }
-        }
-        for (const assignment of assignmentsGrid.values()) {
-          if (!assignment.imamId) continue;
-          const rule = rulesMap.get(`${assignment.mosqueId}:${assignment.imamId}`);
-          if (rule && rule.relationshipType === "FORBIDDEN") {
-            const mosque = mosqueMap.get(assignment.mosqueId);
-            const imam = imamMap.get(assignment.imamId);
-            conflicts2.push({
-              severity: "CRITICAL",
-              mosqueId: assignment.mosqueId,
-              fridayIndex: assignment.fridayIndex,
-              imamId: assignment.imamId,
-              ruleCode: "FORBIDDEN_IMAM",
-              message: `\u062A\u0645 \u062A\u0639\u064A\u064A\u0646 \u0627\u0644\u062E\u0637\u064A\u0628 (${imam?.name}) \u0641\u064A \u0645\u0633\u062C\u062F (${mosque?.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${assignment.fridayIndex}) \u0631\u063A\u0645 \u0648\u062C\u0648\u062F \u0642\u064A\u062F \u0645\u0646\u0639 (FORBIDDEN)`,
-              possibleResolutions: [
-                "\u0627\u0633\u062A\u0628\u062F\u0627\u0644 \u0627\u0644\u062E\u0637\u064A\u0628 \u0628\u062E\u0637\u064A\u0628 \u0645\u0633\u0645\u0648\u062D \u0623\u0648 \u0645\u0641\u0636\u0644",
-                "\u062A\u0639\u062F\u064A\u0644 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0646\u0639 \u0641\u064A \u0628\u0631\u0648\u0641\u0627\u064A\u0644 \u0627\u0644\u0645\u0633\u062C\u062F \u0625\u0630\u0627 \u0632\u0627\u0644 \u0633\u0628\u0628 \u0627\u0644\u0645\u0646\u0639"
-              ]
-            });
-          }
-        }
-        for (const assignment of assignmentsGrid.values()) {
-          if (!assignment.imamId) continue;
-          if (unavailableSet.has(`${assignment.imamId}:${assignment.fridayIndex}`)) {
-            const imam = imamMap.get(assignment.imamId);
-            const mosque = mosqueMap.get(assignment.mosqueId);
-            conflicts2.push({
-              severity: "CRITICAL",
-              mosqueId: assignment.mosqueId,
-              fridayIndex: assignment.fridayIndex,
-              imamId: assignment.imamId,
-              ruleCode: "IMAM_UNAVAILABLE",
-              message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam?.name}) \u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${assignment.fridayIndex}) \u0648\u062A\u0645 \u062A\u0639\u064A\u064A\u0646\u0647 \u0641\u064A \u0645\u0633\u062C\u062F (${mosque?.name})`,
-              possibleResolutions: [
-                "\u0625\u0633\u0646\u0627\u062F \u0627\u0644\u0645\u0633\u062C\u062F \u0644\u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0645\u062A\u0627\u062D",
-                "\u062A\u062D\u062F\u064A\u062B \u062C\u062F\u0648\u0644 \u0639\u062F\u0645 \u0627\u0644\u062A\u0648\u0641\u0631 \u0644\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u062D\u0627\u0644 \u0623\u0635\u0628\u062D \u0645\u062A\u0627\u062D\u0627\u064B"
-              ]
-            });
-          }
-        }
-        for (const imam of activeImams) {
-          const count = imamFridaysCount[imam.id] || 0;
-          if (count < imam.minFridays) {
-            conflicts2.push({
-              severity: "WARNING",
-              imamId: imam.id,
-              ruleCode: "UNDER_MINIMUM",
-              message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam.name}) \u062D\u0635\u0644 \u0639\u0644\u0649 (${count}) \u062C\u0645\u0639\u0627\u062A \u0648\u0647\u0648 \u0623\u0642\u0644 \u0645\u0646 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 (${imam.minFridays})`,
-              possibleResolutions: [
-                "\u0625\u0639\u0627\u062F\u0629 \u062A\u0648\u0632\u064A\u0639 \u0628\u0639\u0636 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0634\u0627\u063A\u0631\u0629 \u0644\u0635\u0627\u0644\u062D\u0647",
-                "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0644\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0628\u064A\u0627\u0646\u0627\u062A\u0647"
-              ]
-            });
-          } else if (count > imam.maxFridays) {
-            conflicts2.push({
-              severity: "WARNING",
-              imamId: imam.id,
-              ruleCode: "OVER_MAXIMUM",
-              message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam.name}) \u062A\u0645 \u062A\u0639\u064A\u064A\u0646\u0647 \u0641\u064A (${count}) \u062C\u0645\u0639\u0627\u062A \u0645\u062A\u062C\u0627\u0648\u0632\u0627\u064B \u062D\u062F\u0647 \u0627\u0644\u0623\u0642\u0635\u0649 (${imam.maxFridays})`,
-              possibleResolutions: [
-                "\u062A\u0633\u062C\u064A\u0644 \u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A \u0645\u0639\u062A\u0645\u062F (Override)",
-                "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0632\u0627\u0626\u062F\u0629 \u0639\u0644\u0649 \u062E\u0637\u0628\u0627\u0621 \u0622\u062E\u0631\u064A\u0646"
-              ]
-            });
-          }
-        }
-        const allAssignmentsList = Array.from(assignmentsGrid.values());
-        const totalAssignments = allAssignmentsList.length;
-        const filledAssignments = allAssignmentsList.filter((a) => a.imamId !== null).length;
-        const unfilledAssignments = totalAssignments - filledAssignments;
-        let fixedCount = 0;
-        let preferenceCount = 0;
-        let balancedCount = 0;
-        let randomCount = 0;
-        let manualCount = 0;
-        let overrideCount = 0;
-        let totalPreferredRequests = 0;
-        let satisfiedPreferred = 0;
-        for (const a of allAssignmentsList) {
-          if (a.source === "FIXED") fixedCount++;
-          else if (a.source === "PREFERENCE") preferenceCount++;
-          else if (a.source === "BALANCED") balancedCount++;
-          else if (a.source === "RANDOM") randomCount++;
-          else if (a.source === "BALANCED_RANDOM") balancedCount++;
-          else if (a.source === "MANUAL") manualCount++;
-          else if (a.source === "OVERRIDE") overrideCount++;
-          const mosqueRules = input.rules.filter((r2) => r2.mosqueId === a.mosqueId && r2.relationshipType === "PREFERRED");
-          if (mosqueRules.length > 0) {
-            totalPreferredRequests++;
-            if (a.imamId && mosqueRules.some((r2) => r2.imamId === a.imamId)) {
-              satisfiedPreferred++;
-            }
-          }
-        }
-        const preferenceSatisfactionRate = totalPreferredRequests > 0 ? Math.round(satisfiedPreferred / totalPreferredRequests * 100) : 100;
-        let totalTargetDeficit = 0;
-        let totalTargetNeeded = 0;
-        for (const imam of activeImams) {
-          totalTargetNeeded += imam.targetFridays;
-          const assigned = imamFridaysCount[imam.id] || 0;
-          totalTargetDeficit += Math.abs(imam.targetFridays - assigned);
-        }
-        const targetFulfillmentRate = totalTargetNeeded > 0 ? Math.max(0, Math.round(100 - totalTargetDeficit / totalTargetNeeded * 50)) : 100;
-        return {
-          assignments: allAssignmentsList,
-          conflicts: conflicts2,
-          stats: {
-            totalAssignments,
-            filledAssignments,
-            unfilledAssignments,
-            fixedCount,
-            preferenceCount,
-            balancedCount,
-            randomCount,
-            manualCount,
-            overrideCount,
-            criticalConflictsCount: conflicts2.filter((c) => c.severity === "CRITICAL").length,
-            warningConflictsCount: conflicts2.filter((c) => c.severity === "WARNING").length
-          },
-          imamUsage: imamFridaysCount,
-          qualityMetrics: {
-            preferenceSatisfactionRate,
-            targetFulfillmentRate,
-            balanceFairnessScore: Math.max(0, 100 - conflicts2.length * 5)
-          }
-        };
-      }
-      /**
-       * محرك اقتراح خطباء الطوارئ والاحتياط
-       * يبحث عن أفضل الخطباء البدلاء المتاحين لجمعة ومسجد معين عند حدوث اعتذار طارئ
-       */
-      static findEmergencyReplacements(params) {
-        const {
-          fridayIndex,
-          mosqueId,
-          currentImamId,
-          allMosques,
-          allImams,
-          rules,
-          existingAssignments,
-          unavailabilities = [],
-          history = [],
-          standbyImamIds = []
-        } = params;
-        const mosque = allMosques.find((m2) => m2.id === mosqueId);
-        if (!mosque) return [];
-        const unavailSet = new Set(
-          unavailabilities.filter((u) => u.fridayIndex === fridayIndex && !u.isAvailable).map((u) => u.imamId)
-        );
-        const bookedThisFriday = new Set(
-          existingAssignments.filter((a) => a.fridayIndex === fridayIndex && a.imamId && a.imamId !== currentImamId).map((a) => a.imamId)
-        );
-        const imamLoads = {};
-        for (const a of existingAssignments) {
-          if (a.imamId && a.imamId !== currentImamId) {
-            imamLoads[a.imamId] = (imamLoads[a.imamId] || 0) + 1;
-          }
-        }
-        const rulesMap = /* @__PURE__ */ new Map();
-        for (const r2 of rules) {
-          if (r2.mosqueId === mosqueId) {
-            rulesMap.set(r2.imamId, r2);
-          }
-        }
-        const standbySet = new Set(standbyImamIds);
-        const candidates = [];
-        for (const imam of allImams) {
-          if (!imam.isActive) continue;
-          if (currentImamId && imam.id === currentImamId) continue;
-          if (bookedThisFriday.has(imam.id)) continue;
-          if (unavailSet.has(imam.id)) continue;
-          const rule = rulesMap.get(imam.id);
-          if (rule && rule.relationshipType === "FORBIDDEN") continue;
-          const currentLoad = imamLoads[imam.id] || 0;
-          if (currentLoad >= imam.maxFridays) continue;
-          const isPreferred = rule?.relationshipType === "PREFERRED";
-          const isDiscouraged = rule?.relationshipType === "DISCOURAGED";
-          const isNearby = !!(imam.region && mosque.region && imam.region === mosque.region);
-          const isStandby = standbySet.has(imam.id);
-          let score = 50;
-          const reasons = [];
-          if (isStandby) {
-            score += 20;
-            reasons.push("\u0645\u0635\u0646\u0651\u0641 \u0643\u062E\u0637\u064A\u0628 \u0637\u0648\u0627\u0631\u0626 \u0648\u0627\u062D\u062A\u064A\u0627\u0637 \u0645\u0639\u062A\u0645\u062F");
-          }
-          if (isPreferred) {
-            score += 25 - Math.min((rule?.priority || 1) * 3, 15);
-            reasons.push("\u0645\u0641\u0636\u0644 \u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0631\u0648\u0627\u062F \u0627\u0644\u0645\u0633\u062C\u062F");
-          } else if (isDiscouraged) {
-            score -= 30;
-          }
-          if (isNearby) {
-            score += 15;
-            reasons.push(`\u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062C\u063A\u0631\u0627\u0641\u064A\u0629 (${mosque.region})`);
-          }
-          if (currentLoad < imam.targetFridays) {
-            score += 10;
-            reasons.push(`\u0644\u062F\u064A\u0647 \u0645\u062A\u0633\u0639 \u0641\u064A \u062D\u0635\u062A\u0647 \u0627\u0644\u0634\u0647\u0631\u064A\u0629 (${currentLoad} \u0645\u0646 ${imam.targetFridays})`);
-          } else if (currentLoad < imam.minFridays) {
-            score += 15;
-            reasons.push(`\u0623\u0648\u0644\u0648\u064A\u0629 \u0627\u0633\u062A\u0643\u0645\u0627\u0644 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 (${currentLoad} \u0645\u0646 ${imam.minFridays})`);
-          }
-          const visitsThisMonth = existingAssignments.filter(
-            (a) => a.mosqueId === mosqueId && a.imamId === imam.id && a.fridayIndex !== fridayIndex
-          ).length;
-          if (visitsThisMonth > 0 && mosque.fixedImamId !== imam.id) {
-            score -= 15;
-          }
-          const histVisits = history.filter((h2) => h2.mosqueId === mosqueId && h2.imamId === imam.id).length;
-          if (histVisits === 0) {
-            score += 5;
-            reasons.push("\u062A\u0646\u0648\u064A\u0639 \u0648\u062A\u062C\u062F\u064A\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 (\u0644\u0645 \u064A\u062E\u0637\u0628 \u0628\u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0624\u062E\u0631\u0627\u064B)");
-          }
-          const compatibilityScore = Math.max(10, Math.min(100, Math.round(score)));
-          candidates.push({
-            imam,
-            compatibilityScore,
-            isPreferred,
-            isDiscouraged,
-            isNearby,
-            isStandby,
-            reason: reasons.length > 0 ? reasons.join(" \u2022 ") : "\u062C\u0627\u0647\u0632 \u0648\u0645\u062A\u0627\u062D \u0628\u062F\u0648\u0646 \u062A\u0639\u0627\u0631\u0636\u0627\u062A \u0632\u0645\u0646\u064A\u0629",
-            currentMonthLoad: currentLoad,
-            maxFridays: imam.maxFridays,
-            targetFridays: imam.targetFridays
-          });
-        }
-        return candidates.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
-      }
-    };
-  }
-});
-
 // node_modules/extend/index.js
 var require_extend = __commonJS({
   "node_modules/extend/index.js"(exports, module) {
@@ -75984,581 +75415,6 @@ var require_auth2 = __commonJS({
   }
 });
 
-// src/services/calendar/calendarProvider.ts
-var HIJRI_MONTH_NAMES, GREGORIAN_MONTH_NAMES, ARABIC_WEEKDAYS, FRIDAY_ORDINALS, TIMEZONE_LABELS, UmmAlQuraCalendarProvider, OfficialLocalCalendarProvider, CustomCalendarProvider, CalendarProviderFactory;
-var init_calendarProvider = __esm({
-  "src/services/calendar/calendarProvider.ts"() {
-    HIJRI_MONTH_NAMES = {
-      1: "\u0645\u062D\u0631\u0645",
-      2: "\u0635\u0641\u0631",
-      3: "\u0631\u0628\u064A\u0639 \u0627\u0644\u0623\u0648\u0644",
-      4: "\u0631\u0628\u064A\u0639 \u0627\u0644\u0622\u062E\u0631",
-      5: "\u062C\u0645\u0627\u062F\u0649 \u0627\u0644\u0623\u0648\u0644\u0649",
-      6: "\u062C\u0645\u0627\u062F\u0649 \u0627\u0644\u0622\u062E\u0631\u0629",
-      7: "\u0631\u062C\u0628",
-      8: "\u0634\u0639\u0628\u0627\u0646",
-      9: "\u0631\u0645\u0636\u0627\u0646",
-      10: "\u0634\u0648\u0627\u0644",
-      11: "\u0630\u0648 \u0627\u0644\u0642\u0639\u062F\u0629",
-      12: "\u0630\u0648 \u0627\u0644\u062D\u062C\u0629"
-    };
-    GREGORIAN_MONTH_NAMES = {
-      1: "\u064A\u0646\u0627\u064A\u0631",
-      2: "\u0641\u0628\u0631\u0627\u064A\u0631",
-      3: "\u0645\u0627\u0631\u0633",
-      4: "\u0623\u0628\u0631\u064A\u0644",
-      5: "\u0645\u0627\u064A\u0648",
-      6: "\u064A\u0648\u0646\u064A\u0648",
-      7: "\u064A\u0648\u0644\u064A\u0648",
-      8: "\u0623\u063A\u0633\u0637\u0633",
-      9: "\u0633\u0628\u062A\u0645\u0628\u0631",
-      10: "\u0623\u0643\u062A\u0648\u0628\u0631",
-      11: "\u0646\u0648\u0641\u0645\u0628\u0631",
-      12: "\u062F\u064A\u0633\u0645\u0628\u0631"
-    };
-    ARABIC_WEEKDAYS = {
-      0: "\u0627\u0644\u0623\u062D\u062F",
-      1: "\u0627\u0644\u0625\u062B\u0646\u064A\u0646",
-      2: "\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621",
-      3: "\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621",
-      4: "\u0627\u0644\u062E\u0645\u064A\u0633",
-      5: "\u0627\u0644\u062C\u0645\u0639\u0629",
-      6: "\u0627\u0644\u0633\u0628\u062A"
-    };
-    FRIDAY_ORDINALS = [
-      "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u0623\u0648\u0644\u0649",
-      "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062B\u0627\u0646\u064A\u0629",
-      "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062B\u0627\u0644\u062B\u0629",
-      "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u0631\u0627\u0628\u0639\u0629",
-      "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062E\u0627\u0645\u0633\u0629"
-    ];
-    TIMEZONE_LABELS = {
-      "Asia/Riyadh": "\u062A\u0648\u0642\u064A\u062A \u0645\u0643\u0629 \u0627\u0644\u0645\u0643\u0631\u0645\u0629 (GMT+3)",
-      "Africa/Cairo": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0642\u0627\u0647\u0631\u0629 (GMT+2/3)",
-      "Asia/Dubai": "\u062A\u0648\u0642\u064A\u062A \u062F\u0628\u064A (GMT+4)",
-      "Asia/Kuwait": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0643\u0648\u064A\u062A (GMT+3)",
-      "Asia/Amman": "\u062A\u0648\u0642\u064A\u062A \u0639\u0645\u0651\u0627\u0646 (GMT+3)",
-      "Asia/Qatar": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u062F\u0648\u062D\u0629 (GMT+3)",
-      "Asia/Muscat": "\u062A\u0648\u0642\u064A\u062A \u0645\u0633\u0642\u0637 (GMT+4)",
-      "Asia/Bahrain": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0645\u0646\u0627\u0645\u0629 (GMT+3)"
-    };
-    UmmAlQuraCalendarProvider = class _UmmAlQuraCalendarProvider {
-      constructor() {
-        this.type = "UMM_AL_QURA";
-        this.nameArabic = "\u062A\u0642\u0648\u064A\u0645 \u0623\u0645 \u0627\u0644\u0642\u0631\u0649";
-      }
-      static {
-        // Cache for calculated Hijri months to ensure zero lag and high efficiency
-        this.monthCache = /* @__PURE__ */ new Map();
-      }
-      /**
-       * استخراج بيانات التاريخ الهجري بدقة من كائن Date
-       */
-      gregorianToHijri(date2, timezone = "Africa/Cairo") {
-        try {
-          const dtf = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura-nu-latn", {
-            timeZone: timezone,
-            year: "numeric",
-            month: "numeric",
-            day: "numeric",
-            weekday: "narrow"
-          });
-          const parts = dtf.formatToParts(date2);
-          let year = 1448;
-          let month = 9;
-          let day = 1;
-          for (const p of parts) {
-            if (p.type === "year") year = parseInt(p.value, 10) || year;
-            if (p.type === "month") month = parseInt(p.value, 10) || month;
-            if (p.type === "day") day = parseInt(p.value, 10) || day;
-          }
-          const dayOfWeekIndex = date2.getDay();
-          const dayName = ARABIC_WEEKDAYS[dayOfWeekIndex] || "\u0627\u0644\u062C\u0645\u0639\u0629";
-          const monthName = HIJRI_MONTH_NAMES[month] || `\u0634\u0647\u0631 ${month}`;
-          return {
-            year,
-            month,
-            day,
-            monthName,
-            dayName,
-            formatted: `${day} ${monthName} ${year} \u0647\u0640`
-          };
-        } catch {
-          return {
-            year: 1448,
-            month: 9,
-            day: 1,
-            monthName: "\u0631\u0645\u0636\u0627\u0646",
-            dayName: "\u0627\u0644\u062C\u0645\u0639\u0629",
-            formatted: "1 \u0631\u0645\u0636\u0627\u0646 1448 \u0647\u0640"
-          };
-        }
-      }
-      /**
-       * استخراج بيانات التاريخ الميلادي
-       */
-      gregorianToInfo(date2, timezone = "Africa/Cairo") {
-        const dtf = new Intl.DateTimeFormat("en-US", {
-          timeZone: timezone,
-          year: "numeric",
-          month: "numeric",
-          day: "numeric"
-        });
-        const parts = dtf.formatToParts(date2);
-        let year = date2.getUTCFullYear();
-        let month = date2.getUTCMonth() + 1;
-        let day = date2.getUTCDate();
-        for (const p of parts) {
-          if (p.type === "year") year = parseInt(p.value, 10) || year;
-          if (p.type === "month") month = parseInt(p.value, 10) || month;
-          if (p.type === "day") day = parseInt(p.value, 10) || day;
-        }
-        const dayName = ARABIC_WEEKDAYS[date2.getDay()] || "";
-        const monthName = GREGORIAN_MONTH_NAMES[month] || `\u0634\u0647\u0631 ${month}`;
-        const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-        return {
-          year,
-          month,
-          day,
-          monthName,
-          dayName,
-          formatted: `${day} ${monthName} ${year} \u0645`,
-          iso
-        };
-      }
-      /**
-       * استخراج البداية والنهاية والجمعات الحقيقية للشهر الهجري
-       */
-      getHijriMonthInfo(hijriYear, hijriMonth, timezone = "Africa/Cairo") {
-        const todayIso = this.gregorianToInfo(/* @__PURE__ */ new Date(), timezone).iso;
-        const cacheKey = `${this.type}:${timezone}:${hijriYear}:${hijriMonth}:${todayIso}`;
-        const cached = _UmmAlQuraCalendarProvider.monthCache.get(cacheKey);
-        if (cached) return cached;
-        const approxGregYear = Math.floor(1970 + (hijriYear - 1389) * 0.970224);
-        const dtf = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura-nu-latn", {
-          timeZone: timezone,
-          year: "numeric",
-          month: "numeric",
-          day: "numeric"
-        });
-        const getH = (date2) => {
-          const parts = dtf.formatToParts(date2);
-          let y = 0, m2 = 0, d = 0;
-          for (const p of parts) {
-            if (p.type === "year") y = parseInt(p.value, 10);
-            if (p.type === "month") m2 = parseInt(p.value, 10);
-            if (p.type === "day") d = parseInt(p.value, 10);
-          }
-          return { year: y, month: m2, day: d };
-        };
-        let startDate = null;
-        let endDate = null;
-        const scanner = new Date(Date.UTC(approxGregYear - 1, Math.max(0, hijriMonth - 2), 1, 12, 0, 0));
-        for (let step = 0; step < 950; step++) {
-          const h2 = getH(scanner);
-          if (h2.year === hijriYear && h2.month === hijriMonth) {
-            if (!startDate) startDate = new Date(scanner.getTime());
-            endDate = new Date(scanner.getTime());
-          } else if (startDate && (h2.year > hijriYear || h2.year === hijriYear && h2.month > hijriMonth)) {
-            break;
-          }
-          scanner.setUTCDate(scanner.getUTCDate() + 1);
-        }
-        if (!startDate || !endDate) {
-          startDate = new Date(Date.UTC(2027, 1, 8, 12, 0, 0));
-          endDate = new Date(Date.UTC(2027, 2, 8, 12, 0, 0));
-        }
-        const daysCount = Math.round((endDate.getTime() - startDate.getTime()) / (86400 * 1e3)) + 1;
-        const startG = this.gregorianToInfo(startDate, timezone);
-        const endG = this.gregorianToInfo(endDate, timezone);
-        const todayInfo = this.gregorianToInfo(/* @__PURE__ */ new Date(), timezone);
-        let periodStatus = "CURRENT";
-        let statusLabelArabic = "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A";
-        if (endG.iso < todayIso) {
-          periodStatus = "PAST";
-          statusLabelArabic = "\u0645\u0646\u062A\u0647\u064A";
-        } else if (startG.iso > todayIso) {
-          periodStatus = "FUTURE";
-          statusLabelArabic = "\u0642\u0627\u062F\u0645";
-        } else {
-          periodStatus = "CURRENT";
-          statusLabelArabic = "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A";
-        }
-        const isPast = periodStatus === "PAST";
-        const isCurrent = periodStatus === "CURRENT";
-        const isFuture = periodStatus === "FUTURE";
-        const isCreatable = periodStatus !== "PAST";
-        const isEditable = periodStatus !== "PAST";
-        const fridays2 = [];
-        const iterator = new Date(startDate.getTime());
-        let fridayIndex = 1;
-        let pastFridaysCount = 0;
-        let futureFridaysCount = 0;
-        while (iterator <= endDate) {
-          if (iterator.getUTCDay() === 5) {
-            const hf = getH(iterator);
-            const gInfo = this.gregorianToInfo(iterator, timezone);
-            const monthName2 = HIJRI_MONTH_NAMES[hf.month] || `\u0634\u0647\u0631 ${hf.month}`;
-            const ordinalName = FRIDAY_ORDINALS[fridayIndex - 1] || `\u0627\u0644\u062C\u0645\u0639\u0629 ${fridayIndex}`;
-            const isFridayPast = gInfo.iso < todayIso;
-            let fridayPeriodStatus = "FUTURE";
-            if (isFridayPast) {
-              fridayPeriodStatus = "PAST";
-              pastFridaysCount++;
-            } else if (gInfo.iso === todayIso) {
-              fridayPeriodStatus = "CURRENT";
-              futureFridaysCount++;
-            } else {
-              fridayPeriodStatus = "FUTURE";
-              futureFridaysCount++;
-            }
-            fridays2.push({
-              fridayIndex,
-              ordinalName,
-              hijriYear: hf.year,
-              hijriMonth: hf.month,
-              hijriDay: hf.day,
-              hijriDate: `${hf.day} ${monthName2} ${hf.year} \u0647\u0640`,
-              gregorianDate: gInfo.formatted,
-              gregorianIso: gInfo.iso,
-              dayOfWeek: "\u0627\u0644\u062C\u0645\u0639\u0629",
-              isWithinMonth: true,
-              periodStatus: fridayPeriodStatus,
-              isPast: isFridayPast,
-              isLocked: isFridayPast
-              // Past fridays are locked
-            });
-            fridayIndex++;
-          }
-          iterator.setUTCDate(iterator.getUTCDate() + 1);
-        }
-        const monthName = HIJRI_MONTH_NAMES[hijriMonth] || `\u0634\u0647\u0631 ${hijriMonth}`;
-        const result = {
-          hijriYear,
-          hijriMonth,
-          monthName,
-          startDateGregorian: startG.iso,
-          endDateGregorian: endG.iso,
-          startDateFormatted: `1 ${monthName} ${hijriYear} \u0647\u0640 / ${startG.formatted}`,
-          endDateFormatted: `${daysCount} ${monthName} ${hijriYear} \u0647\u0640 / ${endG.formatted}`,
-          daysCount,
-          fridaysCount: fridays2.length,
-          fridays: fridays2,
-          calendarProvider: this.type,
-          providerNameArabic: this.nameArabic,
-          timezone,
-          calculatedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          periodStatus,
-          statusLabelArabic,
-          isPast,
-          isCurrent,
-          isFuture,
-          isCreatable,
-          isEditable,
-          pastFridaysCount,
-          futureFridaysCount
-        };
-        _UmmAlQuraCalendarProvider.monthCache.set(cacheKey, result);
-        return result;
-      }
-      /**
-       * التاريخ والوقت الحالي الموحد
-       */
-      getCurrentDateTime(timezone = "Africa/Cairo") {
-        const now = /* @__PURE__ */ new Date();
-        const hijri = this.gregorianToHijri(now, timezone);
-        const gregorian = this.gregorianToInfo(now, timezone);
-        const timeDtf = new Intl.DateTimeFormat("ar-SA", {
-          timeZone: timezone,
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true
-        });
-        const time24Dtf = new Intl.DateTimeFormat("en-GB", {
-          timeZone: timezone,
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false
-        });
-        const timeString = timeDtf.format(now);
-        const timeString24 = time24Dtf.format(now);
-        const timezoneLabel = TIMEZONE_LABELS[timezone] || timezone;
-        const fullFormatted = `${hijri.dayName} ${hijri.formatted} \u0627\u0644\u0645\u0648\u0627\u0641\u0642 ${gregorian.formatted}`;
-        const fullFormattedWithTime = `${fullFormatted} \u2014 ${timeString} (${timezoneLabel})`;
-        return {
-          hijri,
-          gregorian,
-          timeString,
-          timeString24,
-          dayName: hijri.dayName,
-          fullFormatted,
-          fullFormattedWithTime,
-          timezone,
-          timezoneLabel,
-          calendarProvider: this.type,
-          providerNameArabic: this.nameArabic,
-          lastSync: now.toISOString()
-        };
-      }
-    };
-    OfficialLocalCalendarProvider = class extends UmmAlQuraCalendarProvider {
-      constructor() {
-        super(...arguments);
-        this.type = "OFFICIAL_LOCAL";
-        this.nameArabic = "\u0627\u0644\u062A\u0642\u0648\u064A\u0645 \u0627\u0644\u0631\u0633\u0645\u064A \u0627\u0644\u0645\u062D\u0644\u064A";
-      }
-    };
-    CustomCalendarProvider = class extends UmmAlQuraCalendarProvider {
-      constructor() {
-        super(...arguments);
-        this.type = "CUSTOM";
-        this.nameArabic = "\u062A\u0642\u0648\u064A\u0645 \u0645\u062E\u0635\u0635";
-      }
-    };
-    CalendarProviderFactory = class {
-      static {
-        this.providers = {
-          UMM_AL_QURA: new UmmAlQuraCalendarProvider(),
-          OFFICIAL_LOCAL: new OfficialLocalCalendarProvider(),
-          CUSTOM: new CustomCalendarProvider()
-        };
-      }
-      static getProvider(type = "UMM_AL_QURA") {
-        return this.providers[type] || this.providers.UMM_AL_QURA;
-      }
-    };
-  }
-});
-
-// src/services/calendar/calendarService.ts
-var CalendarService;
-var init_calendarService = __esm({
-  "src/services/calendar/calendarService.ts"() {
-    init_calendarProvider();
-    CalendarService = class {
-      static {
-        this.defaultProvider = "UMM_AL_QURA";
-      }
-      static {
-        this.defaultTimezone = "Africa/Cairo";
-      }
-      static {
-        this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
-      }
-      /**
-       * تعيين الإعدادات الافتراضية المركزية للخدمة
-       */
-      static configureDefaults(provider, timezone) {
-        if (provider) this.defaultProvider = provider;
-        if (timezone) this.defaultTimezone = timezone;
-        this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
-      }
-      static getDefaultProvider() {
-        return this.defaultProvider;
-      }
-      static getDefaultTimezone() {
-        return this.defaultTimezone;
-      }
-      static getLastSyncTimestamp() {
-        return this.lastSyncTimestamp;
-      }
-      /**
-       * الحصول على معلومات وتفاصيل الشهر الهجري وجمعاته الفعلية وحالته الزمنية
-       * هذه الدالة هي مصدر الحقيقة الرئيسي لإنشاء الجداول والتحقق الزمني
-       */
-      static getHijriMonthDetails(hijriYear, hijriMonth, options) {
-        const providerType = options?.provider || this.defaultProvider;
-        const timezone = options?.timezone || this.defaultTimezone;
-        const provider = CalendarProviderFactory.getProvider(providerType);
-        return provider.getHijriMonthInfo(hijriYear, hijriMonth, timezone);
-      }
-      /**
-       * الحصول على قائمة الجمعات الحقيقية للشهر الهجري المحدد
-       * يستخدم مباشرة في محرك الجدولة (Scheduling Engine)
-       */
-      static getHijriMonthFridays(hijriYear, hijriMonth, options) {
-        const details = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-        return details.fridays;
-      }
-      /**
-       * الحصول على التاريخ والوقت الحالي الموحد وفق التقويم والمنطقة الزمنية
-       */
-      static getCurrentDateTime(options) {
-        const providerType = options?.provider || this.defaultProvider;
-        const timezone = options?.timezone || this.defaultTimezone;
-        const provider = CalendarProviderFactory.getProvider(providerType);
-        const info = provider.getCurrentDateTime(timezone);
-        info.lastSync = this.lastSyncTimestamp;
-        return info;
-      }
-      /**
-       * التحقق الصارم من حالة الشهر قبل الإنشاء أو التعديل (Strict Time Policy Validation)
-       */
-      static validateSchedulePeriod(hijriYear, hijriMonth, options) {
-        const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-        if (monthDetails.periodStatus === "PAST") {
-          return {
-            isValid: false,
-            periodStatus: "PAST",
-            error: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u062C\u062F\u064A\u062F \u0644\u0647. \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A \u0623\u0648 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0642\u0627\u062F\u0645.",
-            monthDetails
-          };
-        }
-        return {
-          isValid: true,
-          periodStatus: monthDetails.periodStatus,
-          monthDetails
-        };
-      }
-      /**
-       * التحقق من جمعة معينة هل هي في الماضي ومحمية من التعديل (Past Friday Locked)
-       */
-      static validateFridayAction(hijriYear, hijriMonth, fridayIndex, options) {
-        const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-        if (monthDetails.periodStatus === "PAST") {
-          return {
-            isAllowed: false,
-            isPastFriday: true,
-            reason: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 \u0648\u0647\u0648 \u0645\u062A\u0627\u062D \u0644\u0644\u0627\u0637\u0644\u0627\u0639 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0641\u0642\u0637."
-          };
-        }
-        const fridayItem = monthDetails.fridays.find((f3) => f3.fridayIndex === fridayIndex);
-        if (!fridayItem) {
-          return {
-            isAllowed: false,
-            isPastFriday: false,
-            reason: `\u0627\u0644\u062C\u0645\u0639\u0629 \u0631\u0642\u0645 (${fridayIndex}) \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631.`
-          };
-        }
-        if (fridayItem.isPast) {
-          return {
-            isAllowed: false,
-            isPastFriday: true,
-            reason: "\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0646\u062A\u0647\u062A \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0645\u0646 \u062E\u0644\u0627\u0644 \u0627\u0644\u062C\u062F\u0648\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629. \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0627\u0637\u0644\u0627\u0639 \u0639\u0644\u064A\u0647\u0627 \u0645\u0646 \u0633\u062C\u0644 \u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0648\u0627\u0644\u062A\u0627\u0631\u064A\u062E.",
-            fridayItem
-          };
-        }
-        return {
-          isAllowed: true,
-          isPastFriday: false,
-          fridayItem
-        };
-      }
-      /**
-       * قائمة الشهور الـ 12 لسنة هجرية مع حالة كل شهر (منتهي / الحالي / قادم)
-       */
-      static getHijriMonthsWithStatus(hijriYear, options) {
-        const list = [];
-        for (let m2 = 1; m2 <= 12; m2++) {
-          const details = this.getHijriMonthDetails(hijriYear, m2, options);
-          list.push({
-            number: m2,
-            name: details.monthName,
-            hijriYear,
-            periodStatus: details.periodStatus,
-            statusLabelArabic: details.statusLabelArabic,
-            isPast: details.isPast,
-            isCurrent: details.isCurrent,
-            isFuture: details.isFuture,
-            isCreatable: details.isCreatable,
-            isEditable: details.isEditable,
-            startDateGregorian: details.startDateGregorian,
-            endDateGregorian: details.endDateGregorian,
-            fridaysCount: details.fridaysCount,
-            pastFridaysCount: details.pastFridaysCount,
-            futureFridaysCount: details.futureFridaysCount
-          });
-        }
-        return list;
-      }
-      /**
-       * اختيار الشهر الافتراضي الذكي عند فتح معالج إنشاء الجداول:
-       * 1. الشهر الحالي إذا لم يكن قد أُنشئ له جدول بعد.
-       * 2. أول شهر قادم متاح للجدولة إذا كان الشهر الحالي مُنشأ بالفعل.
-       */
-      static getDefaultWizardMonth(existingSchedules = [], options) {
-        const current = this.getCurrentDateTime(options);
-        const curYear = current.hijri.year;
-        const curMonth = current.hijri.month;
-        const curExists = existingSchedules.some(
-          (s2) => s2.hijriYear === curYear && s2.hijriMonth === curMonth
-        );
-        if (!curExists) {
-          const curDetails = this.getHijriMonthDetails(curYear, curMonth, options);
-          if (curDetails.periodStatus !== "PAST") {
-            return { hijriYear: curYear, hijriMonth: curMonth };
-          }
-        }
-        let testYear = curYear;
-        let testMonth = curMonth + 1;
-        if (testMonth > 12) {
-          testMonth = 1;
-          testYear += 1;
-        }
-        for (let step = 0; step < 12; step++) {
-          const exists2 = existingSchedules.some(
-            (s2) => s2.hijriYear === testYear && s2.hijriMonth === testMonth
-          );
-          if (!exists2) {
-            return { hijriYear: testYear, hijriMonth: testMonth };
-          }
-          testMonth++;
-          if (testMonth > 12) {
-            testMonth = 1;
-            testYear++;
-          }
-        }
-        return { hijriYear: curYear, hijriMonth: curMonth < 12 ? curMonth + 1 : 1 };
-      }
-      /**
-       * تحويل تاريخ ميلادي إلى هجري موحد
-       */
-      static gregorianToHijri(date2, options) {
-        const providerType = options?.provider || this.defaultProvider;
-        const timezone = options?.timezone || this.defaultTimezone;
-        const provider = CalendarProviderFactory.getProvider(providerType);
-        return provider.gregorianToHijri(date2, timezone);
-      }
-      /**
-       * تنسيق التاريخ الثنائي (هجري أولاً ثم ميلادي)
-       * مثال: "13 رمضان 1448 هـ الموافق 19 فبراير 2027 م"
-       */
-      static formatBilingualDate(hijriDate, gregorianDate) {
-        if (!gregorianDate) return hijriDate;
-        return `${hijriDate} (\u0627\u0644\u0645\u0648\u0627\u0641\u0642: ${gregorianDate})`;
-      }
-      /**
-       * قائمة السنوات الهجرية المتاحة للاختيار
-       */
-      static getAvailableHijriYears() {
-        const currentYear = this.getCurrentDateTime().hijri.year;
-        const years = [];
-        for (let y = currentYear - 2; y <= currentYear + 4; y++) {
-          years.push(y);
-        }
-        return years;
-      }
-      /**
-       * قائمة الشهور الهجرية الـ 12 مع الأسماء
-       */
-      static getHijriMonthsList() {
-        return Object.entries(HIJRI_MONTH_NAMES).map(([num, name]) => ({
-          id: Number(num),
-          number: Number(num),
-          name
-        }));
-      }
-      /**
-       * مزامنة وتحديث حالة التقويم والوقت
-       */
-      static syncCalendar(options) {
-        this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
-        return this.getCurrentDateTime(options);
-      }
-    };
-  }
-});
-
 // node_modules/xlsx/dist/cpexcel.js
 var require_cpexcel = __commonJS({
   "node_modules/xlsx/dist/cpexcel.js"(exports, module) {
@@ -109781,1128 +108637,6 @@ var require_xlsx = __commonJS({
   }
 });
 
-// src/server/memoryStore.ts
-import fs3 from "fs";
-import path2 from "path";
-var seedData, memoryMosques, memoryImams, memoryRules, memorySchedules, memoryFridays, memoryAssignments, memoryConflicts, memoryOverrides, memoryPatterns, memoryPatternItems, memoryStore;
-var init_memoryStore = __esm({
-  "src/server/memoryStore.ts"() {
-    init_calendarService();
-    init_schedulingEngine();
-    seedData = {
-      mosques: [],
-      imams: [],
-      mosqueImamRules: [],
-      monthlySchedules: [],
-      fridays: [],
-      assignments: [],
-      conflicts: [],
-      overrides: [],
-      fixedAssignmentPatterns: [],
-      fixedAssignmentPatternItems: [],
-      users: []
-    };
-    try {
-      const seedPath = path2.resolve("src/db/initialSeed.json");
-      if (fs3.existsSync(seedPath)) {
-        const raw = fs3.readFileSync(seedPath, "utf8");
-        seedData = JSON.parse(raw);
-      }
-    } catch (err) {
-      console.warn("Could not load initialSeed.json for memoryStore:", err);
-    }
-    memoryMosques = [...seedData.mosques || []];
-    memoryImams = [...seedData.imams || []];
-    memoryRules = [...seedData.mosqueImamRules || []];
-    memorySchedules = [...seedData.monthlySchedules || []];
-    memoryFridays = [...seedData.fridays || []];
-    memoryAssignments = [...seedData.assignments || []];
-    memoryConflicts = [...seedData.conflicts || []];
-    memoryOverrides = [...seedData.overrides || []];
-    memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
-    memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
-    memoryStore = {
-      reset() {
-        memoryMosques = [...seedData.mosques || []];
-        memoryImams = [...seedData.imams || []];
-        memoryRules = [...seedData.mosqueImamRules || []];
-        memorySchedules = [...seedData.monthlySchedules || []];
-        memoryFridays = [...seedData.fridays || []];
-        memoryAssignments = [...seedData.assignments || []];
-        memoryConflicts = [...seedData.conflicts || []];
-        memoryOverrides = [...seedData.overrides || []];
-        memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
-        memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
-      },
-      getMosques(search = "", region = "") {
-        const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2.name]));
-        let list = [...memoryMosques];
-        if (search) {
-          const s2 = search.toLowerCase();
-          list = list.filter(
-            (m2) => m2.name?.includes(search) || m2.code?.toLowerCase().includes(s2) || m2.region && m2.region.includes(search)
-          );
-        }
-        if (region && region !== "ALL") {
-          list = list.filter((m2) => m2.region === region);
-        }
-        return list.map((m2) => {
-          const rulesForMosque = memoryRules.filter((r2) => r2.mosqueId === m2.id);
-          return {
-            ...m2,
-            fixedImamName: m2.fixedImamId ? imamMap.get(m2.fixedImamId) || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F" : null,
-            preferencesCount: rulesForMosque.filter((r2) => r2.relationshipType === "PREFERRED").length,
-            forbiddenCount: rulesForMosque.filter((r2) => r2.relationshipType === "FORBIDDEN").length
-          };
-        });
-      },
-      getMosqueDetails(id) {
-        const mosque = memoryMosques.find((m2) => m2.id === id);
-        if (!mosque) return null;
-        const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2.name]));
-        const rules = memoryRules.filter((r2) => r2.mosqueId === id).map((r2) => ({
-          ...r2,
-          imam: imamMap.get(r2.imamId)
-        }));
-        return {
-          ...mosque,
-          rules
-        };
-      },
-      getImams(search = "", type = "") {
-        let list = [...memoryImams];
-        if (search) {
-          list = list.filter(
-            (i2) => i2.name?.includes(search) || i2.phone?.includes(search) || i2.region && i2.region.includes(search)
-          );
-        }
-        if (type && type !== "ALL") {
-          list = list.filter((i2) => i2.type === type);
-        }
-        return list.map((i2) => {
-          const rulesForImam = memoryRules.filter((r2) => r2.imamId === i2.id);
-          const assignedCount = memoryAssignments.filter((a) => a.imamId === i2.id).length;
-          return {
-            ...i2,
-            assignedFridaysCount: assignedCount,
-            preferredMosquesCount: rulesForImam.filter((r2) => r2.relationshipType === "PREFERRED").length,
-            forbiddenMosquesCount: rulesForImam.filter((r2) => r2.relationshipType === "FORBIDDEN").length
-          };
-        });
-      },
-      getImamDetails(id) {
-        const imam = memoryImams.find((i2) => i2.id === id);
-        if (!imam) return null;
-        const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2.name]));
-        const rules = memoryRules.filter((r2) => r2.imamId === id).map((r2) => ({
-          ...r2,
-          mosque: mosqueMap.get(r2.mosqueId)
-        }));
-        return {
-          ...imam,
-          rules
-        };
-      },
-      getRules() {
-        return [...memoryRules];
-      },
-      getSchedules() {
-        return memorySchedules.map((s2) => {
-          const monthDetails = CalendarService.getHijriMonthDetails(s2.hijriYear, s2.hijriMonth, {
-            provider: s2.calendarProvider || "UMM_AL_QURA",
-            timezone: s2.timezone || "Africa/Cairo"
-          });
-          return {
-            ...s2,
-            periodStatus: monthDetails.periodStatus,
-            statusLabelArabic: monthDetails.statusLabelArabic,
-            isPast: monthDetails.isPast,
-            isCurrent: monthDetails.isCurrent,
-            isFuture: monthDetails.isFuture,
-            isCreatable: monthDetails.isCreatable,
-            isEditable: monthDetails.isEditable,
-            pastFridaysCount: monthDetails.pastFridaysCount,
-            futureFridaysCount: monthDetails.futureFridaysCount
-          };
-        });
-      },
-      getScheduleDetails(id) {
-        const schedule = memorySchedules.find((s2) => s2.id === id) || memorySchedules[0];
-        if (!schedule) return null;
-        const fridays2 = memoryFridays.filter((f3) => f3.scheduleId === schedule.id);
-        const assigns = memoryAssignments.filter((a) => a.scheduleId === schedule.id);
-        const confs = memoryConflicts.filter((c) => c.scheduleId === schedule.id);
-        const overs = memoryOverrides.filter((o) => o.scheduleId === schedule.id);
-        return {
-          schedule,
-          fridays: fridays2,
-          assignments: assigns,
-          conflicts: confs,
-          overrides: overs
-        };
-      },
-      getDashboard(hijriYear, hijriMonth) {
-        const currentDT = CalendarService.getCurrentDateTime();
-        const hYear = hijriYear || currentDT.hijri.year;
-        const hMonth = hijriMonth || currentDT.hijri.month;
-        const monthDetails = CalendarService.getHijriMonthDetails(hYear, hMonth);
-        const activeMosques = memoryMosques.filter((m2) => m2.isActive);
-        const activeImams = memoryImams.filter((i2) => i2.isActive);
-        const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2]));
-        const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
-        const schedule = memorySchedules.find((s2) => s2.hijriYear === hYear && s2.hijriMonth === hMonth) || memorySchedules[0] || null;
-        let scheduleAssignments = [];
-        let scheduleConflicts = [];
-        if (schedule) {
-          scheduleAssignments = memoryAssignments.filter((a) => a.scheduleId === schedule.id);
-          scheduleConflicts = memoryConflicts.filter((c) => c.scheduleId === schedule.id);
-        }
-        const totalRequiredAssignments = activeMosques.length * monthDetails.fridaysCount;
-        const completedAssignments = scheduleAssignments.filter((a) => a.imamId !== null).length;
-        const completionPercentage = totalRequiredAssignments > 0 ? Math.min(100, Math.round(completedAssignments / totalRequiredAssignments * 100)) : 0;
-        const fridaysWithStats = monthDetails.fridays.map((f3) => {
-          const fridayAssigns = scheduleAssignments.filter((a) => a.fridayIndex === f3.fridayIndex);
-          const assignedCount = fridayAssigns.filter((a) => a.imamId !== null).length;
-          const vacantCount = Math.max(0, activeMosques.length - assignedCount);
-          const fridayConflictsCount = scheduleConflicts.filter((c) => c.fridayIndex === f3.fridayIndex).length;
-          let status = "PENDING";
-          if (f3.isPast) {
-            status = "PAST";
-          } else if (fridayConflictsCount > 0) {
-            status = "CONFLICTS";
-          } else if (assignedCount === activeMosques.length && activeMosques.length > 0) {
-            status = "COMPLETED";
-          } else if (assignedCount > 0) {
-            status = "REVIEW";
-          }
-          return {
-            id: f3.fridayIndex,
-            fridayIndex: f3.fridayIndex,
-            ordinalName: f3.ordinalName,
-            hijriDate: f3.hijriDate,
-            gregorianDate: f3.gregorianDate,
-            isPast: f3.isPast,
-            isCurrent: f3.periodStatus === "CURRENT",
-            isFuture: f3.periodStatus === "FUTURE",
-            assignedCount,
-            requiredCount: activeMosques.length,
-            vacantCount,
-            conflictsCount: fridayConflictsCount,
-            status
-          };
-        });
-        let targetFriday = monthDetails.fridays.find((f3) => !f3.isPast) || monthDetails.fridays[0];
-        let nextFridayData = null;
-        let nextFridayAssignments = [];
-        if (targetFriday) {
-          const targetFridayAssigns = scheduleAssignments.filter(
-            (a) => a.fridayIndex === targetFriday.fridayIndex
-          );
-          nextFridayAssignments = targetFridayAssigns.map((a) => {
-            const m2 = mosqueMap.get(a.mosqueId);
-            const i2 = a.imamId ? imamMap.get(a.imamId) : null;
-            return {
-              id: a.id,
-              fridayIndex: a.fridayIndex,
-              mosqueId: a.mosqueId,
-              mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
-              mosqueCode: m2?.code || "",
-              mosqueRegion: m2?.region || "",
-              managerPhone: m2?.phone || "",
-              imamId: a.imamId,
-              imamName: i2?.name || "\u0634\u0627\u063A\u0631 (\u0644\u0645 \u064A\u0639\u064A\u0646)",
-              imamPhone: i2?.phone || "",
-              isLocked: a.isLocked,
-              assignmentSource: a.source
-            };
-          });
-          const vacantCount = Math.max(
-            0,
-            activeMosques.length - nextFridayAssignments.filter((a) => a.imamId).length
-          );
-          const targetDate = new Date(targetFriday.gregorianIso);
-          const now = /* @__PURE__ */ new Date();
-          const diffMs = targetDate.getTime() - now.getTime();
-          const daysRemaining = Math.max(0, Math.ceil(diffMs / (1e3 * 60 * 60 * 24)));
-          nextFridayData = {
-            fridayIndex: targetFriday.fridayIndex,
-            ordinalName: targetFriday.ordinalName,
-            hijriDate: targetFriday.hijriDate,
-            gregorianDate: targetFriday.gregorianDate,
-            monthName: monthDetails.monthName,
-            hijriYear: hYear,
-            daysRemaining,
-            totalRequired: activeMosques.length,
-            totalAssigned: nextFridayAssignments.filter((a) => a.imamId).length,
-            vacantCount,
-            isAllMonthFridaysPast: false
-          };
-        }
-        return {
-          period: {
-            hijriYear: hYear,
-            hijriMonth: hMonth,
-            monthNameAr: monthDetails.monthName,
-            status: monthDetails.periodStatus,
-            statusLabelArabic: monthDetails.statusLabelArabic,
-            isPast: monthDetails.isPast,
-            isCurrent: monthDetails.isCurrent,
-            isFuture: monthDetails.isFuture,
-            startDateHijri: `1 ${monthDetails.monthName} ${hYear} \u0647\u0640`,
-            endDateHijri: `${monthDetails.daysCount} ${monthDetails.monthName} ${hYear} \u0647\u0640`,
-            startDateGregorian: monthDetails.startDateGregorian,
-            endDateGregorian: monthDetails.endDateGregorian,
-            fridaysCount: monthDetails.fridaysCount,
-            pastFridaysCount: monthDetails.pastFridaysCount,
-            futureFridaysCount: monthDetails.futureFridaysCount
-          },
-          stats: {
-            totalMosques: memoryMosques.length,
-            activeMosques: activeMosques.length,
-            totalImams: memoryImams.length,
-            activeImams: activeImams.length,
-            totalAssignments: completedAssignments,
-            totalRequiredAssignments,
-            completedAssignments,
-            completionPercentage,
-            totalConflicts: scheduleConflicts.length
-          },
-          schedule: schedule ? {
-            id: schedule.id,
-            monthName: schedule.monthName,
-            hijriYear: schedule.hijriYear,
-            hijriMonth: schedule.hijriMonth,
-            status: schedule.status,
-            currentVersion: schedule.currentVersion,
-            updatedAt: schedule.updatedAt,
-            publishedAt: schedule.publishedAt
-          } : null,
-          fridays: fridaysWithStats,
-          nextFriday: nextFridayData,
-          nextFridayAssignments,
-          alerts: [],
-          liveDateTime: currentDT
-        };
-      },
-      getImamProfile(id, scheduleId) {
-        const imam = memoryImams.find((i2) => i2.id === id);
-        if (!imam) return null;
-        const allAssignments = memoryAssignments.filter((a) => a.imamId === id);
-        const fridayMap = new Map(memoryFridays.map((f3) => [f3.id, f3]));
-        const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
-        const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2]));
-        const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
-        const profileAssignments = allAssignments.map((a) => {
-          const f3 = fridayMap.get(a.fridayId);
-          const s2 = scheduleMap.get(a.scheduleId);
-          const m2 = mosqueMap.get(a.mosqueId);
-          const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
-          return {
-            id: a.id,
-            scheduleId: a.scheduleId,
-            fridayId: a.fridayId,
-            fridayIndex: a.fridayIndex,
-            hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
-            gregorianDate: f3?.gregorianDate || void 0,
-            monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
-            hijriYear: s2?.hijriYear || 1448,
-            scheduleStatus: s2?.status || "APPROVED",
-            mosqueId: a.mosqueId,
-            mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
-            mosqueCode: m2?.code || "",
-            mosqueRegion: m2?.region || "",
-            imamId: imam.id,
-            imamName: imam.name,
-            imamType: imam.type,
-            imamPhone: imam.phone || void 0,
-            isLocked: a.isLocked,
-            source: a.source,
-            isUpcoming
-          };
-        }).sort((x2, y) => {
-          if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
-          return x2.fridayIndex - y.fridayIndex;
-        });
-        const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
-        const rules = memoryRules.filter((r2) => r2.imamId === id).map((r2) => {
-          const m2 = mosqueMap.get(r2.mosqueId);
-          return {
-            ...r2,
-            mosqueName: m2?.name,
-            mosqueRegion: m2?.region
-          };
-        });
-        const mosqueCounts = /* @__PURE__ */ new Map();
-        for (const a of profileAssignments) {
-          const curr = mosqueCounts.get(a.mosqueId) || { count: 0 };
-          curr.count += 1;
-          if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
-          if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
-          mosqueCounts.set(a.mosqueId, curr);
-        }
-        const linkedMosques = Array.from(mosqueCounts.entries()).map(([mId, data]) => {
-          const m2 = mosqueMap.get(mId);
-          const rule = rules.find((r2) => r2.mosqueId === mId);
-          return {
-            mosqueId: mId,
-            mosqueName: m2?.name || `\u0645\u0633\u062C\u062F #${mId}`,
-            mosqueCode: m2?.code || "",
-            mosqueRegion: m2?.region || "",
-            relationshipType: rule?.relationshipType,
-            assignedCount: data.count,
-            lastDate: data.lastDate,
-            nextDate: data.nextDate
-          };
-        }).sort((x2, y) => y.assignedCount - x2.assignedCount);
-        const stats = {
-          currentMonthCount: upcomingAssignments.length,
-          currentMonthName: activeSchedule?.monthName || "",
-          currentHijriYear: activeSchedule?.hijriYear || 1448,
-          currentScheduleStatus: activeSchedule?.status || "APPROVED",
-          lifetimeTotalAssigned: profileAssignments.length,
-          mosquesCount: linkedMosques.length,
-          upcomingCount: upcomingAssignments.length,
-          pastCount: profileAssignments.length - upcomingAssignments.length,
-          availabilitiesCount: 0,
-          minFridays: imam.minFridays,
-          targetFridays: imam.targetFridays,
-          maxFridays: imam.maxFridays
-        };
-        return {
-          imam,
-          activeSchedule,
-          availableSchedules: memorySchedules.map((s2) => ({
-            id: s2.id,
-            monthName: s2.monthName,
-            hijriYear: s2.hijriYear,
-            fridaysCount: s2.fridaysCount,
-            status: s2.status
-          })),
-          stats,
-          assignments: profileAssignments,
-          upcomingAssignments,
-          linkedMosques,
-          rules,
-          availabilities: [],
-          auditLogs: []
-        };
-      },
-      getMosqueProfile(id, scheduleId) {
-        const mosque = memoryMosques.find((m2) => m2.id === id);
-        if (!mosque) return null;
-        const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
-        const fridayMap = new Map(memoryFridays.map((f3) => [f3.id, f3]));
-        const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
-        const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
-        const allAssignments = memoryAssignments.filter((a) => a.mosqueId === id);
-        const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
-        const profileAssignments = allAssignments.map((a) => {
-          const f3 = fridayMap.get(a.fridayId);
-          const s2 = scheduleMap.get(a.scheduleId);
-          const i2 = a.imamId ? imamMap.get(a.imamId) : null;
-          const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
-          return {
-            id: a.id,
-            scheduleId: a.scheduleId,
-            fridayId: a.fridayId,
-            fridayIndex: a.fridayIndex,
-            hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
-            gregorianDate: f3?.gregorianDate || void 0,
-            monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
-            hijriYear: s2?.hijriYear || 1448,
-            scheduleStatus: s2?.status || "APPROVED",
-            mosqueId: mosque.id,
-            mosqueName: mosque.name,
-            mosqueCode: mosque.code,
-            mosqueRegion: mosque.region,
-            imamId: a.imamId,
-            imamName: i2?.name || "\u0634\u0627\u063A\u0631 (\u0644\u0645 \u064A\u0639\u064A\u0646)",
-            imamType: i2?.type || "FLEXIBLE",
-            imamPhone: i2?.phone || void 0,
-            isLocked: a.isLocked,
-            source: a.source,
-            isUpcoming
-          };
-        }).sort((x2, y) => {
-          if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
-          return x2.fridayIndex - y.fridayIndex;
-        });
-        const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
-        const allRules = memoryRules.filter((r2) => r2.mosqueId === id);
-        const rulesGrouped = {
-          preferred: allRules.filter((r2) => r2.relationshipType === "PREFERRED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
-          allowed: allRules.filter((r2) => r2.relationshipType === "ALLOWED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
-          discouraged: allRules.filter((r2) => r2.relationshipType === "DISCOURAGED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
-          forbidden: allRules.filter((r2) => r2.relationshipType === "FORBIDDEN").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
-          fixed: allRules.filter((r2) => r2.relationshipType === "FIXED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name }))
-        };
-        const imamCounts = /* @__PURE__ */ new Map();
-        for (const a of profileAssignments) {
-          if (a.imamId) {
-            const curr = imamCounts.get(a.imamId) || { count: 0 };
-            curr.count += 1;
-            if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
-            if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
-            imamCounts.set(a.imamId, curr);
-          }
-        }
-        const linkedImams = Array.from(imamCounts.entries()).map(([imId, data]) => {
-          const im = imamMap.get(imId);
-          const rule = allRules.find((r2) => r2.imamId === imId);
-          return {
-            imamId: imId,
-            imamName: im?.name || `\u062E\u0637\u064A\u0628 #${imId}`,
-            imamType: im?.type || "FLEXIBLE",
-            imamPhone: im?.phone || void 0,
-            relationshipType: rule?.relationshipType || (mosque.fixedImamId === imId ? "FIXED" : void 0),
-            assignedCount: data.count,
-            lastDate: data.lastDate,
-            nextDate: data.nextDate
-          };
-        }).sort((x2, y) => y.assignedCount - x2.assignedCount);
-        const stats = {
-          totalAssigned: profileAssignments.length,
-          currentMonthCount: upcomingAssignments.length,
-          imamsCount: linkedImams.length,
-          upcomingCount: upcomingAssignments.length,
-          currentScheduleFridaysTotal: activeSchedule?.fridaysCount || 4,
-          currentMonthName: activeSchedule?.monthName || "",
-          currentHijriYear: activeSchedule?.hijriYear || 1448
-        };
-        return {
-          mosque,
-          fixedImam,
-          activeSchedule,
-          availableSchedules: memorySchedules.map((s2) => ({
-            id: s2.id,
-            monthName: s2.monthName,
-            hijriYear: s2.hijriYear,
-            fridaysCount: s2.fridaysCount,
-            status: s2.status
-          })),
-          stats,
-          assignments: profileAssignments,
-          upcomingAssignments,
-          linkedImams,
-          rules: rulesGrouped,
-          auditLogs: []
-        };
-      },
-      getFixedPatterns(mosqueId, year, month) {
-        const pattern = memoryPatterns.find(
-          (p) => p.mosqueId === mosqueId && p.hijriYear === year && p.hijriMonth === month
-        );
-        const monthDetails = CalendarService.getHijriMonthDetails(year, month);
-        const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
-        if (!pattern) {
-          return {
-            exists: false,
-            fridaysCount: monthDetails.fridaysCount,
-            pattern: {
-              patternType: "NONE",
-              items: monthDetails.fridays.map((f3) => ({
-                fridayIndex: f3.fridayIndex,
-                imamId: null,
-                imamName: null
-              }))
-            }
-          };
-        }
-        const items = memoryPatternItems.filter((pi) => pi.patternId === pattern.id).map((pi) => {
-          const im = pi.imamId ? imamMap.get(pi.imamId) : null;
-          return {
-            ...pi,
-            imamName: im?.name || null
-          };
-        });
-        return {
-          exists: true,
-          pattern: {
-            ...pattern,
-            items
-          },
-          fridaysCount: pattern.fridaysCount
-        };
-      },
-      getReportsSummary() {
-        const imamLoads = memoryImams.map((i2) => {
-          const assigned = memoryAssignments.filter((a) => a.imamId === i2.id).length;
-          return {
-            id: i2.id,
-            name: i2.name,
-            type: i2.type,
-            min: i2.minFridays,
-            target: i2.targetFridays,
-            max: i2.maxFridays,
-            assigned,
-            status: assigned < i2.minFridays ? "UNDER" : assigned > i2.maxFridays ? "OVER" : "BALANCED"
-          };
-        });
-        const mosqueLoads = memoryMosques.map((m2) => {
-          const assignedCount = memoryAssignments.filter((a) => a.mosqueId === m2.id).length;
-          return {
-            id: m2.id,
-            name: m2.name,
-            code: m2.code,
-            region: m2.region,
-            assignedCount
-          };
-        });
-        return {
-          imamLoads,
-          mosqueLoads,
-          totalConflicts: memoryConflicts.length,
-          criticalConflicts: 0,
-          warningConflicts: 0,
-          overridesCount: memoryOverrides.length,
-          manualChangesCount: 0
-        };
-      },
-      getAuditLogs() {
-        return [
-          {
-            id: 1,
-            userEmail: "admin@aljameya.org",
-            action: "INITIAL_SEED",
-            entityType: "SYSTEM",
-            entityId: 1,
-            detailsJson: JSON.stringify({ message: "\u062A\u0647\u064A\u0626\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0645\u0646\u0638\u0651\u0645 \u0627\u0644\u062C\u0645\u0639\u0629" }),
-            createdAt: (/* @__PURE__ */ new Date()).toISOString()
-          }
-        ];
-      },
-      updateAssignment(scheduleId, assignmentId, imamId, reason) {
-        const assign = memoryAssignments.find((a) => a.id === assignmentId && a.scheduleId === scheduleId);
-        if (!assign) return null;
-        assign.imamId = imamId;
-        assign.source = "MANUAL";
-        assign.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return assign;
-      },
-      swapAssignments(scheduleId, sourceAssignmentId, targetAssignmentId, reason) {
-        const a1 = memoryAssignments.find((a) => a.id === sourceAssignmentId && a.scheduleId === scheduleId);
-        const a2 = memoryAssignments.find((a) => a.id === targetAssignmentId && a.scheduleId === scheduleId);
-        if (!a1 || !a2) return null;
-        const tempImamId = a1.imamId;
-        a1.imamId = a2.imamId;
-        a2.imamId = tempImamId;
-        a1.source = "MANUAL";
-        a2.source = "MANUAL";
-        a1.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        a2.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return { assignment1: a1, assignment2: a2 };
-      },
-      toggleLock(scheduleId, assignmentId) {
-        const assign = memoryAssignments.find((a) => a.id === assignmentId && a.scheduleId === scheduleId);
-        if (!assign) return null;
-        assign.isLocked = !assign.isLocked;
-        assign.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return assign;
-      },
-      approveSchedule(scheduleId) {
-        const sched = memorySchedules.find((s2) => s2.id === scheduleId);
-        if (!sched) return null;
-        sched.status = "APPROVED";
-        sched.approvedAt = (/* @__PURE__ */ new Date()).toISOString();
-        sched.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return sched;
-      },
-      publishSchedule(scheduleId) {
-        const sched = memorySchedules.find((s2) => s2.id === scheduleId);
-        if (!sched) return null;
-        sched.status = "PUBLISHED";
-        sched.publishedAt = (/* @__PURE__ */ new Date()).toISOString();
-        sched.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return sched;
-      },
-      createSchedule(hijriYear, hijriMonth, calendarProvider, timezone, createdBy) {
-        const periodValidation = CalendarService.validateSchedulePeriod(hijriYear, hijriMonth, {
-          provider: calendarProvider || "UMM_AL_QURA",
-          timezone: timezone || "Asia/Riyadh"
-        });
-        const existing = memorySchedules.find(
-          (s2) => s2.hijriYear === hijriYear && s2.hijriMonth === hijriMonth
-        );
-        if (existing) {
-          return {
-            isDuplicate: true,
-            schedule: existing,
-            error: `\u064A\u0648\u062C\u062F \u0628\u0627\u0644\u0641\u0639\u0644 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 ${existing.monthName} ${hijriYear} \u0647\u0640 (\u0627\u0644\u062C\u062F\u0648\u0644 #${existing.id})`
-          };
-        }
-        const monthDetails = periodValidation.monthDetails;
-        const nextId = memorySchedules.reduce((max, s2) => Math.max(max, s2.id || 0), 0) + 1;
-        const newSchedule = {
-          id: nextId,
-          hijriYear,
-          hijriMonth,
-          monthName: monthDetails.monthName,
-          fridaysCount: monthDetails.fridaysCount,
-          daysCount: monthDetails.daysCount,
-          calendarProvider: monthDetails.calendarProvider,
-          timezone: monthDetails.timezone,
-          startDateGregorian: monthDetails.startDateGregorian,
-          endDateGregorian: monthDetails.endDateGregorian,
-          status: "DRAFT",
-          currentVersion: 1,
-          createdBy: createdBy || "admin@aljameya.org",
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        memorySchedules.unshift(newSchedule);
-        let nextFridayId = memoryFridays.reduce((max, f3) => Math.max(max, f3.id || 0), 0) + 1;
-        const fridaysToInsert = monthDetails.fridays.map((f3) => ({
-          id: nextFridayId++,
-          scheduleId: newSchedule.id,
-          fridayIndex: f3.fridayIndex,
-          hijriYear: f3.hijriYear,
-          hijriMonth: f3.hijriMonth,
-          hijriDay: f3.hijriDay,
-          hijriDate: f3.hijriDate,
-          gregorianDate: f3.gregorianDate,
-          dayOfWeek: f3.dayOfWeek
-        }));
-        memoryFridays.push(...fridaysToInsert);
-        this.persistToDisk();
-        return {
-          ...newSchedule,
-          periodStatus: monthDetails.periodStatus,
-          statusLabelArabic: monthDetails.statusLabelArabic,
-          monthDetails
-        };
-      },
-      generateSchedule(scheduleId, distributionMethod, seed) {
-        const schedule = memorySchedules.find((s2) => s2.id === scheduleId);
-        if (!schedule) {
-          throw new Error("\u0627\u0644\u062C\u062F\u0648\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
-        }
-        const activeMosques = memoryMosques.filter((m2) => m2.isActive);
-        const activeImams = memoryImams.filter((i2) => i2.isActive);
-        const rules = memoryRules;
-        const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
-          provider: schedule.calendarProvider || "UMM_AL_QURA",
-          timezone: schedule.timezone || "Asia/Riyadh"
-        });
-        const pastFridayIndices = new Set(
-          monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
-        );
-        const existingAssignments = memoryAssignments.filter((a) => a.scheduleId === scheduleId);
-        const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
-          fridayIndex: a.fridayIndex,
-          mosqueId: a.mosqueId,
-          imamId: a.imamId,
-          source: a.source,
-          notes: a.notes
-        }));
-        const patternRecords = memoryPatterns.filter(
-          (p) => p.hijriYear === schedule.hijriYear && p.hijriMonth === schedule.hijriMonth && p.isActive !== false
-        );
-        const patternIds = patternRecords.map((p) => p.id);
-        const patternItemsRecords = memoryPatternItems.filter((item) => patternIds.includes(item.patternId));
-        const fixedPatternsInput = patternRecords.map((p) => ({
-          mosqueId: p.mosqueId,
-          patternType: p.patternType,
-          fridaysCount: p.fridaysCount,
-          items: patternItemsRecords.filter((item) => item.patternId === p.id).map((item) => ({
-            fridayIndex: item.fridayIndex,
-            imamId: item.imamId,
-            sequence: item.sequence,
-            notes: item.notes
-          }))
-        }));
-        const result = SchedulingEngine.generate({
-          monthName: schedule.monthName,
-          hijriYear: schedule.hijriYear,
-          hijriMonth: schedule.hijriMonth,
-          fridaysCount: schedule.fridaysCount,
-          mosques: activeMosques.map((m2) => ({
-            id: m2.id,
-            name: m2.name,
-            code: m2.code,
-            region: m2.region,
-            isActive: m2.isActive,
-            fixedImamId: m2.fixedImamId,
-            fixedPattern: m2.fixedPattern,
-            fixedCount: m2.fixedCount
-          })),
-          imams: activeImams.map((i2) => ({
-            id: i2.id,
-            name: i2.name,
-            type: i2.type,
-            minFridays: i2.minFridays,
-            targetFridays: i2.targetFridays,
-            maxFridays: i2.maxFridays,
-            isActive: i2.isActive,
-            region: i2.region
-          })),
-          rules: rules.map((r2) => ({
-            mosqueId: r2.mosqueId,
-            imamId: r2.imamId,
-            relationshipType: r2.relationshipType,
-            priority: r2.priority || 1
-          })),
-          availabilities: [],
-          lockedAssignments,
-          fixedPatterns: fixedPatternsInput,
-          distributionMethod: distributionMethod || "Balanced Random",
-          seed: seed || `${schedule.monthName}-${schedule.hijriYear}`
-        });
-        const lockedIds = new Set(existingAssignments.filter((a) => a.isLocked).map((a) => a.id));
-        memoryAssignments = memoryAssignments.filter((a) => a.scheduleId !== scheduleId || lockedIds.has(a.id));
-        let nextAssignId = memoryAssignments.reduce((max, a) => Math.max(max, a.id || 0), 0) + 1;
-        const scheduleFridays = memoryFridays.filter((f3) => f3.scheduleId === scheduleId);
-        const fridayMap = new Map(scheduleFridays.map((f3) => [f3.fridayIndex, f3.id]));
-        const newAssignmentsToInsert = result.assignments.map((ea) => ({
-          id: nextAssignId++,
-          scheduleId,
-          fridayId: fridayMap.get(ea.fridayIndex) || 0,
-          fridayIndex: ea.fridayIndex,
-          mosqueId: ea.mosqueId,
-          imamId: ea.imamId,
-          isLocked: ea.isLocked || false,
-          source: ea.source,
-          notes: ea.notes || null,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        }));
-        memoryAssignments.push(...newAssignmentsToInsert);
-        if (result.conflicts && result.conflicts.length > 0) {
-          let nextConflictId = memoryConflicts.reduce((max, c) => Math.max(max, c.id || 0), 0) + 1;
-          const newConflicts = result.conflicts.map((c) => ({
-            id: nextConflictId++,
-            scheduleId,
-            fridayIndex: c.fridayIndex || null,
-            mosqueId: c.mosqueId || null,
-            imamId: c.imamId || null,
-            ruleCode: c.ruleCode,
-            severity: c.severity,
-            message: c.message,
-            possibleResolutions: JSON.stringify(c.possibleResolutions || []),
-            createdAt: (/* @__PURE__ */ new Date()).toISOString()
-          }));
-          memoryConflicts = memoryConflicts.filter((c) => c.scheduleId !== scheduleId);
-          memoryConflicts.push(...newConflicts);
-        }
-        schedule.status = "REVIEW";
-        schedule.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
-        this.persistToDisk();
-        return { success: true, result };
-      },
-      createMosque(data) {
-        const nextId = memoryMosques.reduce((max, m2) => Math.max(max, m2.id || 0), 0) + 1;
-        const newMosque = {
-          id: nextId,
-          isActive: true,
-          ...data,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        memoryMosques.push(newMosque);
-        this.persistToDisk();
-        return newMosque;
-      },
-      updateMosque(id, data) {
-        const index = memoryMosques.findIndex((m2) => m2.id === id);
-        if (index === -1) return null;
-        memoryMosques[index] = {
-          ...memoryMosques[index],
-          ...data,
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        this.persistToDisk();
-        return memoryMosques[index];
-      },
-      deleteMosque(id) {
-        memoryMosques = memoryMosques.filter((m2) => m2.id !== id);
-        this.persistToDisk();
-        return true;
-      },
-      createImam(data) {
-        const nextId = memoryImams.reduce((max, i2) => Math.max(max, i2.id || 0), 0) + 1;
-        const newImam = {
-          id: nextId,
-          isActive: true,
-          minFridays: data.minFridays ?? 1,
-          targetFridays: data.targetFridays ?? 4,
-          maxFridays: data.maxFridays ?? 5,
-          ...data,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString(),
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        memoryImams.push(newImam);
-        this.persistToDisk();
-        return newImam;
-      },
-      updateImam(id, data) {
-        const index = memoryImams.findIndex((i2) => i2.id === id);
-        if (index === -1) return null;
-        memoryImams[index] = {
-          ...memoryImams[index],
-          ...data,
-          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        this.persistToDisk();
-        return memoryImams[index];
-      },
-      deleteImam(id) {
-        memoryImams = memoryImams.filter((i2) => i2.id !== id);
-        this.persistToDisk();
-        return true;
-      },
-      createRule(data) {
-        return this.upsertRule(data);
-      },
-      upsertRule(data) {
-        const mosqueId = Number(data.mosqueId);
-        const imamId = Number(data.imamId);
-        const existingIndex = memoryRules.findIndex(
-          (r2) => Number(r2.mosqueId) === mosqueId && Number(r2.imamId) === imamId
-        );
-        if (existingIndex >= 0) {
-          memoryRules[existingIndex] = {
-            ...memoryRules[existingIndex],
-            relationshipType: data.relationshipType,
-            priority: data.priority ? Number(data.priority) : 1,
-            notes: data.notes || null,
-            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-          };
-          this.persistToDisk();
-          return memoryRules[existingIndex];
-        }
-        const nextId = memoryRules.reduce((max, r2) => Math.max(max, r2.id || 0), 0) + 1;
-        const newRule = {
-          id: nextId,
-          mosqueId,
-          imamId,
-          relationshipType: data.relationshipType,
-          priority: data.priority ? Number(data.priority) : 1,
-          notes: data.notes || null,
-          createdAt: (/* @__PURE__ */ new Date()).toISOString()
-        };
-        memoryRules.push(newRule);
-        this.persistToDisk();
-        return newRule;
-      },
-      deleteRule(id) {
-        memoryRules = memoryRules.filter((r2) => Number(r2.id) !== Number(id));
-        this.persistToDisk();
-        return true;
-      },
-      saveFixedPattern(mosqueId, body) {
-        const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
-        const hYear = Number(hijriYear);
-        const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
-        let lastPatternId = 0;
-        for (const hMonth of targetMonths) {
-          let mFridaysCount = Number(fridaysCount) || 5;
-          try {
-            const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
-            if (details && details.fridaysCount) {
-              mFridaysCount = details.fridaysCount;
-            }
-          } catch {
-          }
-          const existingIndex = memoryPatterns.findIndex(
-            (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === hYear && Number(p.hijriMonth) === hMonth
-          );
-          let patternId;
-          if (existingIndex >= 0) {
-            patternId = memoryPatterns[existingIndex].id;
-            memoryPatterns[existingIndex] = {
-              ...memoryPatterns[existingIndex],
-              patternType,
-              fridaysCount: mFridaysCount,
-              notes: notes || null,
-              updatedAt: (/* @__PURE__ */ new Date()).toISOString()
-            };
-            memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== patternId);
-          } else {
-            patternId = memoryPatterns.reduce((max, p) => Math.max(max, p.id || 0), 0) + 1;
-            memoryPatterns.push({
-              id: patternId,
-              mosqueId,
-              hijriYear: hYear,
-              hijriMonth: hMonth,
-              patternType,
-              fridaysCount: mFridaysCount,
-              isActive: true,
-              notes: notes || null,
-              createdAt: (/* @__PURE__ */ new Date()).toISOString()
-            });
-          }
-          lastPatternId = patternId;
-          const itemsToInsert = items.filter((it) => Number(it.fridayIndex) <= mFridaysCount).map((item, idx) => ({
-            id: memoryPatternItems.reduce((max, pi) => Math.max(max, pi.id || 0), 0) + idx + 1,
-            patternId,
-            fridayIndex: Number(item.fridayIndex),
-            imamId: Number(item.imamId),
-            sequence: idx + 1,
-            notes: item.notes || null
-          }));
-          memoryPatternItems.push(...itemsToInsert);
-        }
-        if (patternType === "SAME_ALL" && items[0]?.imamId) {
-          this.updateMosque(mosqueId, {
-            fixedImamId: Number(items[0].imamId),
-            fixedPattern: "ALL",
-            fixedCount: Number(fridaysCount) || 5
-          });
-        }
-        this.persistToDisk();
-        return {
-          success: true,
-          message: applyToFullYear ? `\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0646\u0645\u0637 \u0627\u0644\u0645\u0639\u062A\u0645\u062F \u0644\u0644\u0645\u0633\u062C\u062F \u0644\u062C\u0645\u064A\u0639 \u0623\u0634\u0647\u0631 \u0627\u0644\u0639\u0627\u0645 \u0627\u0644\u0647\u062C\u0631\u064A ${hYear} \u0647\u0640 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 (12 \u0634\u0647\u0631\u0627\u064B)` : "\u062A\u0645 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0644\u0644\u0645\u0633\u062C\u062F \u0628\u0646\u062C\u0627\u062D",
-          patternId: lastPatternId
-        };
-      },
-      copyFixedPattern(mosqueId, sourceYear, sourceMonth, targetYear, targetMonth) {
-        const sYear = Number(sourceYear);
-        const sMonth = Number(sourceMonth);
-        const tYear = Number(targetYear);
-        const tMonth = Number(targetMonth);
-        const sourcePattern = memoryPatterns.find(
-          (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === sYear && Number(p.hijriMonth) === sMonth
-        );
-        if (!sourcePattern) {
-          throw new Error("\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0646\u0645\u0637 \u0645\u062D\u0641\u0648\u0638 \u0641\u064A \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0645\u0635\u062F\u0631");
-        }
-        const sourceItems = memoryPatternItems.filter((pi) => Number(pi.patternId) === sourcePattern.id);
-        const targetDetails = CalendarService.getHijriMonthDetails(tYear, tMonth);
-        const targetFridaysCount = targetDetails.fridaysCount;
-        return this.saveFixedPattern(mosqueId, {
-          hijriYear: tYear,
-          hijriMonth: tMonth,
-          patternType: sourcePattern.patternType,
-          fridaysCount: targetFridaysCount,
-          items: sourceItems.map((si) => ({
-            fridayIndex: si.fridayIndex,
-            imamId: si.imamId,
-            notes: si.notes
-          }))
-        });
-      },
-      deleteFixedPattern(patternId) {
-        const pId = Number(patternId);
-        memoryPatterns = memoryPatterns.filter((p) => Number(p.id) !== pId);
-        memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== pId);
-        this.persistToDisk();
-        return true;
-      },
-      bulkDeleteMosques(ids) {
-        const idSet = new Set(ids.map(Number));
-        memoryMosques = memoryMosques.filter((m2) => !idSet.has(Number(m2.id)));
-        this.persistToDisk();
-        return ids.length;
-      },
-      bulkDeleteImams(ids) {
-        const idSet = new Set(ids.map(Number));
-        memoryImams = memoryImams.filter((i2) => !idSet.has(Number(i2.id)));
-        this.persistToDisk();
-        return ids.length;
-      },
-      persistToDisk() {
-        try {
-          const seedPath = path2.resolve("src/db/initialSeed.json");
-          const payload = {
-            ...seedData,
-            mosques: memoryMosques,
-            imams: memoryImams,
-            mosqueImamRules: memoryRules,
-            monthlySchedules: memorySchedules,
-            fridays: memoryFridays,
-            assignments: memoryAssignments,
-            conflicts: memoryConflicts,
-            overrides: memoryOverrides,
-            fixedAssignmentPatterns: memoryPatterns,
-            fixedAssignmentPatternItems: memoryPatternItems
-          };
-          fs3.writeFileSync(seedPath, JSON.stringify(payload, null, 2), "utf8");
-        } catch (e2) {
-          console.warn("Could not persist memoryStore to initialSeed.json:", e2);
-        }
-      }
-    };
-  }
-});
-
-// scripts/exportSeed.ts
-var exportSeed_exports = {};
-__export(exportSeed_exports, {
-  exportCurrentDatabaseToSeedJson: () => exportCurrentDatabaseToSeedJson
-});
-import fs4 from "fs";
-import path3 from "path";
-async function exportCurrentDatabaseToSeedJson() {
-  console.log("--- \u062C\u0627\u0631\u064A \u0627\u0633\u062A\u062E\u0631\u0627\u062C \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u0644\u062D\u0641\u0638\u0647\u0627 \u0643\u0645\u0644\u0641 \u0627\u0644\u0623\u0633\u0627\u0633 (Initial Seed) ---");
-  try {
-    const mosquesData = await db.select().from(mosques);
-    const imamsData = await db.select().from(imams);
-    const schedulesData = await db.select().from(monthlySchedules);
-    const fridaysData = await db.select().from(fridays);
-    const assignmentsData = await db.select().from(assignments);
-    const rulesData = await db.select().from(mosqueImamRules);
-    const fixedPatternsData = await db.select().from(fixedAssignmentPatterns);
-    const fixedPatternItemsData = await db.select().from(fixedAssignmentPatternItems);
-    const usersData = await db.select().from(users);
-    const dump = {
-      exportDate: (/* @__PURE__ */ new Date()).toISOString(),
-      counts: {
-        mosques: mosquesData.length,
-        imams: imamsData.length,
-        schedules: schedulesData.length,
-        assignments: assignmentsData.length,
-        rules: rulesData.length,
-        patterns: fixedPatternsData.length
-      },
-      mosques: mosquesData,
-      imams: imamsData,
-      monthlySchedules: schedulesData,
-      fridays: fridaysData,
-      assignments: assignmentsData,
-      mosqueImamRules: rulesData,
-      fixedAssignmentPatterns: fixedPatternsData,
-      fixedAssignmentPatternItems: fixedPatternItemsData,
-      users: usersData
-    };
-    const filePath = path3.resolve("src/db/initialSeed.json");
-    fs4.writeFileSync(filePath, JSON.stringify(dump, null, 2), "utf8");
-    console.log("\u062A\u0645 \u062D\u0641\u0638 \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0628\u0646\u062C\u0627\u062D \u0641\u064A \u0645\u0644\u0641:", filePath);
-    console.log("\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u062D\u0641\u0648\u0638:", dump.counts);
-    return dump;
-  } catch (err) {
-    console.error("\u062E\u0637\u0623 \u0623\u062B\u0646\u0627\u0621 \u062A\u0635\u062F\u064A\u0631 \u0645\u0644\u0641 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0633\u0627\u0633\u064A:", err);
-    throw err;
-  }
-}
-var init_exportSeed = __esm({
-  "scripts/exportSeed.ts"() {
-    init_db2();
-    init_schema2();
-    if (import.meta.url === `file://${process.argv[1]}`) {
-      exportCurrentDatabaseToSeedJson().then(() => process.exit(0)).catch((e2) => {
-        console.error(e2);
-        process.exit(1);
-      });
-    }
-  }
-});
-
-// node_modules/@supabase/supabase-js/dist/tracingRegistry.mjs
-function getTraceContextExtractor() {
-  return globalThis[EXTRACTOR_KEY];
-}
-var EXTRACTOR_KEY;
-var init_tracingRegistry = __esm({
-  "node_modules/@supabase/supabase-js/dist/tracingRegistry.mjs"() {
-    EXTRACTOR_KEY = Symbol.for("@supabase/supabase-js.traceContextExtractor");
-  }
-});
-
 // node_modules/tslib/tslib.es6.mjs
 var tslib_es6_exports = {};
 __export(tslib_es6_exports, {
@@ -111816,3909 +109550,6 @@ var require_main = __commonJS({
     Object.defineProperty(exports, "FunctionRegion", { enumerable: true, get: function() {
       return types_1.FunctionRegion;
     } });
-  }
-});
-
-// node_modules/@supabase/postgrest-js/dist/index.mjs
-function _typeof(o) {
-  "@babel/helpers - typeof";
-  return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
-    return typeof o$1;
-  } : function(o$1) {
-    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
-  }, _typeof(o);
-}
-function toPrimitive(t2, r2) {
-  if ("object" != _typeof(t2) || !t2) return t2;
-  var e2 = t2[Symbol.toPrimitive];
-  if (void 0 !== e2) {
-    var i2 = e2.call(t2, r2 || "default");
-    if ("object" != _typeof(i2)) return i2;
-    throw new TypeError("@@toPrimitive must return a primitive value.");
-  }
-  return ("string" === r2 ? String : Number)(t2);
-}
-function toPropertyKey(t2) {
-  var i2 = toPrimitive(t2, "string");
-  return "symbol" == _typeof(i2) ? i2 : i2 + "";
-}
-function _defineProperty(e2, r2, t2) {
-  return (r2 = toPropertyKey(r2)) in e2 ? Object.defineProperty(e2, r2, {
-    value: t2,
-    enumerable: true,
-    configurable: true,
-    writable: true
-  }) : e2[r2] = t2, e2;
-}
-function ownKeys2(e2, r2) {
-  var t2 = Object.keys(e2);
-  if (Object.getOwnPropertySymbols) {
-    var o = Object.getOwnPropertySymbols(e2);
-    r2 && (o = o.filter(function(r$1) {
-      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
-    })), t2.push.apply(t2, o);
-  }
-  return t2;
-}
-function _objectSpread2(e2) {
-  for (var r2 = 1; r2 < arguments.length; r2++) {
-    var t2 = null != arguments[r2] ? arguments[r2] : {};
-    r2 % 2 ? ownKeys2(Object(t2), true).forEach(function(r$1) {
-      _defineProperty(e2, r$1, t2[r$1]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys2(Object(t2)).forEach(function(r$1) {
-      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
-    });
-  }
-  return e2;
-}
-function sleep(ms, signal) {
-  return new Promise((resolve) => {
-    if (signal === null || signal === void 0 ? void 0 : signal.aborted) {
-      resolve();
-      return;
-    }
-    const id = setTimeout(() => {
-      signal === null || signal === void 0 || signal.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    function onAbort() {
-      clearTimeout(id);
-      resolve();
-    }
-    signal === null || signal === void 0 || signal.addEventListener("abort", onAbort);
-  });
-}
-function shouldRetry(method, status, attemptCount, retryEnabled) {
-  if (!retryEnabled || attemptCount >= DEFAULT_MAX_RETRIES) return false;
-  if (!RETRYABLE_METHODS.includes(method)) return false;
-  if (!RETRYABLE_STATUS_CODES.includes(status)) return false;
-  return true;
-}
-async function fetchWithRetry(fetchImpl, url, request, retryEnabled) {
-  let attemptCount = 0;
-  while (true) {
-    const headers = _objectSpread2({}, request.headers);
-    if (attemptCount > 0) headers["X-Retry-Count"] = String(attemptCount);
-    let res;
-    try {
-      res = await fetchImpl(url, {
-        method: request.method,
-        headers,
-        body: request.body,
-        signal: request.signal
-      });
-    } catch (fetchError) {
-      if ((fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) === "AbortError" || (fetchError === null || fetchError === void 0 ? void 0 : fetchError.code) === "ABORT_ERR") throw fetchError;
-      if (!RETRYABLE_METHODS.includes(request.method)) throw fetchError;
-      if (retryEnabled && attemptCount < DEFAULT_MAX_RETRIES) {
-        const delay = getRetryDelay(attemptCount);
-        attemptCount++;
-        await sleep(delay, request.signal);
-        continue;
-      }
-      throw fetchError;
-    }
-    if (shouldRetry(request.method, res.status, attemptCount, retryEnabled)) {
-      var _res$headers$get, _res$headers;
-      const retryAfterHeader = (_res$headers$get = (_res$headers = res.headers) === null || _res$headers === void 0 ? void 0 : _res$headers.get("Retry-After")) !== null && _res$headers$get !== void 0 ? _res$headers$get : null;
-      const delay = retryAfterHeader !== null ? Math.max(0, parseInt(retryAfterHeader, 10) || 0) * 1e3 : getRetryDelay(attemptCount);
-      await res.text();
-      attemptCount++;
-      await sleep(delay, request.signal);
-      continue;
-    }
-    return res;
-  }
-}
-function toOpenApiError(body, statusText) {
-  try {
-    const parsed = JSON.parse(body);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      var _parsed$message, _parsed$details, _parsed$hint, _parsed$code;
-      return new PostgrestError({
-        message: String((_parsed$message = parsed.message) !== null && _parsed$message !== void 0 ? _parsed$message : body),
-        details: (_parsed$details = parsed.details) !== null && _parsed$details !== void 0 ? _parsed$details : "",
-        hint: (_parsed$hint = parsed.hint) !== null && _parsed$hint !== void 0 ? _parsed$hint : "",
-        code: (_parsed$code = parsed.code) !== null && _parsed$code !== void 0 ? _parsed$code : ""
-      });
-    }
-  } catch (_unused) {
-  }
-  return new PostgrestError({
-    message: body || statusText,
-    details: "",
-    hint: "",
-    code: ""
-  });
-}
-function toTransportFailure(cause, status, statusText) {
-  var _err$name;
-  const err = cause;
-  return {
-    success: false,
-    error: new PostgrestError({
-      message: `${(_err$name = err === null || err === void 0 ? void 0 : err.name) !== null && _err$name !== void 0 ? _err$name : "FetchError"}: ${err === null || err === void 0 ? void 0 : err.message}`,
-      details: "",
-      hint: "",
-      code: ""
-    }),
-    data: null,
-    count: null,
-    status,
-    statusText
-  };
-}
-var PostgrestError, DEFAULT_MAX_RETRIES, getRetryDelay, RETRYABLE_STATUS_CODES, RETRYABLE_METHODS, PostgrestBuilder, PostgrestTransformBuilder, PostgrestReservedCharsRegexp, PostgrestFilterBuilder, PostgrestQueryBuilder, PostgrestClient;
-var init_dist2 = __esm({
-  "node_modules/@supabase/postgrest-js/dist/index.mjs"() {
-    PostgrestError = class extends Error {
-      /**
-      * @example
-      * ```ts
-      * import PostgrestError from '@supabase/postgrest-js'
-      *
-      * throw new PostgrestError({
-      *   message: 'Row level security prevented the request',
-      *   details: 'RLS denied the insert',
-      *   hint: 'Check your policies',
-      *   code: 'PGRST301',
-      * })
-      * ```
-      */
-      constructor(context) {
-        super(context.message);
-        this.name = "PostgrestError";
-        this.details = context.details;
-        this.hint = context.hint;
-        this.code = context.code;
-      }
-      toJSON() {
-        return {
-          name: this.name,
-          message: this.message,
-          details: this.details,
-          hint: this.hint,
-          code: this.code
-        };
-      }
-    };
-    DEFAULT_MAX_RETRIES = 3;
-    getRetryDelay = (attemptIndex) => Math.min(1e3 * 2 ** attemptIndex, 3e4);
-    RETRYABLE_STATUS_CODES = [520, 503];
-    RETRYABLE_METHODS = [
-      "GET",
-      "HEAD",
-      "OPTIONS"
-    ];
-    PostgrestBuilder = class {
-      /**
-      * Creates a builder configured for a specific PostgREST request.
-      *
-      * @example Using supabase-js (recommended)
-      * ```ts
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const { data, error } = await supabase.from('users').select('*')
-      * ```
-      *
-      * @category Database
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```ts
-      * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
-      *
-      * const builder = new PostgrestQueryBuilder(
-      *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
-      *   { headers: new Headers({ apikey: 'your-publishable-key' }) }
-      * )
-      * ```
-      */
-      constructor(builder) {
-        var _builder$shouldThrowO, _builder$isMaybeSingl, _builder$shouldStripN, _builder$urlLengthLim, _builder$retry;
-        this.shouldThrowOnError = false;
-        this.retryEnabled = true;
-        this.method = builder.method;
-        this.url = builder.url;
-        this.headers = new Headers(builder.headers);
-        this.schema = builder.schema;
-        this.body = builder.body;
-        this.shouldThrowOnError = (_builder$shouldThrowO = builder.shouldThrowOnError) !== null && _builder$shouldThrowO !== void 0 ? _builder$shouldThrowO : false;
-        this.signal = builder.signal;
-        this.isMaybeSingle = (_builder$isMaybeSingl = builder.isMaybeSingle) !== null && _builder$isMaybeSingl !== void 0 ? _builder$isMaybeSingl : false;
-        this.shouldStripNulls = (_builder$shouldStripN = builder.shouldStripNulls) !== null && _builder$shouldStripN !== void 0 ? _builder$shouldStripN : false;
-        this.urlLengthLimit = (_builder$urlLengthLim = builder.urlLengthLimit) !== null && _builder$urlLengthLim !== void 0 ? _builder$urlLengthLim : 8e3;
-        this.retryEnabled = (_builder$retry = builder.retry) !== null && _builder$retry !== void 0 ? _builder$retry : true;
-        if (builder.fetch) this.fetch = builder.fetch;
-        else this.fetch = fetch;
-      }
-      /**
-      * If there's an error with the query, throwOnError will reject the promise by
-      * throwing the error instead of returning it as part of a successful response.
-      *
-      * {@link https://github.com/supabase/supabase-js/issues/92}
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      */
-      throwOnError() {
-        this.shouldThrowOnError = true;
-        return this;
-      }
-      /**
-      * Strip null values from the response data. Properties with `null` values
-      * will be omitted from the returned JSON objects.
-      *
-      * Requires PostgREST 11.2.0+.
-      *
-      * {@link https://docs.postgrest.org/en/stable/references/api/resource_representation.html#stripped-nulls}
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .stripNulls()
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text, bio text);
-      *
-      * insert into
-      *   characters (id, name, bio)
-      * values
-      *   (1, 'Luke', null),
-      *   (2, 'Leia', 'Princess of Alderaan');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Luke"
-      *     },
-      *     {
-      *       "id": 2,
-      *       "name": "Leia",
-      *       "bio": "Princess of Alderaan"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      stripNulls() {
-        if (this.headers.get("Accept") === "text/csv") throw new Error("stripNulls() cannot be used with csv()");
-        this.shouldStripNulls = true;
-        return this;
-      }
-      /**
-      * Set an HTTP header on this single PostgREST request, overriding any header
-      * with the same name set on the client.
-      *
-      * This is an advanced escape hatch for one-off needs (passing a custom
-      * `Authorization` for a single query, attaching a tracing header, etc.).
-      * Most callers do not need it: configure client-wide headers via the
-      * `headers` option when constructing the client, and authentication via
-      * Supabase Auth.
-      *
-      * @param name - HTTP header name
-      * @param value - HTTP header value
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      */
-      setHeader(name, value) {
-        this.headers = new Headers(this.headers);
-        this.headers.set(name, value);
-        return this;
-      }
-      /**
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * Configure retry behavior for this request.
-      *
-      * By default, retries are enabled for idempotent requests (GET, HEAD, OPTIONS)
-      * that fail with network errors or specific HTTP status codes (503, 520).
-      * Retries use exponential backoff (1s, 2s, 4s) with a maximum of 3 attempts.
-      *
-      * @param enabled - Whether to enable retries for this request
-      *
-      * @example
-      * ```ts
-      * // Disable retries for a specific query
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .select()
-      *   .retry(false)
-      * ```
-      */
-      retry(enabled) {
-        this.retryEnabled = enabled;
-        return this;
-      }
-      then(onfulfilled, onrejected) {
-        var _this = this;
-        if (this.schema === void 0) {
-        } else if (["GET", "HEAD"].includes(this.method)) this.headers.set("Accept-Profile", this.schema);
-        else this.headers.set("Content-Profile", this.schema);
-        if (this.method !== "GET" && this.method !== "HEAD") this.headers.set("Content-Type", "application/json");
-        if (this.shouldStripNulls) {
-          const currentAccept = this.headers.get("Accept");
-          if (currentAccept === "application/vnd.pgrst.object+json") this.headers.set("Accept", "application/vnd.pgrst.object+json;nulls=stripped");
-          else if (!currentAccept || currentAccept === "application/json") this.headers.set("Accept", "application/vnd.pgrst.array+json;nulls=stripped");
-        }
-        const _fetch = this.fetch;
-        const executeWithRetry = async () => {
-          const headers = {};
-          _this.headers.forEach((value, key) => {
-            headers[key] = value;
-          });
-          const res$1 = await fetchWithRetry(_fetch, _this.url.toString(), {
-            method: _this.method,
-            headers,
-            body: JSON.stringify(_this.body, (_, value) => typeof value === "bigint" ? value.toString() : value),
-            signal: _this.signal
-          }, _this.retryEnabled);
-          return await _this.processResponse(res$1);
-        };
-        let res = executeWithRetry();
-        if (!this.shouldThrowOnError) res = res.catch((fetchError) => {
-          var _fetchError$name2;
-          let errorDetails = "";
-          let hint = "";
-          let code = "";
-          const cause = fetchError === null || fetchError === void 0 ? void 0 : fetchError.cause;
-          if (cause) {
-            var _cause$message, _cause$code, _fetchError$name, _cause$name;
-            const causeMessage = (_cause$message = cause === null || cause === void 0 ? void 0 : cause.message) !== null && _cause$message !== void 0 ? _cause$message : "";
-            const causeCode = (_cause$code = cause === null || cause === void 0 ? void 0 : cause.code) !== null && _cause$code !== void 0 ? _cause$code : "";
-            errorDetails = `${(_fetchError$name = fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) !== null && _fetchError$name !== void 0 ? _fetchError$name : "FetchError"}: ${fetchError === null || fetchError === void 0 ? void 0 : fetchError.message}`;
-            errorDetails += `
-
-Caused by: ${(_cause$name = cause === null || cause === void 0 ? void 0 : cause.name) !== null && _cause$name !== void 0 ? _cause$name : "Error"}: ${causeMessage}`;
-            if (causeCode) errorDetails += ` (${causeCode})`;
-            if (cause === null || cause === void 0 ? void 0 : cause.stack) errorDetails += `
-${cause.stack}`;
-          } else {
-            var _fetchError$stack;
-            errorDetails = (_fetchError$stack = fetchError === null || fetchError === void 0 ? void 0 : fetchError.stack) !== null && _fetchError$stack !== void 0 ? _fetchError$stack : "";
-          }
-          const urlLength = this.url.toString().length;
-          if ((fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) === "AbortError" || (fetchError === null || fetchError === void 0 ? void 0 : fetchError.code) === "ABORT_ERR") {
-            code = "";
-            hint = "Request was aborted (timeout or manual cancellation)";
-            if (urlLength > this.urlLengthLimit) hint += `. Note: Your request URL is ${urlLength} characters, which may exceed server limits. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [many IDs])), consider using an RPC function to pass values server-side.`;
-          } else if ((cause === null || cause === void 0 ? void 0 : cause.name) === "HeadersOverflowError" || (cause === null || cause === void 0 ? void 0 : cause.code) === "UND_ERR_HEADERS_OVERFLOW") {
-            code = "";
-            hint = "HTTP headers exceeded server limits (typically 16KB)";
-            if (urlLength > this.urlLengthLimit) hint += `. Your request URL is ${urlLength} characters. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [200+ IDs])), consider using an RPC function instead.`;
-          }
-          return {
-            success: false,
-            error: {
-              message: `${(_fetchError$name2 = fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) !== null && _fetchError$name2 !== void 0 ? _fetchError$name2 : "FetchError"}: ${fetchError === null || fetchError === void 0 ? void 0 : fetchError.message}`,
-              details: errorDetails,
-              hint,
-              code
-            },
-            data: null,
-            count: null,
-            status: 0,
-            statusText: ""
-          };
-        });
-        return res.then(onfulfilled, onrejected);
-      }
-      /**
-      * Process a fetch response and return the standardized postgrest response.
-      */
-      async processResponse(res) {
-        var _this2 = this;
-        let error = null;
-        let data = null;
-        let count = null;
-        let status = res.status;
-        let statusText = res.statusText;
-        if (res.ok) {
-          var _this$headers$get2, _res$headers$get;
-          if (_this2.method !== "HEAD") {
-            var _this$headers$get;
-            const body = await res.text();
-            if (body === "") {
-            } else if (_this2.headers.get("Accept") === "text/csv") data = body;
-            else if (_this2.headers.get("Accept") && ((_this$headers$get = _this2.headers.get("Accept")) === null || _this$headers$get === void 0 ? void 0 : _this$headers$get.includes("application/vnd.pgrst.plan+text"))) data = body;
-            else try {
-              data = JSON.parse(body);
-            } catch (_unused) {
-              error = { message: body };
-              data = null;
-              if (_this2.shouldThrowOnError) throw new PostgrestError({
-                message: body,
-                details: "",
-                hint: "",
-                code: ""
-              });
-            }
-          }
-          const countHeader = (_this$headers$get2 = _this2.headers.get("Prefer")) === null || _this$headers$get2 === void 0 ? void 0 : _this$headers$get2.match(/count=(exact|planned|estimated)/);
-          const contentRange = (_res$headers$get = res.headers.get("content-range")) === null || _res$headers$get === void 0 ? void 0 : _res$headers$get.split("/");
-          if (countHeader && contentRange && contentRange.length > 1) count = parseInt(contentRange[1]);
-          if (_this2.isMaybeSingle && Array.isArray(data)) if (data.length > 1) {
-            error = {
-              code: "PGRST116",
-              details: `Results contain ${data.length} rows, application/vnd.pgrst.object+json requires 1 row`,
-              hint: null,
-              message: "JSON object requested, multiple (or no) rows returned"
-            };
-            data = null;
-            count = null;
-            status = 406;
-            statusText = "Not Acceptable";
-            if (_this2.shouldThrowOnError) {
-              var _error$hint;
-              throw new PostgrestError(_objectSpread2(_objectSpread2({}, error), {}, { hint: (_error$hint = error.hint) !== null && _error$hint !== void 0 ? _error$hint : "" }));
-            }
-          } else if (data.length === 1) data = data[0];
-          else data = null;
-        } else {
-          const body = await res.text();
-          try {
-            error = JSON.parse(body);
-            if (Array.isArray(error) && res.status === 404) {
-              data = [];
-              error = null;
-              status = 200;
-              statusText = "OK";
-            }
-          } catch (_unused2) {
-            if (res.status === 404 && body === "") {
-              status = 204;
-              statusText = "No Content";
-            } else error = { message: body };
-          }
-          if (error && _this2.shouldThrowOnError) throw new PostgrestError(error);
-        }
-        return {
-          success: error === null,
-          error,
-          data,
-          count,
-          status,
-          statusText
-        };
-      }
-      /**
-      * Override the type of the returned `data`.
-      *
-      * @typeParam NewResult - The new result type to override with
-      * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      */
-      returns() {
-        return this;
-      }
-      /**
-      * Override the type of the returned `data` field in the response.
-      *
-      * @typeParam NewResult - The new type to cast the response data to
-      * @typeParam Options - Optional type configuration (defaults to { merge: true })
-      * @typeParam Options.merge - When true, merges the new type with existing return type. When false, replaces the existing types entirely (defaults to true)
-      * @example
-      * ```typescript
-      * // Merge with existing types (default behavior)
-      * const query = supabase
-      *   .from('users')
-      *   .select()
-      *   .overrideTypes<{ custom_field: string }>()
-      *
-      * // Replace existing types completely
-      * const replaceQuery = supabase
-      *   .from('users')
-      *   .select()
-      *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
-      * ```
-      * @returns A PostgrestBuilder instance with the new type
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example Complete Override type of successful response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .overrideTypes<Array<MyType>, { merge: false }>()
-      * ```
-      *
-      * @exampleResponse Complete Override type of successful response
-      * ```ts
-      * let x: typeof data // MyType[]
-      * ```
-      *
-      * @example Complete Override type of object response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .maybeSingle()
-      *   .overrideTypes<MyType, { merge: false }>()
-      * ```
-      *
-      * @exampleResponse Complete Override type of object response
-      * ```ts
-      * let x: typeof data // MyType | null
-      * ```
-      *
-      * @example Partial Override type of successful response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .overrideTypes<Array<{ status: "A" | "B" }>>()
-      * ```
-      *
-      * @exampleResponse Partial Override type of successful response
-      * ```ts
-      * let x: typeof data // Array<CountryRowProperties & { status: "A" | "B" }>
-      * ```
-      *
-      * @example Partial Override type of object response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .maybeSingle()
-      *   .overrideTypes<{ status: "A" | "B" }>()
-      * ```
-      *
-      * @exampleResponse Partial Override type of object response
-      * ```ts
-      * let x: typeof data // CountryRowProperties & { status: "A" | "B" } | null
-      * ```
-      *
-      * @example Merge vs replace existing types
-      * ```typescript
-      * // Merge with existing types (default behavior)
-      * const query = supabase
-      *   .from('users')
-      *   .select()
-      *   .overrideTypes<{ custom_field: string }>()
-      *
-      * // Replace existing types completely
-      * const replaceQuery = supabase
-      *   .from('users')
-      *   .select()
-      *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
-      * ```
-      */
-      overrideTypes() {
-        return this;
-      }
-    };
-    PostgrestTransformBuilder = class extends PostgrestBuilder {
-      throwOnError() {
-        return super.throwOnError();
-      }
-      /**
-      * Perform a SELECT on the query result.
-      *
-      * By default, `.insert()`, `.update()`, `.upsert()`, and `.delete()` do not
-      * return modified rows. By calling this method, modified rows are returned in
-      * `data`.
-      *
-      * @param columns - The columns to retrieve, separated by commas
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `upsert()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .upsert({ id: 1, name: 'Han Solo' })
-      *   .select()
-      * ```
-      *
-      * @exampleSql With `upsert()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Han');
-      * ```
-      *
-      * @exampleResponse With `upsert()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Han Solo"
-      *     }
-      *   ],
-      *   "status": 201,
-      *   "statusText": ""
-      * }
-      * ```
-      */
-      select(columns) {
-        let quoted = false;
-        const cleanedColumns = (columns !== null && columns !== void 0 ? columns : "*").split("").map((c) => {
-          if (/\s/.test(c) && !quoted) return "";
-          if (c === '"') quoted = !quoted;
-          return c;
-        }).join("");
-        this.url.searchParams.set("select", cleanedColumns);
-        this.headers.append("Prefer", "return=representation");
-        return this;
-      }
-      /**
-      * Order the query result by `column`.
-      *
-      * You can call this method multiple times to order by multiple columns.
-      *
-      * You can order referenced tables, but it only affects the ordering of the
-      * parent table if you use `!inner` in the query.
-      *
-      * @param column - The column to order by
-      * @param options - Named parameters
-      * @param options.ascending - If `true`, the result will be in ascending order
-      * @param options.nullsFirst - If `true`, `null`s appear first. If `false`,
-      * `null`s appear last.
-      * @param options.referencedTable - Set this to order a referenced table by
-      * its columns
-      * @param options.foreignTable - Deprecated, use `options.referencedTable`
-      * instead
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('id, name')
-      *   .order('id', { ascending: false })
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 3,
-      *       "name": "Han"
-      *     },
-      *     {
-      *       "id": 2,
-      *       "name": "Leia"
-      *     },
-      *     {
-      *       "id": 1,
-      *       "name": "Luke"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription On a referenced table
-      * Ordering with `referencedTable` doesn't affect the ordering of the
-      * parent table.
-      *
-      * @example On a referenced table
-      * ```ts
-      *   const { data, error } = await supabase
-      *     .from('orchestral_sections')
-      *     .select(`
-      *       name,
-      *       instruments (
-      *         name
-      *       )
-      *     `)
-      *     .order('name', { referencedTable: 'instruments', ascending: false })
-      *
-      * ```
-      *
-      * @exampleSql On a referenced table
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 1, 'harp'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse On a referenced table
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "strings",
-      *       "instruments": [
-      *         {
-      *           "name": "violin"
-      *         },
-      *         {
-      *           "name": "harp"
-      *         }
-      *       ]
-      *     },
-      *     {
-      *       "name": "woodwinds",
-      *       "instruments": []
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Order parent table by a referenced table
-      * Ordering with `referenced_table(col)` affects the ordering of the
-      * parent table.
-      *
-      * @example Order parent table by a referenced table
-      * ```ts
-      *   const { data, error } = await supabase
-      *     .from('instruments')
-      *     .select(`
-      *       name,
-      *       section:orchestral_sections (
-      *         name
-      *       )
-      *     `)
-      *     .order('section(name)', { ascending: true })
-      *
-      * ```
-      *
-      * @exampleSql Order parent table by a referenced table
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 2, 'flute'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse Order parent table by a referenced table
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "violin",
-      *       "orchestral_sections": {"name": "strings"}
-      *     },
-      *     {
-      *       "name": "flute",
-      *       "orchestral_sections": {"name": "woodwinds"}
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      order(column, { ascending = true, nullsFirst, foreignTable, referencedTable = foreignTable } = {}) {
-        const key = referencedTable ? `${referencedTable}.order` : "order";
-        const existingOrder = this.url.searchParams.get(key);
-        this.url.searchParams.set(key, `${existingOrder ? `${existingOrder},` : ""}${column}.${ascending ? "asc" : "desc"}${nullsFirst === void 0 ? "" : nullsFirst ? ".nullsfirst" : ".nullslast"}`);
-        return this;
-      }
-      /**
-      * Limit the query result by `rows`.
-      *
-      * @param rows - The maximum number of rows to return
-      * @param options - Named parameters
-      * @param options.referencedTable - Set this to limit rows of referenced
-      * tables instead of the parent table
-      * @param options.foreignTable - Deprecated, use `options.referencedTable`
-      * instead
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      *   .limit(1)
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "Luke"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example On a referenced table
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('orchestral_sections')
-      *   .select(`
-      *     name,
-      *     instruments (
-      *       name
-      *     )
-      *   `)
-      *   .limit(1, { referencedTable: 'instruments' })
-      * ```
-      *
-      * @exampleSql On a referenced table
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 1, 'harp'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse On a referenced table
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "strings",
-      *       "instruments": [
-      *         {
-      *           "name": "violin"
-      *         }
-      *       ]
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      limit(rows, { foreignTable, referencedTable = foreignTable } = {}) {
-        const key = typeof referencedTable === "undefined" ? "limit" : `${referencedTable}.limit`;
-        this.url.searchParams.set(key, `${rows}`);
-        return this;
-      }
-      /**
-      * Limit the query result by starting at an offset `from` and ending at the offset `to`.
-      * Only records within this range are returned.
-      * This respects the query order and if there is no order clause the range could behave unexpectedly.
-      * The `from` and `to` values are 0-based and inclusive: `range(1, 3)` will include the second, third
-      * and fourth rows of the query.
-      *
-      * @param from - The starting index from which to limit the result
-      * @param to - The last index to which to limit the result
-      * @param options - Named parameters
-      * @param options.referencedTable - Set this to limit rows of referenced
-      * tables instead of the parent table
-      * @param options.foreignTable - Deprecated, use `options.referencedTable`
-      * instead
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      *   .range(0, 1)
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "Luke"
-      *     },
-      *     {
-      *       "name": "Leia"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      range(from, to, { foreignTable, referencedTable = foreignTable } = {}) {
-        const keyOffset = typeof referencedTable === "undefined" ? "offset" : `${referencedTable}.offset`;
-        const keyLimit = typeof referencedTable === "undefined" ? "limit" : `${referencedTable}.limit`;
-        this.url.searchParams.set(keyOffset, `${from}`);
-        this.url.searchParams.set(keyLimit, `${to - from + 1}`);
-        return this;
-      }
-      /**
-      * Set the AbortSignal for the fetch request.
-      *
-      * @param signal - The AbortSignal to use for the fetch request
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @remarks
-      * You can use this to set a timeout for the request.
-      *
-      * @exampleDescription Aborting requests in-flight
-      * You can use an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) to abort requests.
-      * Note that `status` and `statusText` don't mean anything for aborted requests as the request wasn't fulfilled.
-      *
-      * @example Aborting requests in-flight
-      * ```ts
-      * const ac = new AbortController()
-      *
-      * const { data, error } = await supabase
-      *   .from('very_big_table')
-      *   .select()
-      *   .abortSignal(ac.signal)
-      *
-      * // Abort the request after 100 ms
-      * setTimeout(() => ac.abort(), 100)
-      * ```
-      *
-      * @exampleResponse Aborting requests in-flight
-      * ```json
-      *   {
-      *     "error": {
-      *       "message": "AbortError: The user aborted a request.",
-      *       "details": "",
-      *       "hint": "The request was aborted locally via the provided AbortSignal.",
-      *       "code": ""
-      *     },
-      *     "status": 0,
-      *     "statusText": ""
-      *   }
-      *
-      * ```
-      *
-      * @example Set a timeout
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('very_big_table')
-      *   .select()
-      *   .abortSignal(AbortSignal.timeout(1000 /* ms *\/))
-      * ```
-      *
-      * @exampleResponse Set a timeout
-      * ```json
-      *   {
-      *     "error": {
-      *       "message": "FetchError: The user aborted a request.",
-      *       "details": "",
-      *       "hint": "",
-      *       "code": ""
-      *     },
-      *     "status": 0,
-      *     "statusText": ""
-      *   }
-      *
-      * ```
-      */
-      abortSignal(signal) {
-        this.signal = signal;
-        return this;
-      }
-      /**
-      * Return `data` as a single object instead of an array of objects.
-      *
-      * Query result must be one row (e.g. using `.limit(1)`), otherwise this
-      * returns an error.
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      *   .limit(1)
-      *   .single()
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": {
-      *     "name": "Luke"
-      *   },
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      single() {
-        this.headers.set("Accept", "application/vnd.pgrst.object+json");
-        return this;
-      }
-      /**
-      * Return `data` as a single object instead of an array of objects.
-      *
-      * Query result must be zero or one row (e.g. using `.limit(1)`), otherwise
-      * this returns an error.
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .eq('name', 'Katniss')
-      *   .maybeSingle()
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      maybeSingle() {
-        this.isMaybeSingle = true;
-        return this;
-      }
-      /**
-      * Return `data` as a string in CSV format.
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @exampleDescription Return data as CSV
-      * By default, the data is returned in JSON format, but can also be returned as Comma Separated Values.
-      *
-      * @example Return data as CSV
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .csv()
-      * ```
-      *
-      * @exampleSql Return data as CSV
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse Return data as CSV
-      * ```json
-      * {
-      *   "data": "id,name\n1,Luke\n2,Leia\n3,Han",
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      csv() {
-        this.headers.set("Accept", "text/csv");
-        return this;
-      }
-      /**
-      * Return `data` as an object in [GeoJSON](https://geojson.org) format.
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      */
-      geojson() {
-        this.headers.set("Accept", "application/geo+json");
-        return this;
-      }
-      /**
-      * Return `data` as the EXPLAIN plan for the query.
-      *
-      * You need to enable the
-      * [db_plan_enabled](https://supabase.com/docs/guides/database/debugging-performance#enabling-explain)
-      * setting before using this method.
-      *
-      * @param options - Named parameters
-      *
-      * @param options.analyze - If `true`, the query will be executed and the
-      * actual run time will be returned
-      *
-      * @param options.verbose - If `true`, the query identifier will be returned
-      * and `data` will include the output columns of the query
-      *
-      * @param options.settings - If `true`, include information on configuration
-      * parameters that affect query planning
-      *
-      * @param options.buffers - If `true`, include information on buffer usage
-      *
-      * @param options.wal - If `true`, include information on WAL record generation
-      *
-      * @param options.format - The format of the output, can be `"text"` (default)
-      * or `"json"`
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @exampleDescription Get the execution plan
-      * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
-      *
-      * @example Get the execution plan
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .explain()
-      * ```
-      *
-      * @exampleSql Get the execution plan
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse Get the execution plan
-      * ```js
-      * Aggregate  (cost=33.34..33.36 rows=1 width=112)
-      *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40)
-      *         ->  Seq Scan on characters  (cost=0.00..22.00 rows=1200 width=40)
-      * ```
-      *
-      * @exampleDescription Get the execution plan with analyze and verbose
-      * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
-      *
-      * @example Get the execution plan with analyze and verbose
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .explain({analyze:true,verbose:true})
-      * ```
-      *
-      * @exampleSql Get the execution plan with analyze and verbose
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse Get the execution plan with analyze and verbose
-      * ```js
-      * Aggregate  (cost=33.34..33.36 rows=1 width=112) (actual time=0.041..0.041 rows=1 loops=1)
-      *   Output: NULL::bigint, count(ROW(characters.id, characters.name)), COALESCE(json_agg(ROW(characters.id, characters.name)), '[]'::json), NULLIF(current_setting('response.headers'::text, true), ''::text), NULLIF(current_setting('response.status'::text, true), ''::text)
-      *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40) (actual time=0.005..0.006 rows=3 loops=1)
-      *         Output: characters.id, characters.name
-      *         ->  Seq Scan on public.characters  (cost=0.00..22.00 rows=1200 width=40) (actual time=0.004..0.005 rows=3 loops=1)
-      *               Output: characters.id, characters.name
-      * Query Identifier: -4730654291623321173
-      * Planning Time: 0.407 ms
-      * Execution Time: 0.119 ms
-      * ```
-      */
-      explain({ analyze = false, verbose = false, settings = false, buffers = false, wal = false, format = "text" } = {}) {
-        var _this$headers$get;
-        const options = [
-          analyze ? "analyze" : null,
-          verbose ? "verbose" : null,
-          settings ? "settings" : null,
-          buffers ? "buffers" : null,
-          wal ? "wal" : null
-        ].filter(Boolean).join("|");
-        const forMediatype = (_this$headers$get = this.headers.get("Accept")) !== null && _this$headers$get !== void 0 ? _this$headers$get : "application/json";
-        this.headers.set("Accept", `application/vnd.pgrst.plan+${format}; for="${forMediatype}"; options=${options};`);
-        if (format === "json") return this;
-        else return this;
-      }
-      /**
-      * Dry-run this request: execute the query but discard the changes.
-      *
-      * Server-side, PostgREST runs the query inside a transaction and rolls it back
-      * instead of committing. The response still contains the data that *would* have
-      * been returned — `RETURNING` clauses execute and RLS, triggers, and constraints
-      * are all evaluated — but no row is actually inserted, updated, or deleted.
-      *
-      * This affects only the single request it is chained to. The JS caller has no
-      * handle on the transaction: supabase-js does not group multiple queries into
-      * one transaction. For multi-statement transactional logic, use a database
-      * function (`supabase.rpc(...)`).
-      *
-      * Sets the `Prefer: tx=rollback` header. See PostgREST's docs on transaction
-      * preferences for the underlying mechanism.
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @example Validate an insert without persisting
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('countries')
-      *   .insert({ name: 'France' })
-      *   .select()
-      *   .rollback()
-      * // `data` shows what would have been inserted; nothing is saved.
-      * ```
-      */
-      rollback() {
-        this.headers.append("Prefer", "tx=rollback");
-        return this;
-      }
-      /**
-      * Override the type of the returned `data`.
-      *
-      * @typeParam NewResult - The new result type to override with
-      * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      *
-      * @remarks
-      * - Deprecated: use overrideTypes method instead
-      *
-      * @example Override type of successful response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .returns<Array<MyType>>()
-      * ```
-      *
-      * @exampleResponse Override type of successful response
-      * ```js
-      * let x: typeof data // MyType[]
-      * ```
-      *
-      * @example Override type of object response
-      * ```ts
-      * const { data } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .maybeSingle()
-      *   .returns<MyType>()
-      * ```
-      *
-      * @exampleResponse Override type of object response
-      * ```js
-      * let x: typeof data // MyType | null
-      * ```
-      */
-      returns() {
-        return this;
-      }
-      /**
-      * Set the maximum number of rows that can be affected by the query.
-      * Only available in PostgREST v13+ and only works with PATCH and DELETE methods.
-      *
-      * @param rows - The maximum number of rows that can be affected
-      *
-      * @category Database
-      * @subcategory Using modifiers
-      */
-      maxAffected(rows) {
-        this.headers.append("Prefer", "handling=strict");
-        this.headers.append("Prefer", `max-affected=${rows}`);
-        return this;
-      }
-    };
-    PostgrestReservedCharsRegexp = /* @__PURE__ */ new RegExp("[,()]");
-    PostgrestFilterBuilder = class extends PostgrestTransformBuilder {
-      throwOnError() {
-        return super.throwOnError();
-      }
-      /**
-      * Match only rows where `column` is equal to `value`.
-      *
-      * To check if the value of `column` is NULL, you should use `.is()` instead.
-      *
-      * @param column - The column to filter on
-      * @param value - The value to filter with
-      *
-      * @category Database
-      * @subcategory Using filters
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .eq('name', 'Leia')
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 2,
-      *       "name": "Leia"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      eq(column, value) {
-        this.url.searchParams.append(column, `eq.${value}`);
-        return this;
-      }
-      /**
-      * Match only rows where `column` is not equal to `value`.
-      *
-      * This filter does not include rows where `column` is `NULL`. To match null
-      * values, use `.is(column, null)` instead.
-      *
-      * @param column - The column to filter on
-      * @param value - The value to filter with
-      *
-      * @category Database
-      * @subcategory Using filters
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .neq('name', 'Leia')
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Luke"
-      *     },
-      *     {
-      *       "id": 3,
-      *       "name": "Han"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      neq(column, value) {
-        this.url.searchParams.append(column, `neq.${value}`);
-        return this;
-      }
-      gt(column, value) {
-        this.url.searchParams.append(column, `gt.${value}`);
-        return this;
-      }
-      gte(column, value) {
-        this.url.searchParams.append(column, `gte.${value}`);
-        return this;
-      }
-      lt(column, value) {
-        this.url.searchParams.append(column, `lt.${value}`);
-        return this;
-      }
-      lte(column, value) {
-        this.url.searchParams.append(column, `lte.${value}`);
-        return this;
-      }
-      like(column, pattern) {
-        this.url.searchParams.append(column, `like.${pattern}`);
-        return this;
-      }
-      likeAllOf(column, patterns) {
-        this.url.searchParams.append(column, `like(all).{${patterns.join(",")}}`);
-        return this;
-      }
-      likeAnyOf(column, patterns) {
-        this.url.searchParams.append(column, `like(any).{${patterns.join(",")}}`);
-        return this;
-      }
-      ilike(column, pattern) {
-        this.url.searchParams.append(column, `ilike.${pattern}`);
-        return this;
-      }
-      ilikeAllOf(column, patterns) {
-        this.url.searchParams.append(column, `ilike(all).{${patterns.join(",")}}`);
-        return this;
-      }
-      ilikeAnyOf(column, patterns) {
-        this.url.searchParams.append(column, `ilike(any).{${patterns.join(",")}}`);
-        return this;
-      }
-      regexMatch(column, pattern) {
-        this.url.searchParams.append(column, `match.${pattern}`);
-        return this;
-      }
-      regexIMatch(column, pattern) {
-        this.url.searchParams.append(column, `imatch.${pattern}`);
-        return this;
-      }
-      is(column, value) {
-        this.url.searchParams.append(column, `is.${value}`);
-        return this;
-      }
-      /**
-      * Match only rows where `column` IS DISTINCT FROM `value`.
-      *
-      * Unlike `.neq()`, this treats `NULL` as a comparable value. Two `NULL` values
-      * are considered equal (not distinct), and comparing `NULL` with any non-NULL
-      * value returns true (distinct).
-      *
-      * @param column - The column to filter on
-      * @param value - The value to filter with
-      */
-      isDistinct(column, value) {
-        this.url.searchParams.append(column, `isdistinct.${value}`);
-        return this;
-      }
-      /**
-      * Match only rows where `column` is included in the `values` array.
-      *
-      * @param column - The column to filter on
-      * @param values - The values array to filter with
-      *
-      * @category Database
-      * @subcategory Using filters
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      *   .in('name', ['Leia', 'Han'])
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 2,
-      *       "name": "Leia"
-      *     },
-      *     {
-      *       "id": 3,
-      *       "name": "Han"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      in(column, values) {
-        const cleanedValues = Array.from(new Set(values)).map((s2) => {
-          if (typeof s2 === "string" && PostgrestReservedCharsRegexp.test(s2)) return `"${s2}"`;
-          else return `${s2}`;
-        }).join(",");
-        this.url.searchParams.append(column, `in.(${cleanedValues})`);
-        return this;
-      }
-      /**
-      * Match only rows where `column` is NOT included in the `values` array.
-      *
-      * @param column - The column to filter on
-      * @param values - The values array to filter with
-      */
-      notIn(column, values) {
-        const cleanedValues = Array.from(new Set(values)).map((s2) => {
-          if (typeof s2 === "string" && PostgrestReservedCharsRegexp.test(s2)) return `"${s2}"`;
-          else return `${s2}`;
-        }).join(",");
-        this.url.searchParams.append(column, `not.in.(${cleanedValues})`);
-        return this;
-      }
-      contains(column, value) {
-        if (typeof value === "string") this.url.searchParams.append(column, `cs.${value}`);
-        else if (Array.isArray(value)) this.url.searchParams.append(column, `cs.{${value.join(",")}}`);
-        else this.url.searchParams.append(column, `cs.${JSON.stringify(value)}`);
-        return this;
-      }
-      containedBy(column, value) {
-        if (typeof value === "string") this.url.searchParams.append(column, `cd.${value}`);
-        else if (Array.isArray(value)) this.url.searchParams.append(column, `cd.{${value.join(",")}}`);
-        else this.url.searchParams.append(column, `cd.${JSON.stringify(value)}`);
-        return this;
-      }
-      rangeGt(column, range) {
-        this.url.searchParams.append(column, `sr.${range}`);
-        return this;
-      }
-      rangeGte(column, range) {
-        this.url.searchParams.append(column, `nxl.${range}`);
-        return this;
-      }
-      rangeLt(column, range) {
-        this.url.searchParams.append(column, `sl.${range}`);
-        return this;
-      }
-      rangeLte(column, range) {
-        this.url.searchParams.append(column, `nxr.${range}`);
-        return this;
-      }
-      rangeAdjacent(column, range) {
-        this.url.searchParams.append(column, `adj.${range}`);
-        return this;
-      }
-      overlaps(column, value) {
-        if (typeof value === "string") this.url.searchParams.append(column, `ov.${value}`);
-        else this.url.searchParams.append(column, `ov.{${value.join(",")}}`);
-        return this;
-      }
-      textSearch(column, query, { config, type } = {}) {
-        let typePart = "";
-        if (type === "plain") typePart = "pl";
-        else if (type === "phrase") typePart = "ph";
-        else if (type === "websearch") typePart = "w";
-        const configPart = config === void 0 ? "" : `(${config})`;
-        this.url.searchParams.append(column, `${typePart}fts${configPart}.${query}`);
-        return this;
-      }
-      match(query) {
-        Object.entries(query).filter(([_, value]) => value !== void 0).forEach(([column, value]) => {
-          this.url.searchParams.append(column, `eq.${value}`);
-        });
-        return this;
-      }
-      /**
-      * Match only rows which doesn't satisfy the filter.
-      *
-      * Unlike most filters, `opearator` and `value` are used as-is and need to
-      * follow [PostgREST
-      * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
-      * to make sure they are properly sanitized.
-      *
-      * @param column - The column to filter on
-      * @param operator - The operator to be negated to filter with, following
-      * PostgREST syntax
-      * @param value - The value to filter with, following PostgREST syntax
-      *
-      * @category Database
-      * @subcategory Using filters
-      *
-      * @remarks
-      * not() expects you to use the raw PostgREST syntax for the filter values.
-      *
-      * ```ts
-      * .not('id', 'in', '(5,6,7)')  // Use `()` for `in` filter
-      * .not('arraycol', 'cs', '{"a","b"}')  // Use `cs` for `contains()`, `{}` for array values
-      * ```
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('countries')
-      *   .select()
-      *   .not('name', 'is', null)
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      *
-      * insert into
-      *   countries (id, name)
-      * values
-      *   (1, 'null'),
-      *   (2, null);
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      *   {
-      *     "data": [
-      *       {
-      *         "id": 1,
-      *         "name": "null"
-      *       }
-      *     ],
-      *     "status": 200,
-      *     "statusText": "OK"
-      *   }
-      *
-      * ```
-      */
-      not(column, operator, value) {
-        this.url.searchParams.append(column, `not.${operator}.${value}`);
-        return this;
-      }
-      /**
-      * Match only rows which satisfy at least one of the filters.
-      *
-      * Unlike most filters, `filters` is used as-is and needs to follow [PostgREST
-      * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
-      * to make sure it's properly sanitized.
-      *
-      * It's currently not possible to do an `.or()` filter across multiple tables.
-      *
-      * @param filters - The filters to use, following PostgREST syntax
-      * @param options - Named parameters
-      * @param options.referencedTable - Set this to filter on referenced tables
-      * instead of the parent table
-      * @param options.foreignTable - Deprecated, use `referencedTable` instead
-      *
-      * @category Database
-      * @subcategory Using filters
-      *
-      * @remarks
-      * or() expects you to use the raw PostgREST syntax for the filter names and values.
-      *
-      * ```ts
-      * .or('id.in.(5,6,7), arraycol.cs.{"a","b"}')  // Use `()` for `in` filter, `{}` for array values and `cs` for `contains()`.
-      * .or('id.in.(5,6,7), arraycol.cd.{"a","b"}')  // Use `cd` for `containedBy()`
-      * ```
-      *
-      * @example With `select()`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      *   .or('id.eq.2,name.eq.Han')
-      * ```
-      *
-      * @exampleSql With `select()`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse With `select()`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "Leia"
-      *     },
-      *     {
-      *       "name": "Han"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example Use `or` with `and`
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      *   .or('id.gt.3,and(id.eq.1,name.eq.Luke)')
-      * ```
-      *
-      * @exampleSql Use `or` with `and`
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse Use `or` with `and`
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "Luke"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example Use `or` on referenced tables
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('orchestral_sections')
-      *   .select(`
-      *     name,
-      *     instruments!inner (
-      *       name
-      *     )
-      *   `)
-      *   .or('section_id.eq.1,name.eq.guzheng', { referencedTable: 'instruments' })
-      * ```
-      *
-      * @exampleSql Use `or` on referenced tables
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 2, 'flute'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse Use `or` on referenced tables
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "strings",
-      *       "instruments": [
-      *         {
-      *           "name": "violin"
-      *         }
-      *       ]
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      or(filters, { foreignTable, referencedTable = foreignTable } = {}) {
-        const key = referencedTable ? `${referencedTable}.or` : "or";
-        this.url.searchParams.append(key, `(${filters})`);
-        return this;
-      }
-      filter(column, operator, value) {
-        this.url.searchParams.append(column, `${operator}.${value}`);
-        return this;
-      }
-    };
-    PostgrestQueryBuilder = class {
-      /**
-      * Creates a query builder scoped to a Postgres table or view.
-      *
-      * @category Database
-      *
-      * @param url - The URL for the query
-      * @param options - Named parameters
-      * @param options.headers - Custom headers
-      * @param options.schema - Postgres schema to use
-      * @param options.fetch - Custom fetch implementation
-      * @param options.urlLengthLimit - Maximum URL length before warning
-      * @param options.retry - Enable automatic retries for transient errors (default: true)
-      *
-      * @example Using supabase-js (recommended)
-      * ```ts
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const { data, error } = await supabase.from('users').select('*')
-      * ```
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```ts
-      * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
-      *
-      * const query = new PostgrestQueryBuilder(
-      *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
-      *   { headers: { apikey: 'your-publishable-key' }, retry: true }
-      * )
-      * ```
-      */
-      constructor(url, { headers = {}, schema, fetch: fetch$1, urlLengthLimit = 8e3, retry }) {
-        this.url = url;
-        this.headers = new Headers(headers);
-        this.schema = schema;
-        this.fetch = fetch$1;
-        this.urlLengthLimit = urlLengthLimit;
-        this.retry = retry;
-      }
-      /**
-      * Clone URL and headers to prevent shared state between operations.
-      */
-      cloneRequestState() {
-        return {
-          url: new URL(this.url.toString()),
-          headers: new Headers(this.headers)
-        };
-      }
-      /**
-      * Perform a SELECT query on the table or view.
-      *
-      * @param columns - The columns to retrieve, separated by commas. Columns can be renamed when returned with `customName:columnName`
-      *
-      * @param options - Named parameters
-      *
-      * @param options.head - When set to `true`, `data` will not be returned.
-      * Useful if you only need the count.
-      *
-      * @param options.count - Count algorithm to use to count rows in the table or view.
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @remarks
-      * When using `count` with `.range()` or `.limit()`, the returned `count` is the total number of rows
-      * that match your filters, not the number of rows in the current page. Use this to build pagination UI.
-      
-      * - By default, Supabase projects return a maximum of 1,000 rows. This setting can be changed in your project's [API settings](/dashboard/project/_/settings/api). It's recommended that you keep it low to limit the payload size of accidental or malicious requests. You can use `range()` queries to paginate through your data.
-      * - `select()` can be combined with [Filters](/docs/reference/javascript/using-filters)
-      * - `select()` can be combined with [Modifiers](/docs/reference/javascript/using-modifiers)
-      * - `apikey` is a reserved keyword if you're using the [Supabase Platform](/docs/guides/platform) and [should be avoided as a column name](https://github.com/supabase/supabase/issues/5465). *
-      * @category Database
-      *
-      * @example Getting your data
-      * ```js
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select()
-      * ```
-      *
-      * @exampleSql Getting your data
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Harry'),
-      *   (2, 'Frodo'),
-      *   (3, 'Katniss');
-      * ```
-      *
-      * @exampleResponse Getting your data
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Harry"
-      *     },
-      *     {
-      *       "id": 2,
-      *       "name": "Frodo"
-      *     },
-      *     {
-      *       "id": 3,
-      *       "name": "Katniss"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Handling errors
-      * The most useful field on a Postgres error is usually `hint` — when the database knows the fix, it puts the literal SQL there. For example, a permission-denied error (`code: '42501'`) arrives with a `hint` like `"Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;"`. Log the full `error` object so the hint isn't hidden behind `error.message`.
-      *
-      * @example Handling errors
-      * ```js
-      * const { data, error } = await supabase.from('characters').select()
-      * if (error) {
-      *   // Logs the full error: message, code, details, and hint.
-      *   console.error(error)
-      *   return
-      * }
-      * ```
-      *
-      * @exampleResponse Handling errors
-      * ```json
-      * {
-      *   "error": {
-      *     "code": "42501",
-      *     "details": null,
-      *     "hint": "Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;",
-      *     "message": "permission denied for table characters"
-      *   },
-      *   "status": 401,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @example Selecting specific columns
-      * ```js
-      * const { data, error } = await supabase
-      *   .from('characters')
-      *   .select('name')
-      * ```
-      *
-      * @exampleSql Selecting specific columns
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Frodo'),
-      *   (2, 'Harry'),
-      *   (3, 'Katniss');
-      * ```
-      *
-      * @exampleResponse Selecting specific columns
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "Frodo"
-      *     },
-      *     {
-      *       "name": "Harry"
-      *     },
-      *     {
-      *       "name": "Katniss"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Query referenced tables
-      * If your database has foreign key relationships, you can query related tables too.
-      *
-      * @example Query referenced tables
-      * ```js
-      * const { data, error } = await supabase
-      *   .from('orchestral_sections')
-      *   .select(`
-      *     name,
-      *     instruments (
-      *       name
-      *     )
-      *   `)
-      * ```
-      *
-      * @exampleSql Query referenced tables
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 2, 'flute'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse Query referenced tables
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "strings",
-      *       "instruments": [
-      *         {
-      *           "name": "violin"
-      *         }
-      *       ]
-      *     },
-      *     {
-      *       "name": "woodwinds",
-      *       "instruments": [
-      *         {
-      *           "name": "flute"
-      *         }
-      *       ]
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Query referenced tables with spaces in their names
-      * If your table name contains spaces, you must use double quotes in the `select` statement to reference the table.
-      *
-      * @example Query referenced tables with spaces in their names
-      * ```js
-      * const { data, error } = await supabase
-      *   .from('orchestral sections')
-      *   .select(`
-      *     name,
-      *     "musical instruments" (
-      *       name
-      *     )
-      *   `)
-      * ```
-      *
-      * @exampleSql Query referenced tables with spaces in their names
-      * ```sql
-      * create table
-      *   "orchestral sections" (id int8 primary key, name text);
-      * create table
-      *   "musical instruments" (
-      *     id int8 primary key,
-      *     section_id int8 not null references "orchestral sections",
-      *     name text
-      *   );
-      *
-      * insert into
-      *   "orchestral sections" (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   "musical instruments" (id, section_id, name)
-      * values
-      *   (1, 2, 'flute'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse Query referenced tables with spaces in their names
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "strings",
-      *       "musical instruments": [
-      *         {
-      *           "name": "violin"
-      *         }
-      *       ]
-      *     },
-      *     {
-      *       "name": "woodwinds",
-      *       "musical instruments": [
-      *         {
-      *           "name": "flute"
-      *         }
-      *       ]
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Query referenced tables through a join table
-      * If you're in a situation where your tables are **NOT** directly
-      * related, but instead are joined by a _join table_, you can still use
-      * the `select()` method to query the related data. The join table needs
-      * to have the foreign keys as part of its composite primary key.
-      *
-      * @example Query referenced tables through a join table
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .select(`
-      *     name,
-      *     teams (
-      *       name
-      *     )
-      *   `)
-      *   
-      * ```
-      *
-      * @exampleSql Query referenced tables through a join table
-      * ```sql
-      * create table
-      *   users (
-      *     id int8 primary key,
-      *     name text
-      *   );
-      * create table
-      *   teams (
-      *     id int8 primary key,
-      *     name text
-      *   );
-      * -- join table
-      * create table
-      *   users_teams (
-      *     user_id int8 not null references users,
-      *     team_id int8 not null references teams,
-      *     -- both foreign keys must be part of a composite primary key
-      *     primary key (user_id, team_id)
-      *   );
-      *
-      * insert into
-      *   users (id, name)
-      * values
-      *   (1, 'Kiran'),
-      *   (2, 'Evan');
-      * insert into
-      *   teams (id, name)
-      * values
-      *   (1, 'Green'),
-      *   (2, 'Blue');
-      * insert into
-      *   users_teams (user_id, team_id)
-      * values
-      *   (1, 1),
-      *   (1, 2),
-      *   (2, 2);
-      * ```
-      *
-      * @exampleResponse Query referenced tables through a join table
-      * ```json
-      *   {
-      *     "data": [
-      *       {
-      *         "name": "Kiran",
-      *         "teams": [
-      *           {
-      *             "name": "Green"
-      *           },
-      *           {
-      *             "name": "Blue"
-      *           }
-      *         ]
-      *       },
-      *       {
-      *         "name": "Evan",
-      *         "teams": [
-      *           {
-      *             "name": "Blue"
-      *           }
-      *         ]
-      *       }
-      *     ],
-      *     "status": 200,
-      *     "statusText": "OK"
-      *   }
-      *   
-      * ```
-      *
-      * @exampleDescription Query the same referenced table multiple times
-      * If you need to query the same referenced table twice, use the name of the
-      * joined column to identify which join to use. You can also give each
-      * column an alias.
-      *
-      * @example Query the same referenced table multiple times
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('messages')
-      *   .select(`
-      *     content,
-      *     from:sender_id(name),
-      *     to:receiver_id(name)
-      *   `)
-      *
-      * // To infer types, use the name of the table (in this case `users`) and
-      * // the name of the foreign key constraint.
-      * const { data, error } = await supabase
-      *   .from('messages')
-      *   .select(`
-      *     content,
-      *     from:users!messages_sender_id_fkey(name),
-      *     to:users!messages_receiver_id_fkey(name)
-      *   `)
-      * ```
-      *
-      * @exampleSql Query the same referenced table multiple times
-      * ```sql
-      *  create table
-      *  users (id int8 primary key, name text);
-      *
-      *  create table
-      *    messages (
-      *      sender_id int8 not null references users,
-      *      receiver_id int8 not null references users,
-      *      content text
-      *    );
-      *
-      *  insert into
-      *    users (id, name)
-      *  values
-      *    (1, 'Kiran'),
-      *    (2, 'Evan');
-      *
-      *  insert into
-      *    messages (sender_id, receiver_id, content)
-      *  values
-      *    (1, 2, '👋');
-      *  ```
-      * ```
-      *
-      * @exampleResponse Query the same referenced table multiple times
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "content": "👋",
-      *       "from": {
-      *         "name": "Kiran"
-      *       },
-      *       "to": {
-      *         "name": "Evan"
-      *       }
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Query nested foreign tables through a join table
-      * You can use the result of a joined table to gather data in
-      * another foreign table. With multiple references to the same foreign
-      * table you must specify the column on which to conduct the join.
-      *
-      * @example Query nested foreign tables through a join table
-      * ```ts
-      *   const { data, error } = await supabase
-      *     .from('games')
-      *     .select(`
-      *       game_id:id,
-      *       away_team:teams!games_away_team_fkey (
-      *         users (
-      *           id,
-      *           name
-      *         )
-      *       )
-      *     `)
-      *   
-      * ```
-      *
-      * @exampleSql Query nested foreign tables through a join table
-      * ```sql
-      * ```sql
-      * create table
-      *   users (
-      *     id int8 primary key,
-      *     name text
-      *   );
-      * create table
-      *   teams (
-      *     id int8 primary key,
-      *     name text
-      *   );
-      * -- join table
-      * create table
-      *   users_teams (
-      *     user_id int8 not null references users,
-      *     team_id int8 not null references teams,
-      *
-      *     primary key (user_id, team_id)
-      *   );
-      * create table
-      *   games (
-      *     id int8 primary key,
-      *     home_team int8 not null references teams,
-      *     away_team int8 not null references teams,
-      *     name text
-      *   );
-      *
-      * insert into users (id, name)
-      * values
-      *   (1, 'Kiran'),
-      *   (2, 'Evan');
-      * insert into
-      *   teams (id, name)
-      * values
-      *   (1, 'Green'),
-      *   (2, 'Blue');
-      * insert into
-      *   users_teams (user_id, team_id)
-      * values
-      *   (1, 1),
-      *   (1, 2),
-      *   (2, 2);
-      * insert into
-      *   games (id, home_team, away_team, name)
-      * values
-      *   (1, 1, 2, 'Green vs Blue'),
-      *   (2, 2, 1, 'Blue vs Green');
-      * ```
-      *
-      * @exampleResponse Query nested foreign tables through a join table
-      * ```json
-      *   {
-      *     "data": [
-      *       {
-      *         "game_id": 1,
-      *         "away_team": {
-      *           "users": [
-      *             {
-      *               "id": 1,
-      *               "name": "Kiran"
-      *             },
-      *             {
-      *               "id": 2,
-      *               "name": "Evan"
-      *             }
-      *           ]
-      *         }
-      *       },
-      *       {
-      *         "game_id": 2,
-      *         "away_team": {
-      *           "users": [
-      *             {
-      *               "id": 1,
-      *               "name": "Kiran"
-      *             }
-      *           ]
-      *         }
-      *       }
-      *     ],
-      *     "status": 200,
-      *     "statusText": "OK"
-      *   }
-      *   
-      * ```
-      *
-      * @exampleDescription Filtering through referenced tables
-      * If the filter on a referenced table's column is not satisfied, the referenced
-      * table returns `[]` or `null` but the parent table is not filtered out.
-      * If you want to filter out the parent table rows, use the `!inner` hint
-      *
-      * @example Filtering through referenced tables
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('instruments')
-      *   .select('name, orchestral_sections(*)')
-      *   .eq('orchestral_sections.name', 'percussion')
-      * ```
-      *
-      * @exampleSql Filtering through referenced tables
-      * ```sql
-      * create table
-      *   orchestral_sections (id int8 primary key, name text);
-      * create table
-      *   instruments (
-      *     id int8 primary key,
-      *     section_id int8 not null references orchestral_sections,
-      *     name text
-      *   );
-      *
-      * insert into
-      *   orchestral_sections (id, name)
-      * values
-      *   (1, 'strings'),
-      *   (2, 'woodwinds');
-      * insert into
-      *   instruments (id, section_id, name)
-      * values
-      *   (1, 2, 'flute'),
-      *   (2, 1, 'violin');
-      * ```
-      *
-      * @exampleResponse Filtering through referenced tables
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "flute",
-      *       "orchestral_sections": null
-      *     },
-      *     {
-      *       "name": "violin",
-      *       "orchestral_sections": null
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Querying referenced table with count
-      * You can get the number of rows in a related table by using the
-      * **count** property.
-      *
-      * @example Querying referenced table with count
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('orchestral_sections')
-      *   .select(`*, instruments(count)`)
-      * ```
-      *
-      * @exampleSql Querying referenced table with count
-      * ```sql
-      * create table orchestral_sections (
-      *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-      *   "name" text
-      * );
-      *
-      * create table characters (
-      *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-      *   "name" text,
-      *   "section_id" "uuid" references public.orchestral_sections on delete cascade
-      * );
-      *
-      * with section as (
-      *   insert into orchestral_sections (name)
-      *   values ('strings') returning id
-      * )
-      * insert into instruments (name, section_id) values
-      * ('violin', (select id from section)),
-      * ('viola', (select id from section)),
-      * ('cello', (select id from section)),
-      * ('double bass', (select id from section));
-      * ```
-      *
-      * @exampleResponse Querying referenced table with count
-      * ```json
-      * [
-      *   {
-      *     "id": "693694e7-d993-4360-a6d7-6294e325d9b6",
-      *     "name": "strings",
-      *     "instruments": [
-      *       {
-      *         "count": 4
-      *       }
-      *     ]
-      *   }
-      * ]
-      * ```
-      *
-      * @exampleDescription Querying with count option
-      * You can get the number of rows by using the
-      * [count](/docs/reference/javascript/select#parameters) option.
-      *
-      * @example Querying with count option
-      * ```ts
-      * const { count, error } = await supabase
-      *   .from('characters')
-      *   .select('*', { count: 'exact', head: true })
-      * ```
-      *
-      * @exampleSql Querying with count option
-      * ```sql
-      * create table
-      *   characters (id int8 primary key, name text);
-      *
-      * insert into
-      *   characters (id, name)
-      * values
-      *   (1, 'Luke'),
-      *   (2, 'Leia'),
-      *   (3, 'Han');
-      * ```
-      *
-      * @exampleResponse Querying with count option
-      * ```json
-      * {
-      *   "count": 3,
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Querying JSON data
-      * You can select and filter data inside of
-      * [JSON](/docs/guides/database/json) columns. Postgres offers some
-      * [operators](/docs/guides/database/json#query-the-jsonb-data) for
-      * querying JSON data.
-      *
-      * @example Querying JSON data
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .select(`
-      *     id, name,
-      *     address->city
-      *   `)
-      * ```
-      *
-      * @exampleSql Querying JSON data
-      * ```sql
-      * create table
-      *   users (
-      *     id int8 primary key,
-      *     name text,
-      *     address jsonb
-      *   );
-      *
-      * insert into
-      *   users (id, name, address)
-      * values
-      *   (1, 'Frodo', '{"city":"Hobbiton"}');
-      * ```
-      *
-      * @exampleResponse Querying JSON data
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Frodo",
-      *       "city": "Hobbiton"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Querying referenced table with inner join
-      * If you don't want to return the referenced table contents, you can leave the parenthesis empty.
-      * Like `.select('name, orchestral_sections!inner()')`.
-      *
-      * @example Querying referenced table with inner join
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('instruments')
-      *   .select('name, orchestral_sections!inner(name)')
-      *   .eq('orchestral_sections.name', 'woodwinds')
-      *   .limit(1)
-      * ```
-      *
-      * @exampleSql Querying referenced table with inner join
-      * ```sql
-      * create table orchestral_sections (
-      *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-      *   "name" text
-      * );
-      *
-      * create table instruments (
-      *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
-      *   "name" text,
-      *   "section_id" "uuid" references public.orchestral_sections on delete cascade
-      * );
-      *
-      * with section as (
-      *   insert into orchestral_sections (name)
-      *   values ('woodwinds') returning id
-      * )
-      * insert into instruments (name, section_id) values
-      * ('flute', (select id from section)),
-      * ('clarinet', (select id from section)),
-      * ('bassoon', (select id from section)),
-      * ('piccolo', (select id from section));
-      * ```
-      *
-      * @exampleResponse Querying referenced table with inner join
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "flute",
-      *       "orchestral_sections": {"name": "woodwinds"}
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Switching schemas per query
-      * In addition to setting the schema during initialization, you can also switch schemas on a per-query basis.
-      * Make sure you've set up your [database privileges and API settings](/docs/guides/api/using-custom-schemas).
-      *
-      * @example Switching schemas per query
-      * ```ts
-      * const { data, error } = await supabase
-      *   .schema('myschema')
-      *   .from('mytable')
-      *   .select()
-      * ```
-      *
-      * @exampleSql Switching schemas per query
-      * ```sql
-      * create schema myschema;
-      *
-      * create table myschema.mytable (
-      *   id uuid primary key default gen_random_uuid(),
-      *   data text
-      * );
-      *
-      * insert into myschema.mytable (data) values ('mydata');
-      * ```
-      *
-      * @exampleResponse Switching schemas per query
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": "4162e008-27b0-4c0f-82dc-ccaeee9a624d",
-      *       "data": "mydata"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      select(columns, options) {
-        const { head: head2 = false, count } = options !== null && options !== void 0 ? options : {};
-        const method = head2 ? "HEAD" : "GET";
-        let quoted = false;
-        const cleanedColumns = (columns !== null && columns !== void 0 ? columns : "*").split("").map((c) => {
-          if (/\s/.test(c) && !quoted) return "";
-          if (c === '"') quoted = !quoted;
-          return c;
-        }).join("");
-        const { url, headers } = this.cloneRequestState();
-        url.searchParams.set("select", cleanedColumns);
-        if (count) headers.append("Prefer", `count=${count}`);
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schema,
-          fetch: this.fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Perform an INSERT into the table or view.
-      *
-      * By default, inserted rows are not returned. To return it, chain the call
-      * with `.select()`.
-      *
-      * @param values - The values to insert. Pass an object to insert a single row
-      * or an array to insert multiple rows.
-      *
-      * @param options - Named parameters
-      *
-      * @param options.count - Count algorithm to use to count inserted rows.
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @param options.defaultToNull - Make missing fields default to `null`.
-      * Otherwise, use the default value for the column. Only applies for bulk
-      * inserts.
-      *
-      * @category Database
-      *
-      * @example Create a record
-      * ```ts
-      * const { error } = await supabase
-      *   .from('countries')
-      *   .insert({ id: 1, name: 'Mordor' })
-      * ```
-      *
-      * @exampleSql Create a record
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      * ```
-      *
-      * @exampleResponse Create a record
-      * ```json
-      * {
-      *   "status": 201,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Handling errors
-      * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-      *
-      * @example Handling errors
-      * ```js
-      * const { error } = await supabase.from('countries').insert({ id: 1, name: 'Mordor' })
-      * if (error) console.error(error)
-      * ```
-      *
-      * @example Create a record and return it
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('countries')
-      *   .insert({ id: 1, name: 'Mordor' })
-      *   .select()
-      * ```
-      *
-      * @exampleSql Create a record and return it
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      * ```
-      *
-      * @exampleResponse Create a record and return it
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Mordor"
-      *     }
-      *   ],
-      *   "status": 201,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Bulk create
-      * A bulk create operation is handled in a single transaction.
-      * If any of the inserts fail, none of the rows are inserted.
-      *
-      * @example Bulk create
-      * ```ts
-      * const { error } = await supabase
-      *   .from('countries')
-      *   .insert([
-      *     { id: 1, name: 'Mordor' },
-      *     { id: 1, name: 'The Shire' },
-      *   ])
-      * ```
-      *
-      * @exampleSql Bulk create
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      * ```
-      *
-      * @exampleResponse Bulk create
-      * ```json
-      * {
-      *   "error": {
-      *     "code": "23505",
-      *     "details": "Key (id)=(1) already exists.",
-      *     "hint": null,
-      *     "message": "duplicate key value violates unique constraint \"countries_pkey\""
-      *   },
-      *   "status": 409,
-      *   "statusText": ""
-      * }
-      * ```
-      */
-      insert(values, { count, defaultToNull = true } = {}) {
-        var _this$fetch;
-        const method = "POST";
-        const { url, headers } = this.cloneRequestState();
-        if (count) headers.append("Prefer", `count=${count}`);
-        if (!defaultToNull) headers.append("Prefer", `missing=default`);
-        if (Array.isArray(values)) {
-          const columns = values.reduce((acc, x2) => acc.concat(Object.keys(x2)), []);
-          if (columns.length > 0) {
-            const uniqueColumns = [...new Set(columns)].map((column) => `"${column}"`);
-            url.searchParams.set("columns", uniqueColumns.join(","));
-          }
-        }
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schema,
-          body: values,
-          fetch: (_this$fetch = this.fetch) !== null && _this$fetch !== void 0 ? _this$fetch : fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Perform an UPSERT on the table or view. Depending on the column(s) passed
-      * to `onConflict`, `.upsert()` allows you to perform the equivalent of
-      * `.insert()` if a row with the corresponding `onConflict` columns doesn't
-      * exist, or if it does exist, perform an alternative action depending on
-      * `ignoreDuplicates`.
-      *
-      * By default, upserted rows are not returned. To return it, chain the call
-      * with `.select()`.
-      *
-      * @param values - The values to upsert with. Pass an object to upsert a
-      * single row or an array to upsert multiple rows.
-      *
-      * @param options - Named parameters
-      *
-      * @param options.onConflict - Comma-separated UNIQUE column(s) to specify how
-      * duplicate rows are determined. Two rows are duplicates if all the
-      * `onConflict` columns are equal.
-      *
-      * @param options.ignoreDuplicates - If `true`, duplicate rows are ignored. If
-      * `false`, duplicate rows are merged with existing rows.
-      *
-      * @param options.count - Count algorithm to use to count upserted rows.
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @param options.defaultToNull - Make missing fields default to `null`.
-      * Otherwise, use the default value for the column. This only applies when
-      * inserting new rows, not when merging with existing rows under
-      * `ignoreDuplicates: false`. This also only applies when doing bulk upserts.
-      *
-      * @example Upsert a single row using a unique key
-      * ```ts
-      * // Upserting a single row, overwriting based on the 'username' unique column
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .upsert({ username: 'supabot' }, { onConflict: 'username' })
-      *
-      * // Example response:
-      * // {
-      * //   data: [
-      * //     { id: 4, message: 'bar', username: 'supabot' }
-      * //   ],
-      * //   error: null
-      * // }
-      * ```
-      *
-      * @example Upsert with conflict resolution and exact row counting
-      * ```ts
-      * // Upserting and returning exact count
-      * const { data, error, count } = await supabase
-      *   .from('users')
-      *   .upsert(
-      *     {
-      *       id: 3,
-      *       message: 'foo',
-      *       username: 'supabot'
-      *     },
-      *     {
-      *       onConflict: 'username',
-      *       count: 'exact'
-      *     }
-      *   )
-      *
-      * // Example response:
-      * // {
-      * //   data: [
-      * //     {
-      * //       id: 42,
-      * //       handle: "saoirse",
-      * //       display_name: "Saoirse"
-      * //     }
-      * //   ],
-      * //   count: 1,
-      * //   error: null
-      * // }
-      * ```
-      *
-      * @category Database
-      *
-      * @remarks
-      * - Primary keys must be included in `values` to use upsert.
-      *
-      * @example Upsert your data
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('instruments')
-      *   .upsert({ id: 1, name: 'piano' })
-      *   .select()
-      * ```
-      *
-      * @exampleSql Upsert your data
-      * ```sql
-      * create table
-      *   instruments (id int8 primary key, name text);
-      *
-      * insert into
-      *   instruments (id, name)
-      * values
-      *   (1, 'harpsichord');
-      * ```
-      *
-      * @exampleResponse Upsert your data
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "piano"
-      *     }
-      *   ],
-      *   "status": 201,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Handling errors
-      * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT, UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-      *
-      * @example Handling errors
-      * ```js
-      * const { data, error } = await supabase.from('instruments').upsert({ id: 1, name: 'piano' }).select()
-      * if (error) console.error(error)
-      * ```
-      *
-      * @example Bulk Upsert your data
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('instruments')
-      *   .upsert([
-      *     { id: 1, name: 'piano' },
-      *     { id: 2, name: 'harp' },
-      *   ])
-      *   .select()
-      * ```
-      *
-      * @exampleSql Bulk Upsert your data
-      * ```sql
-      * create table
-      *   instruments (id int8 primary key, name text);
-      *
-      * insert into
-      *   instruments (id, name)
-      * values
-      *   (1, 'harpsichord');
-      * ```
-      *
-      * @exampleResponse Bulk Upsert your data
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "piano"
-      *     },
-      *     {
-      *       "id": 2,
-      *       "name": "harp"
-      *     }
-      *   ],
-      *   "status": 201,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Upserting into tables with constraints
-      * In the following query, `upsert()` implicitly uses the `id`
-      * (primary key) column to determine conflicts. If there is no existing
-      * row with the same `id`, `upsert()` inserts a new row, which
-      * will fail in this case as there is already a row with `handle` `"saoirse"`.
-      * Using the `onConflict` option, you can instruct `upsert()` to use
-      * another column with a unique constraint to determine conflicts.
-      *
-      * @example Upserting into tables with constraints
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .upsert({ id: 42, handle: 'saoirse', display_name: 'Saoirse' })
-      *   .select()
-      * ```
-      *
-      * @exampleSql Upserting into tables with constraints
-      * ```sql
-      * create table
-      *   users (
-      *     id int8 generated by default as identity primary key,
-      *     handle text not null unique,
-      *     display_name text
-      *   );
-      *
-      * insert into
-      *   users (id, handle, display_name)
-      * values
-      *   (1, 'saoirse', null);
-      * ```
-      *
-      * @exampleResponse Upserting into tables with constraints
-      * ```json
-      * {
-      *   "error": {
-      *     "code": "23505",
-      *     "details": "Key (handle)=(saoirse) already exists.",
-      *     "hint": null,
-      *     "message": "duplicate key value violates unique constraint \"users_handle_key\""
-      *   },
-      *   "status": 409,
-      *   "statusText": ""
-      * }
-      * ```
-      */
-      upsert(values, { onConflict, ignoreDuplicates = false, count, defaultToNull = true } = {}) {
-        var _this$fetch2;
-        const method = "POST";
-        const { url, headers } = this.cloneRequestState();
-        headers.append("Prefer", `resolution=${ignoreDuplicates ? "ignore" : "merge"}-duplicates`);
-        if (onConflict !== void 0) url.searchParams.set("on_conflict", onConflict);
-        if (count) headers.append("Prefer", `count=${count}`);
-        if (!defaultToNull) headers.append("Prefer", "missing=default");
-        if (Array.isArray(values)) {
-          const columns = values.reduce((acc, x2) => acc.concat(Object.keys(x2)), []);
-          if (columns.length > 0) {
-            const uniqueColumns = [...new Set(columns)].map((column) => `"${column}"`);
-            url.searchParams.set("columns", uniqueColumns.join(","));
-          }
-        }
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schema,
-          body: values,
-          fetch: (_this$fetch2 = this.fetch) !== null && _this$fetch2 !== void 0 ? _this$fetch2 : fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Perform an UPDATE on the table or view.
-      *
-      * By default, updated rows are not returned. To return it, chain the call
-      * with `.select()` after filters.
-      *
-      * @param values - The values to update with
-      *
-      * @param options - Named parameters
-      *
-      * @param options.count - Count algorithm to use to count updated rows.
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @category Database
-      *
-      * @remarks
-      * - `update()` should always be combined with [Filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to update.
-      *
-      * @example Updating your data
-      * ```ts
-      * const { error } = await supabase
-      *   .from('instruments')
-      *   .update({ name: 'piano' })
-      *   .eq('id', 1)
-      * ```
-      *
-      * @exampleSql Updating your data
-      * ```sql
-      * create table
-      *   instruments (id int8 primary key, name text);
-      *
-      * insert into
-      *   instruments (id, name)
-      * values
-      *   (1, 'harpsichord');
-      * ```
-      *
-      * @exampleResponse Updating your data
-      * ```json
-      * {
-      *   "status": 204,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Handling errors
-      * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-      *
-      * @example Handling errors
-      * ```js
-      * const { error } = await supabase.from('instruments').update({ name: 'piano' }).eq('id', 1)
-      * if (error) console.error(error)
-      * ```
-      *
-      * @example Update a record and return it
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('instruments')
-      *   .update({ name: 'piano' })
-      *   .eq('id', 1)
-      *   .select()
-      * ```
-      *
-      * @exampleSql Update a record and return it
-      * ```sql
-      * create table
-      *   instruments (id int8 primary key, name text);
-      *
-      * insert into
-      *   instruments (id, name)
-      * values
-      *   (1, 'harpsichord');
-      * ```
-      *
-      * @exampleResponse Update a record and return it
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "piano"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Updating JSON data
-      * Postgres offers some
-      * [operators](/docs/guides/database/json#query-the-jsonb-data) for
-      * working with JSON data. Currently, it is only possible to update the entire JSON document.
-      *
-      * @example Updating JSON data
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('users')
-      *   .update({
-      *     address: {
-      *       street: 'Melrose Place',
-      *       postcode: 90210
-      *     }
-      *   })
-      *   .eq('address->postcode', 90210)
-      *   .select()
-      * ```
-      *
-      * @exampleSql Updating JSON data
-      * ```sql
-      * create table
-      *   users (
-      *     id int8 primary key,
-      *     name text,
-      *     address jsonb
-      *   );
-      *
-      * insert into
-      *   users (id, name, address)
-      * values
-      *   (1, 'Michael', '{ "postcode": 90210 }');
-      * ```
-      *
-      * @exampleResponse Updating JSON data
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Michael",
-      *       "address": {
-      *         "street": "Melrose Place",
-      *         "postcode": 90210
-      *       }
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      update(values, { count } = {}) {
-        var _this$fetch3;
-        const method = "PATCH";
-        const { url, headers } = this.cloneRequestState();
-        if (count) headers.append("Prefer", `count=${count}`);
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schema,
-          body: values,
-          fetch: (_this$fetch3 = this.fetch) !== null && _this$fetch3 !== void 0 ? _this$fetch3 : fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Perform a DELETE on the table or view.
-      *
-      * By default, deleted rows are not returned. To return it, chain the call
-      * with `.select()` after filters.
-      *
-      * @param options - Named parameters
-      *
-      * @param options.count - Count algorithm to use to count deleted rows.
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @category Database
-      *
-      * @remarks
-      * - `delete()` should always be combined with [filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to delete.
-      * - If you use `delete()` with filters and you have
-      *   [RLS](/docs/learn/auth-deep-dive/auth-row-level-security) enabled, only
-      *   rows visible through `SELECT` policies are deleted. Note that by default
-      *   no rows are visible, so you need at least one `SELECT`/`ALL` policy that
-      *   makes the rows visible.
-      * - When using `delete().in()`, specify an array of values to target multiple rows with a single query. This is particularly useful for batch deleting entries that share common criteria, such as deleting users by their IDs. Ensure that the array you provide accurately represents all records you intend to delete to avoid unintended data removal.
-      *
-      * @example Delete a single record
-      * ```ts
-      * const response = await supabase
-      *   .from('countries')
-      *   .delete()
-      *   .eq('id', 1)
-      * ```
-      *
-      * @exampleSql Delete a single record
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      *
-      * insert into
-      *   countries (id, name)
-      * values
-      *   (1, 'Mordor');
-      * ```
-      *
-      * @exampleResponse Delete a single record
-      * ```json
-      * {
-      *   "status": 204,
-      *   "statusText": ""
-      * }
-      * ```
-      *
-      * @exampleDescription Handling errors
-      * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT DELETE ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
-      *
-      * @example Handling errors
-      * ```js
-      * const { error } = await supabase.from('countries').delete().eq('id', 1)
-      * if (error) console.error(error)
-      * ```
-      *
-      * @example Delete a record and return it
-      * ```ts
-      * const { data, error } = await supabase
-      *   .from('countries')
-      *   .delete()
-      *   .eq('id', 1)
-      *   .select()
-      * ```
-      *
-      * @exampleSql Delete a record and return it
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      *
-      * insert into
-      *   countries (id, name)
-      * values
-      *   (1, 'Mordor');
-      * ```
-      *
-      * @exampleResponse Delete a record and return it
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "id": 1,
-      *       "name": "Mordor"
-      *     }
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example Delete multiple records
-      * ```ts
-      * const response = await supabase
-      *   .from('countries')
-      *   .delete()
-      *   .in('id', [1, 2, 3])
-      * ```
-      *
-      * @exampleSql Delete multiple records
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      *
-      * insert into
-      *   countries (id, name)
-      * values
-      *   (1, 'Rohan'), (2, 'The Shire'), (3, 'Mordor');
-      * ```
-      *
-      * @exampleResponse Delete multiple records
-      * ```json
-      * {
-      *   "status": 204,
-      *   "statusText": ""
-      * }
-      * ```
-      */
-      delete({ count } = {}) {
-        var _this$fetch4;
-        const method = "DELETE";
-        const { url, headers } = this.cloneRequestState();
-        if (count) headers.append("Prefer", `count=${count}`);
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schema,
-          fetch: (_this$fetch4 = this.fetch) !== null && _this$fetch4 !== void 0 ? _this$fetch4 : fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-    };
-    PostgrestClient = class PostgrestClient2 {
-      /**
-      * Creates a PostgREST client.
-      *
-      * @param url - URL of the PostgREST endpoint
-      * @param options - Named parameters
-      * @param options.headers - Custom headers
-      * @param options.schema - Postgres schema to switch to
-      * @param options.fetch - Custom fetch
-      * @param options.timeout - Optional timeout in milliseconds for all requests. When set, requests will automatically abort after this duration to prevent indefinite hangs.
-      * @param options.urlLengthLimit - Maximum URL length in characters before warnings/errors are triggered. Defaults to 8000.
-      * @param options.retry - Enable or disable automatic retries for transient errors.
-      *   When enabled, idempotent requests (GET, HEAD, OPTIONS) that fail with network
-      *   errors or HTTP 503/520 responses will be automatically retried up to 3 times
-      *   with exponential backoff (1s, 2s, 4s). Defaults to `true`.
-      * @example Using supabase-js (recommended)
-      * ```ts
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const { data, error } = await supabase.from('profiles').select('*')
-      * ```
-      *
-      * @category Database
-      *
-      * @remarks
-      * - A `timeout` option (in milliseconds) can be set to automatically abort requests that take too long.
-      * - A `urlLengthLimit` option (default: 8000) can be set to control when URL length warnings are included in error messages for aborted requests.
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```ts
-      * import { PostgrestClient } from '@supabase/postgrest-js'
-      *
-      * const postgrest = new PostgrestClient('https://xyzcompany.supabase.co/rest/v1', {
-      *   headers: { apikey: 'your-publishable-key' },
-      *   schema: 'public',
-      *   timeout: 30000, // 30 second timeout
-      * })
-      * ```
-      */
-      constructor(url, { headers = {}, schema, fetch: fetch$1, timeout, urlLengthLimit = 8e3, retry } = {}) {
-        this.url = url;
-        this.headers = new Headers(headers);
-        this.schemaName = schema;
-        this.urlLengthLimit = urlLengthLimit;
-        const originalFetch = fetch$1 !== null && fetch$1 !== void 0 ? fetch$1 : globalThis.fetch;
-        if (timeout !== void 0 && timeout > 0) this.fetch = (input, init) => {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), timeout);
-          const existingSignal = init === null || init === void 0 ? void 0 : init.signal;
-          if (existingSignal) {
-            if (existingSignal.aborted) {
-              clearTimeout(timeoutId);
-              return originalFetch(input, init);
-            }
-            const abortHandler = () => {
-              clearTimeout(timeoutId);
-              controller.abort();
-            };
-            existingSignal.addEventListener("abort", abortHandler, { once: true });
-            return originalFetch(input, _objectSpread2(_objectSpread2({}, init), {}, { signal: controller.signal })).finally(() => {
-              clearTimeout(timeoutId);
-              existingSignal.removeEventListener("abort", abortHandler);
-            });
-          }
-          return originalFetch(input, _objectSpread2(_objectSpread2({}, init), {}, { signal: controller.signal })).finally(() => clearTimeout(timeoutId));
-        };
-        else this.fetch = originalFetch;
-        this.retry = retry;
-      }
-      from(relation) {
-        if (!relation || typeof relation !== "string" || relation.trim() === "") throw new Error("Invalid relation name: relation must be a non-empty string.");
-        return new PostgrestQueryBuilder(new URL(`${this.url}/${relation}`), {
-          headers: new Headers(this.headers),
-          schema: this.schemaName,
-          fetch: this.fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Select a schema to query or perform an function (rpc) call.
-      *
-      * The schema needs to be on the list of exposed schemas inside Supabase.
-      *
-      * @param schema - The schema to query
-      *
-      * @category Database
-      */
-      schema(schema) {
-        return new PostgrestClient2(this.url, {
-          headers: this.headers,
-          schema,
-          fetch: this.fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-      /**
-      * Fetch the OpenAPI description PostgREST publishes for this client's schema.
-      *
-      * The document lists only the tables, views and functions the caller's role
-      * holds privileges on; PostgREST applies that filtering server-side. The
-      * schema is the one this client was created with, so call `.schema()` first
-      * to describe a different one. Transient failures are retried according to
-      * the client's `retry` option, like any other idempotent request.
-      *
-      * @example
-      * ```ts
-      * const { data, error } = await supabase.getOpenApiSpec()
-      * ```
-      *
-      * @example Describe a schema other than the client default
-      * ```ts
-      * const { data, error } = await supabase.schema('billing').getOpenApiSpec()
-      * ```
-      *
-      * @category Database
-      */
-      async getOpenApiSpec() {
-        var _this = this;
-        var _this$fetch;
-        const headers = new Headers(_this.headers);
-        headers.set("Accept", "application/openapi+json");
-        if (_this.schemaName) headers.set("Accept-Profile", _this.schemaName);
-        const requestHeaders = {};
-        headers.forEach((value, key) => {
-          requestHeaders[key] = value;
-        });
-        const fetchImpl = (_this$fetch = _this.fetch) !== null && _this$fetch !== void 0 ? _this$fetch : globalThis.fetch;
-        let res;
-        try {
-          var _this$retry;
-          res = await fetchWithRetry(fetchImpl, `${_this.url}/`, {
-            method: "GET",
-            headers: requestHeaders
-          }, (_this$retry = _this.retry) !== null && _this$retry !== void 0 ? _this$retry : true);
-        } catch (fetchError) {
-          return toTransportFailure(fetchError, 0, "");
-        }
-        let body;
-        try {
-          body = await res.text();
-        } catch (readError) {
-          return toTransportFailure(readError, res.status, res.statusText);
-        }
-        if (res.ok) try {
-          return {
-            success: true,
-            error: null,
-            data: JSON.parse(body),
-            count: null,
-            status: res.status,
-            statusText: res.statusText
-          };
-        } catch (_unused2) {
-        }
-        return {
-          success: false,
-          error: toOpenApiError(body, res.statusText),
-          data: null,
-          count: null,
-          status: res.status,
-          statusText: res.statusText
-        };
-      }
-      /**
-      * Perform a function call.
-      *
-      * @param fn - The function name to call
-      * @param args - The arguments to pass to the function call
-      * @param options - Named parameters
-      * @param options.head - When set to `true`, `data` will not be returned.
-      * Useful if you only need the count.
-      * @param options.get - When set to `true`, the function will be called with
-      * read-only access mode.
-      * @param options.count - Count algorithm to use to count rows returned by the
-      * function. Only applicable for [set-returning
-      * functions](https://www.postgresql.org/docs/current/functions-srf.html).
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      *
-      * @example
-      * ```ts
-      * // For cross-schema functions where type inference fails, use overrideTypes:
-      * const { data } = await supabase
-      *   .schema('schema_b')
-      *   .rpc('function_a', {})
-      *   .overrideTypes<{ id: string; user_id: string }[]>()
-      * ```
-      *
-      * @category Database
-      *
-      * @example Call a Postgres function without arguments
-      * ```ts
-      * const { data, error } = await supabase.rpc('hello_world')
-      * ```
-      *
-      * @exampleSql Call a Postgres function without arguments
-      * ```sql
-      * create function hello_world() returns text as $$
-      *   select 'Hello world';
-      * $$ language sql;
-      * ```
-      *
-      * @exampleResponse Call a Postgres function without arguments
-      * ```json
-      * {
-      *   "data": "Hello world",
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example Call a Postgres function with arguments
-      * ```ts
-      * const { data, error } = await supabase.rpc('echo', { say: '👋' })
-      * ```
-      *
-      * @exampleSql Call a Postgres function with arguments
-      * ```sql
-      * create function echo(say text) returns text as $$
-      *   select say;
-      * $$ language sql;
-      * ```
-      *
-      * @exampleResponse Call a Postgres function with arguments
-      * ```json
-      *   {
-      *     "data": "👋",
-      *     "status": 200,
-      *     "statusText": "OK"
-      *   }
-      *
-      * ```
-      *
-      * @exampleDescription Bulk processing
-      * You can process large payloads by passing in an array as an argument.
-      *
-      * @example Bulk processing
-      * ```ts
-      * const { data, error } = await supabase.rpc('add_one_each', { arr: [1, 2, 3] })
-      * ```
-      *
-      * @exampleSql Bulk processing
-      * ```sql
-      * create function add_one_each(arr int[]) returns int[] as $$
-      *   select array_agg(n + 1) from unnest(arr) as n;
-      * $$ language sql;
-      * ```
-      *
-      * @exampleResponse Bulk processing
-      * ```json
-      * {
-      *   "data": [
-      *     2,
-      *     3,
-      *     4
-      *   ],
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @exampleDescription Call a Postgres function with filters
-      * Postgres functions that return tables can also be combined with [Filters](/docs/reference/javascript/using-filters) and [Modifiers](/docs/reference/javascript/using-modifiers).
-      *
-      * @example Call a Postgres function with filters
-      * ```ts
-      * const { data, error } = await supabase
-      *   .rpc('list_stored_countries')
-      *   .eq('id', 1)
-      *   .single()
-      * ```
-      *
-      * @exampleSql Call a Postgres function with filters
-      * ```sql
-      * create table
-      *   countries (id int8 primary key, name text);
-      *
-      * insert into
-      *   countries (id, name)
-      * values
-      *   (1, 'Rohan'),
-      *   (2, 'The Shire');
-      *
-      * create function list_stored_countries() returns setof countries as $$
-      *   select * from countries;
-      * $$ language sql;
-      * ```
-      *
-      * @exampleResponse Call a Postgres function with filters
-      * ```json
-      * {
-      *   "data": {
-      *     "id": 1,
-      *     "name": "Rohan"
-      *   },
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      *
-      * @example Call a read-only Postgres function
-      * ```ts
-      * const { data, error } = await supabase.rpc('hello_world', undefined, { get: true })
-      * ```
-      *
-      * @exampleSql Call a read-only Postgres function
-      * ```sql
-      * create function hello_world() returns text as $$
-      *   select 'Hello world';
-      * $$ language sql;
-      * ```
-      *
-      * @exampleResponse Call a read-only Postgres function
-      * ```json
-      * {
-      *   "data": "Hello world",
-      *   "status": 200,
-      *   "statusText": "OK"
-      * }
-      * ```
-      */
-      rpc(fn, args = {}, { head: head2 = false, get: get2 = false, count } = {}) {
-        var _this$fetch2;
-        let method;
-        const url = new URL(`${this.url}/rpc/${fn}`);
-        let body;
-        const _isObject = (v) => v !== null && typeof v === "object" && (!Array.isArray(v) || v.some(_isObject));
-        const _hasObjectArg = head2 && Object.values(args).some(_isObject);
-        if (_hasObjectArg) {
-          method = "POST";
-          body = args;
-        } else if (head2 || get2) {
-          method = head2 ? "HEAD" : "GET";
-          Object.entries(args).filter(([_, value]) => value !== void 0).map(([name, value]) => [name, Array.isArray(value) ? `{${value.join(",")}}` : `${value}`]).forEach(([name, value]) => {
-            url.searchParams.append(name, value);
-          });
-        } else {
-          method = "POST";
-          body = args;
-        }
-        const headers = new Headers(this.headers);
-        if (_hasObjectArg) headers.set("Prefer", count ? `count=${count},return=minimal` : "return=minimal");
-        else if (count) headers.set("Prefer", `count=${count}`);
-        return new PostgrestFilterBuilder({
-          method,
-          url,
-          headers,
-          schema: this.schemaName,
-          body,
-          fetch: (_this$fetch2 = this.fetch) !== null && _this$fetch2 !== void 0 ? _this$fetch2 : fetch,
-          urlLengthLimit: this.urlLengthLimit,
-          retry: this.retry
-        });
-      }
-    };
   }
 });
 
@@ -120071,3519 +113902,6 @@ var require_main2 = __commonJS({
     } });
     var websocket_factory_1 = tslib_1.__importDefault(require_websocket_factory());
     exports.WebSocketFactory = websocket_factory_1.default;
-  }
-});
-
-// node_modules/iceberg-js/dist/index.mjs
-function buildUrl(baseUrl, path4, query) {
-  const url = new URL(path4, baseUrl);
-  if (query) {
-    for (const [key, value] of Object.entries(query)) {
-      if (value !== void 0) {
-        url.searchParams.set(key, value);
-      }
-    }
-  }
-  return url.toString();
-}
-async function buildAuthHeaders(auth) {
-  if (!auth || auth.type === "none") {
-    return {};
-  }
-  if (auth.type === "bearer") {
-    return { Authorization: `Bearer ${auth.token}` };
-  }
-  if (auth.type === "header") {
-    return { [auth.name]: auth.value };
-  }
-  if (auth.type === "custom") {
-    return await auth.getHeaders();
-  }
-  return {};
-}
-function createFetchClient(options) {
-  const fetchFn = options.fetchImpl ?? globalThis.fetch;
-  return {
-    async request({
-      method,
-      path: path4,
-      query,
-      body,
-      headers
-    }) {
-      const url = buildUrl(options.baseUrl, path4, query);
-      const authHeaders = await buildAuthHeaders(options.auth);
-      const res = await fetchFn(url, {
-        method,
-        headers: {
-          ...body ? { "Content-Type": "application/json" } : {},
-          ...authHeaders,
-          ...headers
-        },
-        body: body ? JSON.stringify(body) : void 0
-      });
-      const text2 = await res.text();
-      const isJson = (res.headers.get("content-type") || "").includes("application/json");
-      const data = isJson && text2 ? JSON.parse(text2) : text2;
-      if (!res.ok) {
-        const errBody = isJson ? data : void 0;
-        const errorDetail = errBody?.error;
-        throw new IcebergError(
-          errorDetail?.message ?? `Request failed with status ${res.status}`,
-          {
-            status: res.status,
-            icebergType: errorDetail?.type,
-            icebergCode: errorDetail?.code,
-            details: errBody
-          }
-        );
-      }
-      return { status: res.status, headers: res.headers, data };
-    }
-  };
-}
-function namespaceToPath(namespace) {
-  return namespace.join("");
-}
-function namespaceToPath2(namespace) {
-  return namespace.join("");
-}
-var IcebergError, NamespaceOperations, TableOperations, IcebergRestCatalog;
-var init_dist3 = __esm({
-  "node_modules/iceberg-js/dist/index.mjs"() {
-    IcebergError = class extends Error {
-      constructor(message2, opts) {
-        super(message2);
-        this.name = "IcebergError";
-        this.status = opts.status;
-        this.icebergType = opts.icebergType;
-        this.icebergCode = opts.icebergCode;
-        this.details = opts.details;
-        this.isCommitStateUnknown = opts.icebergType === "CommitStateUnknownException" || [500, 502, 504].includes(opts.status) && opts.icebergType?.includes("CommitState") === true;
-      }
-      /**
-       * Returns true if the error is a 404 Not Found error.
-       */
-      isNotFound() {
-        return this.status === 404;
-      }
-      /**
-       * Returns true if the error is a 409 Conflict error.
-       */
-      isConflict() {
-        return this.status === 409;
-      }
-      /**
-       * Returns true if the error is a 419 Authentication Timeout error.
-       */
-      isAuthenticationTimeout() {
-        return this.status === 419;
-      }
-    };
-    NamespaceOperations = class {
-      constructor(client, prefix = "") {
-        this.client = client;
-        this.prefix = prefix;
-      }
-      async listNamespaces(parent) {
-        const query = parent ? { parent: namespaceToPath(parent.namespace) } : void 0;
-        const response = await this.client.request({
-          method: "GET",
-          path: `${this.prefix}/namespaces`,
-          query
-        });
-        return response.data.namespaces.map((ns) => ({ namespace: ns }));
-      }
-      async createNamespace(id, metadata) {
-        const request = {
-          namespace: id.namespace,
-          properties: metadata?.properties
-        };
-        const response = await this.client.request({
-          method: "POST",
-          path: `${this.prefix}/namespaces`,
-          body: request
-        });
-        return response.data;
-      }
-      async dropNamespace(id) {
-        await this.client.request({
-          method: "DELETE",
-          path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
-        });
-      }
-      async loadNamespaceMetadata(id) {
-        const response = await this.client.request({
-          method: "GET",
-          path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
-        });
-        return {
-          properties: response.data.properties
-        };
-      }
-      async namespaceExists(id) {
-        try {
-          await this.client.request({
-            method: "HEAD",
-            path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
-          });
-          return true;
-        } catch (error) {
-          if (error instanceof IcebergError && error.status === 404) {
-            return false;
-          }
-          throw error;
-        }
-      }
-      async createNamespaceIfNotExists(id, metadata) {
-        try {
-          return await this.createNamespace(id, metadata);
-        } catch (error) {
-          if (error instanceof IcebergError && error.status === 409) {
-            return;
-          }
-          throw error;
-        }
-      }
-    };
-    TableOperations = class {
-      constructor(client, prefix = "", accessDelegation) {
-        this.client = client;
-        this.prefix = prefix;
-        this.accessDelegation = accessDelegation;
-      }
-      async listTables(namespace) {
-        const response = await this.client.request({
-          method: "GET",
-          path: `${this.prefix}/namespaces/${namespaceToPath2(namespace.namespace)}/tables`
-        });
-        return response.data.identifiers;
-      }
-      async createTable(namespace, request) {
-        const headers = {};
-        if (this.accessDelegation) {
-          headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
-        }
-        const response = await this.client.request({
-          method: "POST",
-          path: `${this.prefix}/namespaces/${namespaceToPath2(namespace.namespace)}/tables`,
-          body: request,
-          headers
-        });
-        return response.data.metadata;
-      }
-      async updateTable(id, request) {
-        const response = await this.client.request({
-          method: "POST",
-          path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
-          body: request
-        });
-        return {
-          "metadata-location": response.data["metadata-location"],
-          metadata: response.data.metadata
-        };
-      }
-      async dropTable(id, options) {
-        await this.client.request({
-          method: "DELETE",
-          path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
-          query: { purgeRequested: String(options?.purge ?? false) }
-        });
-      }
-      async loadTable(id) {
-        const headers = {};
-        if (this.accessDelegation) {
-          headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
-        }
-        const response = await this.client.request({
-          method: "GET",
-          path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
-          headers
-        });
-        return response.data.metadata;
-      }
-      async tableExists(id) {
-        const headers = {};
-        if (this.accessDelegation) {
-          headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
-        }
-        try {
-          await this.client.request({
-            method: "HEAD",
-            path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
-            headers
-          });
-          return true;
-        } catch (error) {
-          if (error instanceof IcebergError && error.status === 404) {
-            return false;
-          }
-          throw error;
-        }
-      }
-      async createTableIfNotExists(namespace, request) {
-        try {
-          return await this.createTable(namespace, request);
-        } catch (error) {
-          if (error instanceof IcebergError && error.status === 409) {
-            return await this.loadTable({ namespace: namespace.namespace, name: request.name });
-          }
-          throw error;
-        }
-      }
-    };
-    IcebergRestCatalog = class {
-      /**
-       * Creates a new Iceberg REST Catalog client.
-       *
-       * @param options - Configuration options for the catalog client
-       */
-      constructor(options) {
-        let prefix = "v1";
-        if (options.catalogName) {
-          prefix += `/${options.catalogName}`;
-        }
-        const baseUrl = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`;
-        this.client = createFetchClient({
-          baseUrl,
-          auth: options.auth,
-          fetchImpl: options.fetch
-        });
-        this.accessDelegation = options.accessDelegation?.join(",");
-        this.namespaceOps = new NamespaceOperations(this.client, prefix);
-        this.tableOps = new TableOperations(this.client, prefix, this.accessDelegation);
-      }
-      /**
-       * Lists all namespaces in the catalog.
-       *
-       * @param parent - Optional parent namespace to list children under
-       * @returns Array of namespace identifiers
-       *
-       * @example
-       * ```typescript
-       * // List all top-level namespaces
-       * const namespaces = await catalog.listNamespaces();
-       *
-       * // List namespaces under a parent
-       * const children = await catalog.listNamespaces({ namespace: ['analytics'] });
-       * ```
-       */
-      async listNamespaces(parent) {
-        return this.namespaceOps.listNamespaces(parent);
-      }
-      /**
-       * Creates a new namespace in the catalog.
-       *
-       * @param id - Namespace identifier to create
-       * @param metadata - Optional metadata properties for the namespace
-       * @returns Response containing the created namespace and its properties
-       *
-       * @example
-       * ```typescript
-       * const response = await catalog.createNamespace(
-       *   { namespace: ['analytics'] },
-       *   { properties: { owner: 'data-team' } }
-       * );
-       * console.log(response.namespace); // ['analytics']
-       * console.log(response.properties); // { owner: 'data-team', ... }
-       * ```
-       */
-      async createNamespace(id, metadata) {
-        return this.namespaceOps.createNamespace(id, metadata);
-      }
-      /**
-       * Drops a namespace from the catalog.
-       *
-       * The namespace must be empty (contain no tables) before it can be dropped.
-       *
-       * @param id - Namespace identifier to drop
-       *
-       * @example
-       * ```typescript
-       * await catalog.dropNamespace({ namespace: ['analytics'] });
-       * ```
-       */
-      async dropNamespace(id) {
-        await this.namespaceOps.dropNamespace(id);
-      }
-      /**
-       * Loads metadata for a namespace.
-       *
-       * @param id - Namespace identifier to load
-       * @returns Namespace metadata including properties
-       *
-       * @example
-       * ```typescript
-       * const metadata = await catalog.loadNamespaceMetadata({ namespace: ['analytics'] });
-       * console.log(metadata.properties);
-       * ```
-       */
-      async loadNamespaceMetadata(id) {
-        return this.namespaceOps.loadNamespaceMetadata(id);
-      }
-      /**
-       * Lists all tables in a namespace.
-       *
-       * @param namespace - Namespace identifier to list tables from
-       * @returns Array of table identifiers
-       *
-       * @example
-       * ```typescript
-       * const tables = await catalog.listTables({ namespace: ['analytics'] });
-       * console.log(tables); // [{ namespace: ['analytics'], name: 'events' }, ...]
-       * ```
-       */
-      async listTables(namespace) {
-        return this.tableOps.listTables(namespace);
-      }
-      /**
-       * Creates a new table in the catalog.
-       *
-       * @param namespace - Namespace to create the table in
-       * @param request - Table creation request including name, schema, partition spec, etc.
-       * @returns Table metadata for the created table
-       *
-       * @example
-       * ```typescript
-       * const metadata = await catalog.createTable(
-       *   { namespace: ['analytics'] },
-       *   {
-       *     name: 'events',
-       *     schema: {
-       *       type: 'struct',
-       *       fields: [
-       *         { id: 1, name: 'id', type: 'long', required: true },
-       *         { id: 2, name: 'timestamp', type: 'timestamp', required: true }
-       *       ],
-       *       'schema-id': 0
-       *     },
-       *     'partition-spec': {
-       *       'spec-id': 0,
-       *       fields: [
-       *         { source_id: 2, field_id: 1000, name: 'ts_day', transform: 'day' }
-       *       ]
-       *     }
-       *   }
-       * );
-       * ```
-       */
-      async createTable(namespace, request) {
-        return this.tableOps.createTable(namespace, request);
-      }
-      /**
-       * Updates an existing table's metadata.
-       *
-       * Can update the schema, partition spec, or properties of a table.
-       *
-       * @param id - Table identifier to update
-       * @param request - Update request with fields to modify
-       * @returns Response containing the metadata location and updated table metadata
-       *
-       * @example
-       * ```typescript
-       * const response = await catalog.updateTable(
-       *   { namespace: ['analytics'], name: 'events' },
-       *   {
-       *     properties: { 'read.split.target-size': '134217728' }
-       *   }
-       * );
-       * console.log(response['metadata-location']); // s3://...
-       * console.log(response.metadata); // TableMetadata object
-       * ```
-       */
-      async updateTable(id, request) {
-        return this.tableOps.updateTable(id, request);
-      }
-      /**
-       * Drops a table from the catalog.
-       *
-       * @param id - Table identifier to drop
-       *
-       * @example
-       * ```typescript
-       * await catalog.dropTable({ namespace: ['analytics'], name: 'events' });
-       * ```
-       */
-      async dropTable(id, options) {
-        await this.tableOps.dropTable(id, options);
-      }
-      /**
-       * Loads metadata for a table.
-       *
-       * @param id - Table identifier to load
-       * @returns Table metadata including schema, partition spec, location, etc.
-       *
-       * @example
-       * ```typescript
-       * const metadata = await catalog.loadTable({ namespace: ['analytics'], name: 'events' });
-       * console.log(metadata.schema);
-       * console.log(metadata.location);
-       * ```
-       */
-      async loadTable(id) {
-        return this.tableOps.loadTable(id);
-      }
-      /**
-       * Checks if a namespace exists in the catalog.
-       *
-       * @param id - Namespace identifier to check
-       * @returns True if the namespace exists, false otherwise
-       *
-       * @example
-       * ```typescript
-       * const exists = await catalog.namespaceExists({ namespace: ['analytics'] });
-       * console.log(exists); // true or false
-       * ```
-       */
-      async namespaceExists(id) {
-        return this.namespaceOps.namespaceExists(id);
-      }
-      /**
-       * Checks if a table exists in the catalog.
-       *
-       * @param id - Table identifier to check
-       * @returns True if the table exists, false otherwise
-       *
-       * @example
-       * ```typescript
-       * const exists = await catalog.tableExists({ namespace: ['analytics'], name: 'events' });
-       * console.log(exists); // true or false
-       * ```
-       */
-      async tableExists(id) {
-        return this.tableOps.tableExists(id);
-      }
-      /**
-       * Creates a namespace if it does not exist.
-       *
-       * If the namespace already exists, returns void. If created, returns the response.
-       *
-       * @param id - Namespace identifier to create
-       * @param metadata - Optional metadata properties for the namespace
-       * @returns Response containing the created namespace and its properties, or void if it already exists
-       *
-       * @example
-       * ```typescript
-       * const response = await catalog.createNamespaceIfNotExists(
-       *   { namespace: ['analytics'] },
-       *   { properties: { owner: 'data-team' } }
-       * );
-       * if (response) {
-       *   console.log('Created:', response.namespace);
-       * } else {
-       *   console.log('Already exists');
-       * }
-       * ```
-       */
-      async createNamespaceIfNotExists(id, metadata) {
-        return this.namespaceOps.createNamespaceIfNotExists(id, metadata);
-      }
-      /**
-       * Creates a table if it does not exist.
-       *
-       * If the table already exists, returns its metadata instead.
-       *
-       * @param namespace - Namespace to create the table in
-       * @param request - Table creation request including name, schema, partition spec, etc.
-       * @returns Table metadata for the created or existing table
-       *
-       * @example
-       * ```typescript
-       * const metadata = await catalog.createTableIfNotExists(
-       *   { namespace: ['analytics'] },
-       *   {
-       *     name: 'events',
-       *     schema: {
-       *       type: 'struct',
-       *       fields: [
-       *         { id: 1, name: 'id', type: 'long', required: true },
-       *         { id: 2, name: 'timestamp', type: 'timestamp', required: true }
-       *       ],
-       *       'schema-id': 0
-       *     }
-       *   }
-       * );
-       * ```
-       */
-      async createTableIfNotExists(namespace, request) {
-        return this.tableOps.createTableIfNotExists(namespace, request);
-      }
-    };
-  }
-});
-
-// node_modules/@supabase/storage-js/dist/index.mjs
-function _typeof2(o) {
-  "@babel/helpers - typeof";
-  return _typeof2 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
-    return typeof o$1;
-  } : function(o$1) {
-    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
-  }, _typeof2(o);
-}
-function toPrimitive2(t2, r2) {
-  if ("object" != _typeof2(t2) || !t2) return t2;
-  var e2 = t2[Symbol.toPrimitive];
-  if (void 0 !== e2) {
-    var i2 = e2.call(t2, r2 || "default");
-    if ("object" != _typeof2(i2)) return i2;
-    throw new TypeError("@@toPrimitive must return a primitive value.");
-  }
-  return ("string" === r2 ? String : Number)(t2);
-}
-function toPropertyKey2(t2) {
-  var i2 = toPrimitive2(t2, "string");
-  return "symbol" == _typeof2(i2) ? i2 : i2 + "";
-}
-function _defineProperty2(e2, r2, t2) {
-  return (r2 = toPropertyKey2(r2)) in e2 ? Object.defineProperty(e2, r2, {
-    value: t2,
-    enumerable: true,
-    configurable: true,
-    writable: true
-  }) : e2[r2] = t2, e2;
-}
-function ownKeys3(e2, r2) {
-  var t2 = Object.keys(e2);
-  if (Object.getOwnPropertySymbols) {
-    var o = Object.getOwnPropertySymbols(e2);
-    r2 && (o = o.filter(function(r$1) {
-      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
-    })), t2.push.apply(t2, o);
-  }
-  return t2;
-}
-function _objectSpread22(e2) {
-  for (var r2 = 1; r2 < arguments.length; r2++) {
-    var t2 = null != arguments[r2] ? arguments[r2] : {};
-    r2 % 2 ? ownKeys3(Object(t2), true).forEach(function(r$1) {
-      _defineProperty2(e2, r$1, t2[r$1]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys3(Object(t2)).forEach(function(r$1) {
-      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
-    });
-  }
-  return e2;
-}
-function isStorageError(error) {
-  return typeof error === "object" && error !== null && "__isStorageError" in error;
-}
-function setHeader(headers, name, value) {
-  const result = _objectSpread22({}, headers);
-  const nameLower = name.toLowerCase();
-  for (const key of Object.keys(result)) if (key.toLowerCase() === nameLower) delete result[key];
-  result[nameLower] = value;
-  return result;
-}
-function normalizeHeaders(headers) {
-  const result = {};
-  for (const [key, value] of Object.entries(headers)) result[key.toLowerCase()] = value;
-  return result;
-}
-async function _handleRequest(fetcher, method, url, options, parameters, body, namespace) {
-  return new Promise((resolve, reject) => {
-    fetcher(url, _getRequestParams(method, options, parameters, body)).then((result) => {
-      if (!result.ok) throw result;
-      if (options === null || options === void 0 ? void 0 : options.noResolveJson) return result;
-      if (namespace === "vectors") {
-        const contentType = result.headers.get("content-type");
-        if (result.headers.get("content-length") === "0" || result.status === 204) return {};
-        if (!contentType || !contentType.includes("application/json")) return {};
-      }
-      return result.json();
-    }).then((data) => resolve(data)).catch((error) => handleError(error, reject, options, namespace));
-  });
-}
-function createFetchApi(namespace = "storage") {
-  return {
-    get: async (fetcher, url, options, parameters) => {
-      return _handleRequest(fetcher, "GET", url, options, parameters, void 0, namespace);
-    },
-    post: async (fetcher, url, body, options, parameters) => {
-      return _handleRequest(fetcher, "POST", url, options, parameters, body, namespace);
-    },
-    put: async (fetcher, url, body, options, parameters) => {
-      return _handleRequest(fetcher, "PUT", url, options, parameters, body, namespace);
-    },
-    head: async (fetcher, url, options, parameters) => {
-      return _handleRequest(fetcher, "HEAD", url, _objectSpread22(_objectSpread22({}, options), {}, { noResolveJson: true }), parameters, void 0, namespace);
-    },
-    remove: async (fetcher, url, body, options, parameters) => {
-      return _handleRequest(fetcher, "DELETE", url, options, parameters, body, namespace);
-    }
-  };
-}
-var StorageError, StorageApiError, StorageUnknownError, resolveFetch, isPlainObject, recursiveToCamel, isValidBucketName, encodeStoragePath, _getErrorMessage, handleError, _getRequestParams, defaultApi, get, post, put, head, remove, vectorsApi, BaseApiClient, _Symbol$toStringTag$1, StreamDownloadBuilder, _Symbol$toStringTag, BlobDownloadBuilder, DEFAULT_SEARCH_OPTIONS, DEFAULT_FILE_OPTIONS, StorageFileApi, version2, DEFAULT_HEADERS, StorageBucketApi, StorageAnalyticsClient, VectorIndexApi, VectorDataApi, VectorBucketApi, StorageVectorsClient, VectorBucketScope, VectorIndexScope, StorageClient;
-var init_dist4 = __esm({
-  "node_modules/@supabase/storage-js/dist/index.mjs"() {
-    init_dist3();
-    StorageError = class extends Error {
-      constructor(message2, namespace = "storage", status, statusCode) {
-        super(message2);
-        this.__isStorageError = true;
-        this.namespace = namespace;
-        this.name = namespace === "vectors" ? "StorageVectorsError" : "StorageError";
-        this.status = status;
-        this.statusCode = statusCode;
-      }
-      toJSON() {
-        return {
-          name: this.name,
-          message: this.message,
-          status: this.status,
-          statusCode: this.statusCode
-        };
-      }
-    };
-    StorageApiError = class extends StorageError {
-      constructor(message2, status, statusCode, namespace = "storage", code) {
-        super(message2, namespace, status, statusCode);
-        this.name = namespace === "vectors" ? "StorageVectorsApiError" : "StorageApiError";
-        this.status = status;
-        this.statusCode = statusCode;
-        this.code = code;
-      }
-      toJSON() {
-        return _objectSpread22(_objectSpread22({}, super.toJSON()), {}, { code: this.code });
-      }
-    };
-    StorageUnknownError = class extends StorageError {
-      constructor(message2, originalError, namespace = "storage") {
-        super(message2, namespace);
-        this.name = namespace === "vectors" ? "StorageVectorsUnknownError" : "StorageUnknownError";
-        this.originalError = originalError;
-      }
-    };
-    resolveFetch = (customFetch2) => {
-      if (customFetch2) return (...args) => customFetch2(...args);
-      return (...args) => fetch(...args);
-    };
-    isPlainObject = (value) => {
-      if (typeof value !== "object" || value === null) return false;
-      const prototype = Object.getPrototypeOf(value);
-      return (prototype === null || prototype === Object.prototype || Object.getPrototypeOf(prototype) === null) && !(Symbol.toStringTag in value) && !(Symbol.iterator in value);
-    };
-    recursiveToCamel = (item) => {
-      if (Array.isArray(item)) return item.map((el) => recursiveToCamel(el));
-      else if (typeof item === "function" || item !== Object(item)) return item;
-      const result = {};
-      Object.entries(item).forEach(([key, value]) => {
-        const newKey = key.replace(/([-_][a-z])/gi, (c) => c.toUpperCase().replace(/[-_]/g, ""));
-        result[newKey] = recursiveToCamel(value);
-      });
-      return result;
-    };
-    isValidBucketName = (bucketName) => {
-      if (!bucketName || typeof bucketName !== "string") return false;
-      if (bucketName.length === 0 || bucketName.length > 100) return false;
-      if (bucketName.trim() !== bucketName) return false;
-      if (bucketName.includes("/") || bucketName.includes("\\")) return false;
-      return /^[\w!.\*'() &$@=;:+,?-]+$/.test(bucketName);
-    };
-    encodeStoragePath = (path4) => path4.split("/").map(encodeURIComponent).join("/");
-    _getErrorMessage = (err) => {
-      if (typeof err === "object" && err !== null) {
-        const e2 = err;
-        if (typeof e2.msg === "string") return e2.msg;
-        if (typeof e2.message === "string") return e2.message;
-        if (typeof e2.error_description === "string") return e2.error_description;
-        if (typeof e2.error === "string") return e2.error;
-        if (typeof e2.error === "object" && e2.error !== null) {
-          const nested = e2.error;
-          if (typeof nested.message === "string") return nested.message;
-        }
-      }
-      return JSON.stringify(err);
-    };
-    handleError = async (error, reject, options, namespace) => {
-      if (error !== null && typeof error === "object" && "json" in error && typeof error.json === "function") {
-        const responseError = error;
-        let status = parseInt(String(responseError.status), 10);
-        if (!Number.isFinite(status)) status = 500;
-        responseError.json().then((err) => {
-          const statusCode = (err === null || err === void 0 ? void 0 : err.statusCode) || (err === null || err === void 0 ? void 0 : err.code) || status + "";
-          reject(new StorageApiError(_getErrorMessage(err), status, statusCode, namespace, err === null || err === void 0 ? void 0 : err.code));
-        }).catch(() => {
-          const statusCode = status + "";
-          reject(new StorageApiError(responseError.statusText || `HTTP ${status} error`, status, statusCode, namespace));
-        });
-      } else reject(new StorageUnknownError(_getErrorMessage(error), error, namespace));
-    };
-    _getRequestParams = (method, options, parameters, body) => {
-      const params = {
-        method,
-        headers: (options === null || options === void 0 ? void 0 : options.headers) || {}
-      };
-      if (method === "GET" || method === "HEAD" || !body) return _objectSpread22(_objectSpread22({}, params), parameters);
-      if (isPlainObject(body)) {
-        var _contentType;
-        const headers = (options === null || options === void 0 ? void 0 : options.headers) || {};
-        let contentType;
-        for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === "content-type") contentType = value;
-        params.headers = setHeader(headers, "Content-Type", (_contentType = contentType) !== null && _contentType !== void 0 ? _contentType : "application/json");
-        params.body = JSON.stringify(body);
-      } else params.body = body;
-      if (options === null || options === void 0 ? void 0 : options.duplex) params.duplex = options.duplex;
-      return _objectSpread22(_objectSpread22({}, params), parameters);
-    };
-    defaultApi = createFetchApi("storage");
-    ({ get, post, put, head, remove } = defaultApi);
-    vectorsApi = createFetchApi("vectors");
-    BaseApiClient = class {
-      /**
-      * Creates a new BaseApiClient instance
-      * @param url - Base URL for API requests
-      * @param headers - Default headers for API requests
-      * @param fetch - Optional custom fetch implementation
-      * @param namespace - Error namespace ('storage' or 'vectors')
-      */
-      constructor(url, headers = {}, fetch$1, namespace = "storage") {
-        this.shouldThrowOnError = false;
-        this.url = url;
-        this.headers = normalizeHeaders(headers);
-        this.fetch = resolveFetch(fetch$1);
-        this.namespace = namespace;
-      }
-      /**
-      * Enable throwing errors instead of returning them.
-      * When enabled, errors are thrown instead of returned in { data, error } format.
-      *
-      * @returns this - For method chaining
-      */
-      throwOnError() {
-        this.shouldThrowOnError = true;
-        return this;
-      }
-      /**
-      * Set an HTTP header for the request.
-      * Creates a shallow copy of headers to avoid mutating shared state.
-      *
-      * @param name - Header name
-      * @param value - Header value
-      * @returns this - For method chaining
-      */
-      setHeader(name, value) {
-        this.headers = setHeader(this.headers, name, value);
-        return this;
-      }
-      /**
-      * Handles API operation with standardized error handling
-      * Eliminates repetitive try-catch blocks across all API methods
-      *
-      * This wrapper:
-      * 1. Executes the operation
-      * 2. Returns { data, error: null } on success
-      * 3. Returns { data: null, error } on failure (if shouldThrowOnError is false)
-      * 4. Throws error on failure (if shouldThrowOnError is true)
-      *
-      * @typeParam T - The expected data type from the operation
-      * @param operation - Async function that performs the API call
-      * @returns Promise with { data, error } tuple
-      *
-      * @example Handling an operation
-      * ```typescript
-      * async listBuckets() {
-      *   return this.handleOperation(async () => {
-      *     return await get(this.fetch, `${this.url}/bucket`, {
-      *       headers: this.headers,
-      *     })
-      *   })
-      * }
-      * ```
-      */
-      async handleOperation(operation) {
-        var _this = this;
-        try {
-          return {
-            data: await operation(),
-            error: null
-          };
-        } catch (error) {
-          if (_this.shouldThrowOnError) throw error;
-          if (isStorageError(error)) return {
-            data: null,
-            error
-          };
-          throw error;
-        }
-      }
-    };
-    _Symbol$toStringTag$1 = Symbol.toStringTag;
-    StreamDownloadBuilder = class {
-      constructor(downloadFn, shouldThrowOnError) {
-        this.downloadFn = downloadFn;
-        this.shouldThrowOnError = shouldThrowOnError;
-        this[_Symbol$toStringTag$1] = "StreamDownloadBuilder";
-        this.promise = null;
-      }
-      then(onfulfilled, onrejected) {
-        return this.getPromise().then(onfulfilled, onrejected);
-      }
-      catch(onrejected) {
-        return this.getPromise().catch(onrejected);
-      }
-      finally(onfinally) {
-        return this.getPromise().finally(onfinally);
-      }
-      getPromise() {
-        if (!this.promise) this.promise = this.execute();
-        return this.promise;
-      }
-      async execute() {
-        var _this = this;
-        try {
-          return {
-            data: (await _this.downloadFn()).body,
-            error: null
-          };
-        } catch (error) {
-          if (_this.shouldThrowOnError) throw error;
-          if (isStorageError(error)) return {
-            data: null,
-            error
-          };
-          throw error;
-        }
-      }
-    };
-    _Symbol$toStringTag = Symbol.toStringTag;
-    BlobDownloadBuilder = class {
-      constructor(downloadFn, shouldThrowOnError) {
-        this.downloadFn = downloadFn;
-        this.shouldThrowOnError = shouldThrowOnError;
-        this[_Symbol$toStringTag] = "BlobDownloadBuilder";
-        this.promise = null;
-      }
-      asStream() {
-        return new StreamDownloadBuilder(this.downloadFn, this.shouldThrowOnError);
-      }
-      then(onfulfilled, onrejected) {
-        return this.getPromise().then(onfulfilled, onrejected);
-      }
-      catch(onrejected) {
-        return this.getPromise().catch(onrejected);
-      }
-      finally(onfinally) {
-        return this.getPromise().finally(onfinally);
-      }
-      getPromise() {
-        if (!this.promise) this.promise = this.execute();
-        return this.promise;
-      }
-      async execute() {
-        var _this = this;
-        try {
-          return {
-            data: await (await _this.downloadFn()).blob(),
-            error: null
-          };
-        } catch (error) {
-          if (_this.shouldThrowOnError) throw error;
-          if (isStorageError(error)) return {
-            data: null,
-            error
-          };
-          throw error;
-        }
-      }
-    };
-    DEFAULT_SEARCH_OPTIONS = {
-      limit: 100,
-      offset: 0,
-      sortBy: {
-        column: "name",
-        order: "asc"
-      }
-    };
-    DEFAULT_FILE_OPTIONS = {
-      cacheControl: "3600",
-      contentType: "text/plain;charset=UTF-8",
-      upsert: false
-    };
-    StorageFileApi = class extends BaseApiClient {
-      constructor(url, headers = {}, bucketId, fetch$1) {
-        super(url, headers, fetch$1, "storage");
-        this.bucketId = bucketId;
-      }
-      /**
-      * Uploads a file to an existing bucket or replaces an existing file at the specified path with a new one.
-      *
-      * @param method HTTP method.
-      * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
-      * @param fileBody The body of the file to be stored in the bucket.
-      */
-      async uploadOrUpdate(method, path4, fileBody, fileOptions) {
-        var _this = this;
-        return _this.handleOperation(async () => {
-          let body;
-          const options = _objectSpread22(_objectSpread22({}, DEFAULT_FILE_OPTIONS), fileOptions);
-          let headers = _objectSpread22(_objectSpread22({}, _this.headers), method === "POST" && { "x-upsert": String(options.upsert) });
-          const metadata = options.metadata;
-          if (typeof Blob !== "undefined" && fileBody instanceof Blob) {
-            body = new FormData();
-            body.append("cacheControl", options.cacheControl);
-            if (metadata) body.append("metadata", _this.encodeMetadata(metadata));
-            body.append("", fileBody);
-          } else if (typeof FormData !== "undefined" && fileBody instanceof FormData) {
-            body = fileBody;
-            if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
-            if (metadata && !body.has("metadata")) body.append("metadata", _this.encodeMetadata(metadata));
-          } else {
-            body = fileBody;
-            headers["cache-control"] = `max-age=${options.cacheControl}`;
-            headers["content-type"] = options.contentType;
-            if (metadata) headers["x-metadata"] = _this.toBase64(_this.encodeMetadata(metadata));
-            if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
-          }
-          if (fileOptions === null || fileOptions === void 0 ? void 0 : fileOptions.headers) for (const [key, value] of Object.entries(fileOptions.headers)) headers = setHeader(headers, key, value);
-          const cleanPath = _this._removeEmptyFolders(path4);
-          const _path = _this._getFinalPath(cleanPath);
-          const data = await (method == "PUT" ? put : post)(_this.fetch, `${_this.url}/object/${_path}`, body, _objectSpread22({ headers }, (options === null || options === void 0 ? void 0 : options.duplex) ? { duplex: options.duplex } : {}));
-          return {
-            path: cleanPath,
-            id: data.Id,
-            fullPath: data.Key
-          };
-        });
-      }
-      /**
-      * Uploads a file to an existing bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
-      * @param fileBody The body of the file to be stored in the bucket.
-      * @param fileOptions Optional file upload options including cacheControl, contentType, upsert, and metadata.
-      * @returns Promise with response containing file path, id, and fullPath or error
-      *
-      * @example Upload file
-      * ```js
-      * const avatarFile = event.target.files[0]
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .upload('public/avatar1.png', avatarFile, {
-      *     cacheControl: '3600',
-      *     upsert: false
-      *   })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "path": "public/avatar1.png",
-      *     "fullPath": "avatars/public/avatar1.png"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Upload file using `ArrayBuffer` from base64 file data
-      * ```js
-      * import { decode } from 'base64-arraybuffer'
-      *
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .upload('public/avatar1.png', decode('base64FileData'), {
-      *     contentType: 'image/png'
-      *   })
-      * ```
-      *
-      * @example Handling errors
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .upload('public/avatar1.png', avatarFile)
-      *
-      * if (error) {
-      *   // Log the full error so fields like `statusCode` and `error` (the
-      *   // Storage error name, e.g. "Duplicate") aren't hidden behind `error.message`.
-      *   console.error(error)
-      *   return
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: only `insert` when you are uploading new files and `select`, `insert` and `update` when you are upserting files
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Upload file using `ArrayBuffer` from base64 file data instead, see example below.
-      */
-      async upload(path4, fileBody, fileOptions) {
-        return this.uploadOrUpdate("POST", path4, fileBody, fileOptions);
-      }
-      /**
-      * Upload a file with a token generated from `createSignedUploadUrl`.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
-      * @param token The token generated from `createSignedUploadUrl`
-      * @param fileBody The body of the file to be stored in the bucket.
-      * @param fileOptions HTTP headers (cacheControl, contentType, etc.).
-      * **Note:** The `upsert` option has no effect here. To enable upsert behavior,
-      * pass `{ upsert: true }` when calling `createSignedUploadUrl()` instead.
-      * @returns Promise with response containing file path and fullPath or error
-      *
-      * @example Upload to a signed URL
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .uploadToSignedUrl('folder/cat.jpg', 'token-from-createSignedUploadUrl', file)
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "path": "folder/cat.jpg",
-      *     "fullPath": "avatars/folder/cat.jpg"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async uploadToSignedUrl(path4, token, fileBody, fileOptions) {
-        var _this3 = this;
-        const cleanPath = _this3._removeEmptyFolders(path4);
-        const _path = _this3._getFinalPath(cleanPath);
-        const url = new URL(_this3.url + `/object/upload/sign/${_path}`);
-        url.searchParams.set("token", token);
-        return _this3.handleOperation(async () => {
-          let body;
-          const options = _objectSpread22(_objectSpread22({}, DEFAULT_FILE_OPTIONS), fileOptions);
-          let headers = _objectSpread22(_objectSpread22({}, _this3.headers), { "x-upsert": String(options.upsert) });
-          const metadata = options.metadata;
-          if (typeof Blob !== "undefined" && fileBody instanceof Blob) {
-            body = new FormData();
-            body.append("cacheControl", options.cacheControl);
-            if (metadata) body.append("metadata", _this3.encodeMetadata(metadata));
-            body.append("", fileBody);
-          } else if (typeof FormData !== "undefined" && fileBody instanceof FormData) {
-            body = fileBody;
-            if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
-            if (metadata && !body.has("metadata")) body.append("metadata", _this3.encodeMetadata(metadata));
-          } else {
-            body = fileBody;
-            headers["cache-control"] = `max-age=${options.cacheControl}`;
-            headers["content-type"] = options.contentType;
-            if (metadata) headers["x-metadata"] = _this3.toBase64(_this3.encodeMetadata(metadata));
-            if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
-          }
-          if (fileOptions === null || fileOptions === void 0 ? void 0 : fileOptions.headers) for (const [key, value] of Object.entries(fileOptions.headers)) headers = setHeader(headers, key, value);
-          return {
-            path: cleanPath,
-            fullPath: (await put(_this3.fetch, url.toString(), body, _objectSpread22({ headers }, (options === null || options === void 0 ? void 0 : options.duplex) ? { duplex: options.duplex } : {}))).Key
-          };
-        });
-      }
-      /**
-      * Creates a signed upload URL.
-      * Signed upload URLs can be used to upload files to the bucket without further authentication.
-      * They are valid for 2 hours.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the current file name. For example `folder/image.png`.
-      * @param options.upsert If set to true, allows the file to be overwritten if it already exists.
-      * @returns Promise with response containing signed upload URL, token, and path or error
-      *
-      * @example Create Signed Upload URL
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .createSignedUploadUrl('folder/cat.jpg')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "signedUrl": "https://example.supabase.co/storage/v1/object/upload/sign/avatars/folder/cat.jpg?token=<TOKEN>",
-      *     "path": "folder/cat.jpg",
-      *     "token": "<TOKEN>"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `insert`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async createSignedUploadUrl(path4, options) {
-        var _this4 = this;
-        return _this4.handleOperation(async () => {
-          let _path = _this4._getFinalPath(path4);
-          const headers = _objectSpread22({}, _this4.headers);
-          if (options === null || options === void 0 ? void 0 : options.upsert) headers["x-upsert"] = "true";
-          const data = await post(_this4.fetch, `${_this4.url}/object/upload/sign/${_path}`, {}, { headers });
-          const url = new URL(_this4.url + data.url);
-          const token = url.searchParams.get("token");
-          if (!token) throw new StorageError("No token returned by API");
-          return {
-            signedUrl: url.toString(),
-            path: path4,
-            token
-          };
-        });
-      }
-      /**
-      * Replaces an existing file at the specified path with a new one.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to update.
-      * @param fileBody The body of the file to be stored in the bucket.
-      * @param fileOptions Optional file upload options including cacheControl, contentType, and metadata.
-      * **Note:** The `upsert` option has no effect here. `update()` always replaces the
-      * file at the given path, so the `x-upsert` header is not sent. To control upsert
-      * behavior, use `upload()` instead.
-      * @returns Promise with response containing file path, id, and fullPath or error
-      *
-      * @example Update file
-      * ```js
-      * const avatarFile = event.target.files[0]
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .update('public/avatar1.png', avatarFile, {
-      *     cacheControl: '3600'
-      *   })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "path": "public/avatar1.png",
-      *     "fullPath": "avatars/public/avatar1.png"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Update file using `ArrayBuffer` from base64 file data
-      * ```js
-      * import {decode} from 'base64-arraybuffer'
-      *
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .update('public/avatar1.png', decode('base64FileData'), {
-      *     contentType: 'image/png'
-      *   })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `update` and `select`
-      * - `update()` always replaces the file at the given path regardless of the `upsert` option.
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Update file using `ArrayBuffer` from base64 file data instead, see example below.
-      */
-      async update(path4, fileBody, fileOptions) {
-        return this.uploadOrUpdate("PUT", path4, fileBody, fileOptions);
-      }
-      /**
-      * Moves an existing file to a new path in the same bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
-      * @param toPath The new file path, including the new file name. For example `folder/image-new.png`.
-      * @param options The destination options.
-      * @param options.sourceVersionId The version id of the source object to move.
-      * @returns Promise with response containing success message or error
-      *
-      * @example Move file
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .move('public/avatar1.png', 'private/avatar2.png')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully moved"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `update` and `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async move(fromPath, toPath, options) {
-        var _this6 = this;
-        return _this6.handleOperation(async () => {
-          return await post(_this6.fetch, `${_this6.url}/object/move`, {
-            bucketId: _this6.bucketId,
-            sourceKey: fromPath,
-            destinationKey: toPath,
-            destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
-            sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
-          }, { headers: _this6.headers });
-        });
-      }
-      /**
-      * Copies an existing file to a new path in the same bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
-      * @param toPath The new file path, including the new file name. For example `folder/image-copy.png`.
-      * @param options The destination options.
-      * @param options.sourceVersionId The version id of the source object to copy.
-      * @returns Promise with response containing copied file path or error
-      *
-      * @example Copy file
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .copy('public/avatar1.png', 'private/avatar2.png')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "path": "avatars/private/avatar2.png"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `insert` and `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async copy(fromPath, toPath, options) {
-        var _this7 = this;
-        return _this7.handleOperation(async () => {
-          return { path: (await post(_this7.fetch, `${_this7.url}/object/copy`, {
-            bucketId: _this7.bucketId,
-            sourceKey: fromPath,
-            destinationKey: toPath,
-            destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
-            sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
-          }, { headers: _this7.headers })).Key };
-        });
-      }
-      /**
-      * Creates a signed URL. Use a signed URL to share a file for a fixed amount of time.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the current file name. For example `folder/image.png`.
-      * @param expiresIn The number of seconds until the signed URL expires. For example, `60` for a URL which is valid for one minute.
-      * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
-      * @param options.transform Transform the asset before serving it to the client.
-      * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
-      * @param options.versionId Create a signed URL for a specific object version rather than the current one.
-      * @returns Promise with response containing signed URL or error
-      *
-      * @example Create Signed URL
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .createSignedUrl('folder/avatar1.png', 60)
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Create a signed URL for an asset with transformations
-      * ```js
-      * const { data } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .createSignedUrl('folder/avatar1.png', 60, {
-      *     transform: {
-      *       width: 100,
-      *       height: 100,
-      *     }
-      *   })
-      * ```
-      *
-      * @example Create a signed URL which triggers the download of the asset
-      * ```js
-      * const { data } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .createSignedUrl('folder/avatar1.png', 60, {
-      *     download: true,
-      *   })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async createSignedUrl(path4, expiresIn, options) {
-        var _this8 = this;
-        return _this8.handleOperation(async () => {
-          let _path = _this8._getFinalPath(path4);
-          const hasTransform = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0;
-          let data = await post(_this8.fetch, `${_this8.url}/object/sign/${_path}`, _objectSpread22(_objectSpread22({ expiresIn }, hasTransform ? { transform: options.transform } : {}), (options === null || options === void 0 ? void 0 : options.versionId) != null ? { versionId: options.versionId } : {}), { headers: _this8.headers });
-          const query = new URLSearchParams();
-          if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
-          if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
-          const queryString = query.toString();
-          return { signedUrl: encodeURI(`${_this8.url}${data.signedURL}${queryString ? `&${queryString}` : ""}`) };
-        });
-      }
-      /**
-      * Creates multiple signed URLs. Use a signed URL to share a file for a fixed amount of time.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param paths The file paths to be downloaded, including the current file names. For example `['folder/image.png', 'folder2/image2.png']`.
-      * @param expiresIn The number of seconds until the signed URLs expire. For example, `60` for URLs which are valid for one minute.
-      * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
-      * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
-      * @returns Promise with response containing array of objects with signedUrl, path, and error or error
-      *
-      * @example Create Signed URLs
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .createSignedUrls(['folder/avatar1.png', 'folder/avatar2.png'], 60)
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "error": null,
-      *       "path": "folder/avatar1.png",
-      *       "signedURL": "/object/sign/avatars/folder/avatar1.png?token=<TOKEN>",
-      *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
-      *     },
-      *     {
-      *       "error": null,
-      *       "path": "folder/avatar2.png",
-      *       "signedURL": "/object/sign/avatars/folder/avatar2.png?token=<TOKEN>",
-      *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar2.png?token=<TOKEN>"
-      *     }
-      *   ],
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async createSignedUrls(paths, expiresIn, options) {
-        var _this9 = this;
-        return _this9.handleOperation(async () => {
-          const data = await post(_this9.fetch, `${_this9.url}/object/sign/${_this9.bucketId}`, {
-            expiresIn,
-            paths
-          }, { headers: _this9.headers });
-          const query = new URLSearchParams();
-          if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
-          if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
-          const queryString = query.toString();
-          return data.map((datum) => _objectSpread22(_objectSpread22({}, datum), {}, { signedUrl: datum.signedURL ? encodeURI(`${_this9.url}${datum.signedURL}${queryString ? `&${queryString}` : ""}`) : null }));
-        });
-      }
-      /**
-      * Downloads a file from a private bucket. For public buckets, make a request to the URL returned from `getPublicUrl` instead.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The full path and file name of the file to be downloaded. For example `folder/image.png`.
-      * @param options Optional settings: `transform` to transform the asset before serving it to the client, `cacheNonce` to append a cache nonce parameter to the URL to invalidate the cache, and `versionId` to download a specific object version.
-      * @param parameters Additional fetch parameters like signal for cancellation. Supports standard fetch options including cache control.
-      * @returns BlobDownloadBuilder instance for downloading the file
-      *
-      * @example Download file
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .download('folder/avatar1.png')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": <BLOB>,
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Download file with transformations
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .download('folder/avatar1.png', {
-      *     transform: {
-      *       width: 100,
-      *       height: 100,
-      *       quality: 80
-      *     }
-      *   })
-      * ```
-      *
-      * @example Download with cache control (useful in Edge Functions)
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .download('folder/avatar1.png', {}, { cache: 'no-store' })
-      * ```
-      *
-      * @example Download with abort signal
-      * ```js
-      * const controller = new AbortController()
-      * setTimeout(() => controller.abort(), 5000)
-      *
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .download('folder/avatar1.png', {}, { signal: controller.signal })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      download(path4, options, parameters) {
-        const renderPath = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0 ? "render/image/authenticated" : "object";
-        const query = new URLSearchParams();
-        if (options === null || options === void 0 ? void 0 : options.transform) this.applyTransformOptsToQuery(query, options.transform);
-        if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
-        if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
-        const queryString = query.toString();
-        const _path = this._getFinalPath(path4);
-        const downloadFn = () => get(this.fetch, `${this.url}/${renderPath}/${_path}${queryString ? `?${queryString}` : ""}`, {
-          headers: this.headers,
-          noResolveJson: true
-        }, parameters);
-        return new BlobDownloadBuilder(downloadFn, this.shouldThrowOnError);
-      }
-      /**
-      * Retrieves the details of an existing file.
-      *
-      * Returns detailed file metadata including size, content type, and timestamps.
-      * Note: The API returns `last_modified` field, not `updated_at`.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the file name. For example `folder/image.png`.
-      * @param options Optional settings, including `versionId` to retrieve a specific object version.
-      * @returns Promise with response containing file metadata or error
-      *
-      * @example Get file info
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .info('folder/avatar1.png')
-      *
-      * if (data) {
-      *   console.log('Last modified:', data.lastModified)
-      *   console.log('Size:', data.size)
-      * }
-      * ```
-      */
-      async info(path4, options) {
-        var _this10 = this;
-        const _path = _this10._getFinalPath(path4);
-        const query = new URLSearchParams();
-        if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
-        const queryString = query.toString();
-        return _this10.handleOperation(async () => {
-          return recursiveToCamel(await get(_this10.fetch, `${_this10.url}/object/info/${_path}${queryString ? `?${queryString}` : ""}`, { headers: _this10.headers }));
-        });
-      }
-      /**
-      * Checks the existence of a file.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The file path, including the file name. For example `folder/image.png`.
-      * @returns Promise with response containing boolean indicating file existence or error
-      *
-      * @example Check file existence
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .exists('folder/avatar1.png')
-      * ```
-      */
-      async exists(path4) {
-        var _this11 = this;
-        const _path = _this11._getFinalPath(path4);
-        try {
-          await head(_this11.fetch, `${_this11.url}/object/${_path}`, { headers: _this11.headers });
-          return {
-            data: true,
-            error: null
-          };
-        } catch (error) {
-          if (_this11.shouldThrowOnError) throw error;
-          if (isStorageError(error)) {
-            var _error$originalError;
-            const status = error instanceof StorageApiError ? error.status : error instanceof StorageUnknownError ? (_error$originalError = error.originalError) === null || _error$originalError === void 0 ? void 0 : _error$originalError.status : void 0;
-            if (status !== void 0 && [400, 404].includes(status)) return {
-              data: false,
-              error
-            };
-          }
-          throw error;
-        }
-      }
-      /**
-      * A simple convenience function to get the URL for an asset in a public bucket. If you do not want to use this function, you can construct the public URL by concatenating the bucket URL with the path to the asset.
-      * This function does not verify if the bucket is public. If a public URL is created for a bucket which is not public, you will not be able to download the asset.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The path and name of the file to generate the public URL for. For example `folder/image.png`.
-      * @param options.download Triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
-      * @param options.transform Transform the asset before serving it to the client.
-      * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
-      * @param options.versionId Return the URL for a specific object version rather than the current one.
-      * @returns Object with public URL
-      *
-      * @example Returns the URL for an asset in a public bucket
-      * ```js
-      * const { data } = supabase
-      *   .storage
-      *   .from('public-bucket')
-      *   .getPublicUrl('folder/avatar1.png')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "publicUrl": "https://example.supabase.co/storage/v1/object/public/public-bucket/folder/avatar1.png"
-      *   }
-      * }
-      * ```
-      *
-      * @example Returns the URL for an asset in a public bucket with transformations
-      * ```js
-      * const { data } = supabase
-      *   .storage
-      *   .from('public-bucket')
-      *   .getPublicUrl('folder/avatar1.png', {
-      *     transform: {
-      *       width: 100,
-      *       height: 100,
-      *     }
-      *   })
-      * ```
-      *
-      * @example Returns the URL which triggers the download of an asset in a public bucket
-      * ```js
-      * const { data } = supabase
-      *   .storage
-      *   .from('public-bucket')
-      *   .getPublicUrl('folder/avatar1.png', {
-      *     download: true,
-      *   })
-      * ```
-      *
-      * @remarks
-      * - The bucket needs to be set to public, either via [updateBucket()](/docs/reference/javascript/storage-updatebucket) or by going to Storage on [supabase.com/dashboard](https://supabase.com/dashboard), clicking the overflow menu on a bucket and choosing "Make public"
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      getPublicUrl(path4, options) {
-        const _path = this._getFinalPath(path4);
-        const query = new URLSearchParams();
-        if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
-        if (options === null || options === void 0 ? void 0 : options.transform) this.applyTransformOptsToQuery(query, options.transform);
-        if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
-        if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
-        const queryString = query.toString();
-        const renderPath = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0 ? "render/image" : "object";
-        return { data: { publicUrl: encodeURI(`${this.url}/${renderPath}/public/${_path}`) + (queryString ? `?${queryString}` : "") } };
-      }
-      /**
-      * Deletes files within the same bucket
-      *
-      * Returns an array of FileObject entries for the deleted files. Note that deprecated
-      * fields like `bucket_id` may or may not be present in the response - do not rely on them.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param paths An array of files to delete. Each entry is either a path (deletes whichever
-      * version is currently at that path, e.g. `'folder/image.png'`), or `{ path, versionId }` to
-      * delete an exact version current or archived (e.g. `{ path: 'folder/image.png', versionId: '...' }`).
-      * @returns Promise with response containing array of deleted file objects or error
-      *
-      * @example Delete file
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .remove(['folder/avatar1.png'])
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": [],
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Delete a specific object version
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .remove([{ path: 'folder/avatar1.png', versionId: 'noncurrent-version-id' }])
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `delete` and `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async remove(paths) {
-        var _this12 = this;
-        return _this12.handleOperation(async () => {
-          return await remove(_this12.fetch, `${_this12.url}/object/${_this12.bucketId}`, { prefixes: paths }, { headers: _this12.headers });
-        });
-      }
-      /**
-      * Purges the CDN cache for a single object in this bucket.
-      *
-      * Maps to `DELETE /cdn/{bucket}/{path}` on the Storage API. The server
-      * issues a CDN invalidation for the object and returns `{ message: 'success' }`.
-      *
-      * **Requires the `service_role` key.** The underlying endpoint enforces
-      * `service_role` JWT — calls made with the anon key or a user JWT will be
-      * rejected by the server.
-      *
-      * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
-      * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
-      * feature enabled, otherwise the server returns an error.
-      *
-      * Operates on a single object path. There is no wildcard or recursion: pass
-      * the exact path of the object you want invalidated.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The path (relative to the bucket) of the object to purge, e.g. `folder/avatar.png`.
-      * @param options Optional purge cache options.
-      * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving the original cached file intact.
-      * @param parameters Optional fetch parameters such as an `AbortController` signal.
-      * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
-      *
-      * @example Purge a single cached object
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .purgeCache('folder/avatar1.png')
-      * ```
-      *
-      * @example Purge only transformations for a single object
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .purgeCache('folder/avatar1.png', { transformations: true })
-      * ```
-      */
-      async purgeCache(path4, options, parameters) {
-        var _this13 = this;
-        return _this13.handleOperation(async () => {
-          const _path = encodeStoragePath(_this13._getFinalPath(path4));
-          const query = new URLSearchParams();
-          if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
-          const queryString = query.toString();
-          return await remove(_this13.fetch, `${_this13.url}/cdn/${_path}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this13.headers }, parameters);
-        });
-      }
-      /**
-      * Get file metadata
-      * @param id the file id to retrieve metadata
-      */
-      /**
-      * Update file metadata
-      * @param id the file id to update metadata
-      * @param meta the new file metadata
-      */
-      /**
-      * Lists all the files and folders within a path of the bucket.
-      *
-      * **Important:** For folder entries, fields like `id`, `updated_at`, `created_at`,
-      * `last_accessed_at`, and `metadata` will be `null`. Only files have these fields populated.
-      * Additionally, deprecated fields like `bucket_id`, `owner`, and `buckets` are NOT returned
-      * by this method.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param path The folder path.
-      * @param options Search options including limit (defaults to 100), offset, sortBy, and search
-      * @param parameters Optional fetch parameters including signal for cancellation
-      * @returns Promise with response containing array of files/folders or error
-      *
-      * @example List files in a bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .list('folder', {
-      *     limit: 100,
-      *     offset: 0,
-      *     sortBy: { column: 'name', order: 'asc' },
-      *   })
-      *
-      * // Handle files vs folders
-      * data?.forEach(item => {
-      *   if (item.id !== null) {
-      *     // It's a file
-      *     console.log('File:', item.name, 'Size:', item.metadata?.size)
-      *   } else {
-      *     // It's a folder
-      *     console.log('Folder:', item.name)
-      *   }
-      * })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "avatar1.png",
-      *       "id": "e668cf7f-821b-4a2f-9dce-7dfa5dd1cfd2",
-      *       "updated_at": "2024-05-22T23:06:05.580Z",
-      *       "created_at": "2024-05-22T23:04:34.443Z",
-      *       "last_accessed_at": "2024-05-22T23:04:34.443Z",
-      *       "metadata": {
-      *         "eTag": "\"c5e8c553235d9af30ef4f6e280790b92\"",
-      *         "size": 32175,
-      *         "mimetype": "image/png",
-      *         "cacheControl": "max-age=3600",
-      *         "lastModified": "2024-05-22T23:06:05.574Z",
-      *         "contentLength": 32175,
-      *         "httpStatusCode": 200
-      *       }
-      *     }
-      *   ],
-      *   "error": null
-      * }
-      * ```
-      *
-      * @example Search files in a bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .list('folder', {
-      *     limit: 100,
-      *     offset: 0,
-      *     sortBy: { column: 'name', order: 'asc' },
-      *     search: 'jon'
-      *   })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: none
-      *   - `objects` table permissions: `select`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async list(path4, options, parameters) {
-        var _this14 = this;
-        return _this14.handleOperation(async () => {
-          const sortBy = (options === null || options === void 0 ? void 0 : options.sortBy) ? _objectSpread22(_objectSpread22({}, DEFAULT_SEARCH_OPTIONS.sortBy), options.sortBy) : DEFAULT_SEARCH_OPTIONS.sortBy;
-          const body = _objectSpread22(_objectSpread22(_objectSpread22({}, DEFAULT_SEARCH_OPTIONS), options), {}, {
-            sortBy,
-            prefix: path4 || ""
-          });
-          return await post(_this14.fetch, `${_this14.url}/object/list/${_this14.bucketId}`, body, { headers: _this14.headers }, parameters);
-        });
-      }
-      /**
-      * Lists all the files and folders within a bucket using the V2 API with pagination support.
-      *
-      * **Important:** Folder entries in the `folders` array only contain `name` and optionally `key` —
-      * they have no `id`, timestamps, or `metadata` fields. Full file metadata is only available
-      * on entries in the `objects` array.
-      *
-      * @experimental this method signature might change in the future
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param options Search options including prefix, cursor for pagination, limit, with_delimiter
-      * @param parameters Optional fetch parameters including signal for cancellation
-      * @returns Promise with response containing folders/objects arrays with pagination info or error
-      *
-      * @example List files with pagination
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .from('avatars')
-      *   .listV2({
-      *     prefix: 'folder/',
-      *     limit: 100,
-      *   })
-      *
-      * // Handle pagination
-      * if (data?.hasNext) {
-      *   const nextPage = await supabase
-      *     .storage
-      *     .from('avatars')
-      *     .listV2({
-      *       prefix: 'folder/',
-      *       cursor: data.nextCursor,
-      *     })
-      * }
-      *
-      * // Handle files vs folders
-      * data?.objects.forEach(file => {
-      *   if (file.id !== null) {
-      *     console.log('File:', file.name, 'Size:', file.metadata?.size)
-      *   }
-      * })
-      * data?.folders.forEach(folder => {
-      *   console.log('Folder:', folder.name)
-      * })
-      * ```
-      */
-      async listV2(options, parameters) {
-        var _this15 = this;
-        return _this15.handleOperation(async () => {
-          const body = _objectSpread22({}, options);
-          return await post(_this15.fetch, `${_this15.url}/object/list-v2/${_this15.bucketId}`, body, { headers: _this15.headers }, parameters);
-        });
-      }
-      encodeMetadata(metadata) {
-        return JSON.stringify(metadata);
-      }
-      toBase64(data) {
-        if (typeof Buffer !== "undefined") return Buffer.from(data).toString("base64");
-        return btoa(data);
-      }
-      _getFinalPath(path4) {
-        return `${this.bucketId}/${path4.replace(/^\/+/, "")}`;
-      }
-      _removeEmptyFolders(path4) {
-        return path4.replace(/^\/|\/$/g, "").replace(/\/+/g, "/");
-      }
-      /** Modifies the `query`, appending values the from `transform` */
-      applyTransformOptsToQuery(query, transform2) {
-        if (transform2.width) query.set("width", transform2.width.toString());
-        if (transform2.height) query.set("height", transform2.height.toString());
-        if (transform2.resize) query.set("resize", transform2.resize);
-        if (transform2.format) query.set("format", transform2.format);
-        if (transform2.quality) query.set("quality", transform2.quality.toString());
-        return query;
-      }
-    };
-    version2 = "2.117.2";
-    DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version2}` };
-    StorageBucketApi = class extends BaseApiClient {
-      constructor(url, headers = {}, fetch$1, opts) {
-        const baseUrl = new URL(url);
-        if (opts === null || opts === void 0 ? void 0 : opts.useNewHostname) {
-          if (/supabase\.(co|in|red)$/.test(baseUrl.hostname) && !baseUrl.hostname.includes("storage.supabase.")) baseUrl.hostname = baseUrl.hostname.replace("supabase.", "storage.supabase.");
-        }
-        const finalUrl = baseUrl.href.replace(/\/$/, "");
-        const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), headers);
-        super(finalUrl, finalHeaders, fetch$1, "storage");
-      }
-      /**
-      * Retrieves the details of all Storage buckets within an existing project.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param options Query parameters for listing buckets
-      * @param options.limit Maximum number of buckets to return
-      * @param options.offset Number of buckets to skip
-      * @param options.sortColumn Column to sort by ('id', 'name', 'created_at', 'updated_at')
-      * @param options.sortOrder Sort order ('asc' or 'desc')
-      * @param options.search Search term to filter bucket names
-      * @returns Promise with response containing array of buckets or error
-      *
-      * @example List buckets
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .listBuckets()
-      * ```
-      *
-      * @example List buckets with options
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .listBuckets({
-      *     limit: 10,
-      *     offset: 0,
-      *     sortColumn: 'created_at',
-      *     sortOrder: 'desc',
-      *     search: 'prod'
-      *   })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async listBuckets(options) {
-        var _this = this;
-        return _this.handleOperation(async () => {
-          const queryString = _this.listBucketOptionsToQueryString(options);
-          return await get(_this.fetch, `${_this.url}/bucket${queryString}`, { headers: _this.headers });
-        });
-      }
-      /**
-      * Retrieves the details of an existing Storage bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket you would like to retrieve.
-      * @returns Promise with response containing bucket details or error
-      *
-      * @example Get bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .getBucket('avatars')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "id": "avatars",
-      *     "name": "avatars",
-      *     "owner": "",
-      *     "public": false,
-      *     "file_size_limit": 1024,
-      *     "allowed_mime_types": [
-      *       "image/png"
-      *     ],
-      *     "created_at": "2024-05-22T22:26:05.100Z",
-      *     "updated_at": "2024-05-22T22:26:05.100Z"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async getBucket(id) {
-        var _this2 = this;
-        return _this2.handleOperation(async () => {
-          return await get(_this2.fetch, `${_this2.url}/bucket/${id}`, { headers: _this2.headers });
-        });
-      }
-      /**
-      * Creates a new Storage bucket
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id A unique identifier for the bucket you are creating.
-      * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations. By default, buckets are private.
-      * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
-      * The global file size limit takes precedence over this value.
-      * The default value is null, which doesn't set a per bucket file size limit.
-      * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
-      * The default value is null, which allows files with all mime types to be uploaded.
-      * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
-      * @param options.type (private-beta) specifies the bucket type. see `BucketType` for more details.
-      *   - default bucket type is `STANDARD`
-      * @param options.versioningStatus the bucket's initial object versioning status.
-      * The default value is `DISABLED`
-      * @returns Promise with response containing newly created bucket name or error
-      *
-      * @example Create bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .createBucket('avatars', {
-      *     public: false,
-      *     allowedMimeTypes: ['image/png'],
-      *     fileSizeLimit: 1024
-      *   })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "name": "avatars"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `insert`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async createBucket(id, options = { public: false }) {
-        var _this3 = this;
-        return _this3.handleOperation(async () => {
-          return await post(_this3.fetch, `${_this3.url}/bucket`, {
-            id,
-            name: id,
-            type: options.type,
-            public: options.public,
-            file_size_limit: options.fileSizeLimit,
-            allowed_mime_types: options.allowedMimeTypes,
-            versioning_status: options.versioningStatus
-          }, { headers: _this3.headers });
-        });
-      }
-      /**
-      * Updates a Storage bucket
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id A unique identifier for the bucket you are updating.
-      * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations.
-      * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
-      * The global file size limit takes precedence over this value.
-      * The default value is null, which doesn't set a per bucket file size limit.
-      * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
-      * The default value is null, which allows files with all mime types to be uploaded.
-      * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
-      * @param options.versioningStatus the bucket's new object versioning status. `DISABLED` is not
-      * valid here, there's no transition back to it once versioning has been touched.
-      * @returns Promise with response containing success message or error
-      *
-      * @example Update bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .updateBucket('avatars', {
-      *     public: false,
-      *     allowedMimeTypes: ['image/png'],
-      *     fileSizeLimit: 1024
-      *   })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully updated"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select` and `update`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async updateBucket(id, options) {
-        var _this4 = this;
-        return _this4.handleOperation(async () => {
-          return await put(_this4.fetch, `${_this4.url}/bucket/${id}`, {
-            id,
-            name: id,
-            public: options.public,
-            file_size_limit: options.fileSizeLimit,
-            allowed_mime_types: options.allowedMimeTypes,
-            versioning_status: options.versioningStatus
-          }, { headers: _this4.headers });
-        });
-      }
-      /**
-      * Removes all objects inside a single bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket you would like to empty.
-      * @returns Promise with success message or error
-      *
-      * @example Empty bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .emptyBucket('avatars')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully emptied"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select`
-      *   - `objects` table permissions: `select` and `delete`
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async emptyBucket(id) {
-        var _this5 = this;
-        return _this5.handleOperation(async () => {
-          return await post(_this5.fetch, `${_this5.url}/bucket/${id}/empty`, {}, { headers: _this5.headers });
-        });
-      }
-      /**
-      * Deletes an existing bucket. A bucket can't be deleted with existing objects inside it.
-      * You must first `empty()` the bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket you would like to delete.
-      * @returns Promise with success message or error
-      *
-      * @example Delete bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .deleteBucket('avatars')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully deleted"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select` and `delete`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async deleteBucket(id) {
-        var _this6 = this;
-        return _this6.handleOperation(async () => {
-          return await remove(_this6.fetch, `${_this6.url}/bucket/${id}`, {}, { headers: _this6.headers });
-        });
-      }
-      /**
-      * Returns the lifecycle policy stored on a bucket.
-      *
-      * Fails with `NoSuchLifecycleConfiguration` when the bucket has no policy.
-      *
-      * These rules expire previous versions of objects, not the current one.
-      * Turn versioning on or there is nothing for the policy to act on.
-      * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
-      * for the project.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket.
-      * @returns Promise with the lifecycle configuration or error
-      *
-      * @example Get lifecycle configuration
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .getBucketLifecycle('avatars')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "rules": [
-      *       {
-      *         "id": "expire-history",
-      *         "status": "Enabled",
-      *         "filter": {},
-      *         "noncurrentVersionExpiration": {
-      *           "noncurrentDays": 30,
-      *           "newerNoncurrentVersions": 2
-      *         }
-      *       }
-      *     ]
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async getBucketLifecycle(id) {
-        var _this7 = this;
-        return _this7.handleOperation(async () => {
-          return await get(_this7.fetch, _this7.bucketLifecycleUrl(id), { headers: _this7.headers });
-        });
-      }
-      /**
-      * Replaces the lifecycle policy on a bucket.
-      *
-      * The `rules` array you send is the whole policy. Anything previously stored
-      * is overwritten. Send at least one rule. Call {@link deleteBucketLifecycle}
-      * to remove the policy.
-      *
-      * Each rule currently supports only `noncurrentVersionExpiration`. `filter`
-      * is required and must be `{}`. Prefix filters, tag filters, and current-object
-      * expiration are rejected. Rule IDs must be unique. Omit `id` and the
-      * server generates one.
-      *
-      * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
-      * for the project.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket.
-      * @param configuration The full lifecycle configuration to store.
-      * @returns Promise with the stored configuration or error
-      *
-      * @example Replace lifecycle configuration
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .updateBucketLifecycle('avatars', {
-      *     rules: [
-      *       {
-      *         id: 'expire-history',
-      *         status: 'Enabled',
-      *         filter: {},
-      *         noncurrentVersionExpiration: {
-      *           noncurrentDays: 30,
-      *           newerNoncurrentVersions: 2,
-      *         },
-      *       },
-      *     ],
-      *   })
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select` and `update`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async updateBucketLifecycle(id, configuration) {
-        var _this8 = this;
-        return _this8.handleOperation(async () => {
-          return await put(_this8.fetch, _this8.bucketLifecycleUrl(id), configuration, { headers: _this8.headers });
-        });
-      }
-      /**
-      * Removes the lifecycle policy from a bucket.
-      *
-      * Safe to call when no policy is stored. The response is still success.
-      * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
-      * for the project.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket.
-      * @returns Promise with success message or error
-      *
-      * @example Delete lifecycle configuration
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .deleteBucketLifecycle('avatars')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully deleted"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - RLS policy permissions required:
-      *   - `buckets` table permissions: `select` and `update`
-      *   - `objects` table permissions: none
-      * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
-      */
-      async deleteBucketLifecycle(id) {
-        var _this9 = this;
-        return _this9.handleOperation(async () => {
-          return await remove(_this9.fetch, _this9.bucketLifecycleUrl(id), {}, { headers: _this9.headers });
-        });
-      }
-      /**
-      * Purges the CDN cache for an entire bucket.
-      *
-      * Maps to `DELETE /cdn/{bucket}` on the Storage API. The server
-      * issues a CDN invalidation for the bucket and returns `{ message: 'success' }`.
-      *
-      * **Requires the `service_role` key.** The underlying endpoint enforces
-      * `service_role` JWT — calls made with the anon key or a user JWT will be
-      * rejected by the server.
-      *
-      * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
-      * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
-      * feature enabled, otherwise the server returns an error.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      * @param id The unique identifier of the bucket you would like to purge from cache.
-      * @param options Optional purge cache options.
-      * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving original cached files intact.
-      * @param parameters Optional fetch parameters such as an `AbortController` signal.
-      * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
-      *
-      * @example Purge cache for an entire bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .purgeBucketCache('avatars')
-      * ```
-      *
-      * @example Purge only transformations for an entire bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .purgeBucketCache('avatars', { transformations: true })
-      * ```
-      */
-      async purgeBucketCache(id, options, parameters) {
-        var _this10 = this;
-        return _this10.handleOperation(async () => {
-          const query = new URLSearchParams();
-          if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
-          const queryString = query.toString();
-          return await remove(_this10.fetch, `${_this10.url}/cdn/${encodeStoragePath(id)}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this10.headers }, parameters);
-        });
-      }
-      bucketLifecycleUrl(id) {
-        return `${this.url}/bucket/${encodeStoragePath(id)}/lifecycle`;
-      }
-      listBucketOptionsToQueryString(options) {
-        const params = {};
-        if (options) {
-          if ("limit" in options) params.limit = String(options.limit);
-          if ("offset" in options) params.offset = String(options.offset);
-          if (options.search) params.search = options.search;
-          if (options.sortColumn) params.sortColumn = options.sortColumn;
-          if (options.sortOrder) params.sortOrder = options.sortOrder;
-        }
-        return Object.keys(params).length > 0 ? "?" + new URLSearchParams(params).toString() : "";
-      }
-    };
-    StorageAnalyticsClient = class extends BaseApiClient {
-      /**
-      * @alpha
-      *
-      * Creates a new StorageAnalyticsClient instance
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      * @param url - The base URL for the storage API
-      * @param headers - HTTP headers to include in requests
-      * @param fetch - Optional custom fetch implementation
-      *
-      * @example Using supabase-js (recommended)
-      * ```typescript
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const { data, error } = await supabase.storage.analytics.listBuckets()
-      * ```
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```typescript
-      * import { StorageAnalyticsClient } from '@supabase/storage-js'
-      *
-      * const client = new StorageAnalyticsClient(url, headers)
-      * ```
-      */
-      constructor(url, headers = {}, fetch$1) {
-        const finalUrl = url.replace(/\/$/, "");
-        const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), headers);
-        super(finalUrl, finalHeaders, fetch$1, "storage");
-      }
-      /**
-      * @alpha
-      *
-      * Creates a new analytics bucket using Iceberg tables
-      * Analytics buckets are optimized for analytical queries and data processing
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      * @param name A unique name for the bucket you are creating
-      * @returns Promise with response containing newly created analytics bucket or error
-      *
-      * @example Create analytics bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .analytics
-      *   .createBucket('analytics-data')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "name": "analytics-data",
-      *     "type": "ANALYTICS",
-      *     "format": "iceberg",
-      *     "created_at": "2024-05-22T22:26:05.100Z",
-      *     "updated_at": "2024-05-22T22:26:05.100Z"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - Creates a new analytics bucket using Iceberg tables
-      * - Analytics buckets are optimized for analytical queries and data processing
-      */
-      async createBucket(name) {
-        var _this = this;
-        return _this.handleOperation(async () => {
-          return await post(_this.fetch, `${_this.url}/bucket`, { name }, { headers: _this.headers });
-        });
-      }
-      /**
-      * @alpha
-      *
-      * Retrieves the details of all Analytics Storage buckets within an existing project
-      * Only returns buckets of type 'ANALYTICS'
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      * @param options Query parameters for listing buckets
-      * @param options.limit Maximum number of buckets to return
-      * @param options.offset Number of buckets to skip
-      * @param options.sortColumn Column to sort by ('name', 'created_at', 'updated_at')
-      * @param options.sortOrder Sort order ('asc' or 'desc')
-      * @param options.search Search term to filter bucket names
-      * @returns Promise with response containing array of analytics buckets or error
-      *
-      * @example List analytics buckets
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .analytics
-      *   .listBuckets({
-      *     limit: 10,
-      *     offset: 0,
-      *     sortColumn: 'created_at',
-      *     sortOrder: 'desc'
-      *   })
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": [
-      *     {
-      *       "name": "analytics-data",
-      *       "type": "ANALYTICS",
-      *       "format": "iceberg",
-      *       "created_at": "2024-05-22T22:26:05.100Z",
-      *       "updated_at": "2024-05-22T22:26:05.100Z"
-      *     }
-      *   ],
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - Retrieves the details of all Analytics Storage buckets within an existing project
-      * - Only returns buckets of type 'ANALYTICS'
-      */
-      async listBuckets(options) {
-        var _this2 = this;
-        return _this2.handleOperation(async () => {
-          const queryParams = new URLSearchParams();
-          if ((options === null || options === void 0 ? void 0 : options.limit) !== void 0) queryParams.set("limit", options.limit.toString());
-          if ((options === null || options === void 0 ? void 0 : options.offset) !== void 0) queryParams.set("offset", options.offset.toString());
-          if (options === null || options === void 0 ? void 0 : options.sortColumn) queryParams.set("sortColumn", options.sortColumn);
-          if (options === null || options === void 0 ? void 0 : options.sortOrder) queryParams.set("sortOrder", options.sortOrder);
-          if (options === null || options === void 0 ? void 0 : options.search) queryParams.set("search", options.search);
-          const queryString = queryParams.toString();
-          const url = queryString ? `${_this2.url}/bucket?${queryString}` : `${_this2.url}/bucket`;
-          return await get(_this2.fetch, url, { headers: _this2.headers });
-        });
-      }
-      /**
-      * @alpha
-      *
-      * Deletes an existing analytics bucket
-      * A bucket can't be deleted with existing objects inside it
-      * You must first empty the bucket before deletion
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      * @param bucketName The unique identifier of the bucket you would like to delete
-      * @returns Promise with response containing success message or error
-      *
-      * @example Delete analytics bucket
-      * ```js
-      * const { data, error } = await supabase
-      *   .storage
-      *   .analytics
-      *   .deleteBucket('analytics-data')
-      * ```
-      *
-      * Response:
-      * ```json
-      * {
-      *   "data": {
-      *     "message": "Successfully deleted"
-      *   },
-      *   "error": null
-      * }
-      * ```
-      *
-      * @remarks
-      * - Deletes an analytics bucket
-      */
-      async deleteBucket(bucketName) {
-        var _this3 = this;
-        return _this3.handleOperation(async () => {
-          return await remove(_this3.fetch, `${_this3.url}/bucket/${bucketName}`, {}, { headers: _this3.headers });
-        });
-      }
-      /**
-      * @alpha
-      *
-      * Get an Iceberg REST Catalog client configured for a specific analytics bucket
-      * Use this to perform advanced table and namespace operations within the bucket
-      * The returned client provides full access to the Apache Iceberg REST Catalog API
-      * with the Supabase `{ data, error }` pattern for consistent error handling on all operations.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      * @param bucketName - The name of the analytics bucket (warehouse) to connect to
-      * @returns The wrapped Iceberg catalog client
-      * @throws {StorageError} If the bucket name is invalid
-      *
-      * @example Get catalog and create table
-      * ```js
-      * // First, create an analytics bucket
-      * const { data: bucket, error: bucketError } = await supabase
-      *   .storage
-      *   .analytics
-      *   .createBucket('analytics-data')
-      *
-      * // Get the Iceberg catalog for that bucket
-      * const catalog = supabase.storage.analytics.from('analytics-data')
-      *
-      * // Create a namespace
-      * const { error: nsError } = await catalog.createNamespace({ namespace: ['default'] })
-      *
-      * // Create a table with schema
-      * const { data: tableMetadata, error: tableError } = await catalog.createTable(
-      *   { namespace: ['default'] },
-      *   {
-      *     name: 'events',
-      *     schema: {
-      *       type: 'struct',
-      *       fields: [
-      *         { id: 1, name: 'id', type: 'long', required: true },
-      *         { id: 2, name: 'timestamp', type: 'timestamp', required: true },
-      *         { id: 3, name: 'user_id', type: 'string', required: false }
-      *       ],
-      *       'schema-id': 0,
-      *       'identifier-field-ids': [1]
-      *     },
-      *     'partition-spec': {
-      *       'spec-id': 0,
-      *       fields: []
-      *     },
-      *     'write-order': {
-      *       'order-id': 0,
-      *       fields: []
-      *     },
-      *     properties: {
-      *       'write.format.default': 'parquet'
-      *     }
-      *   }
-      * )
-      * ```
-      *
-      * @example List tables in namespace
-      * ```js
-      * const catalog = supabase.storage.analytics.from('analytics-data')
-      *
-      * // List all tables in the default namespace
-      * const { data: tables, error: listError } = await catalog.listTables({ namespace: ['default'] })
-      * if (listError) {
-      *   if (listError.isNotFound()) {
-      *     console.log('Namespace not found')
-      *   }
-      *   return
-      * }
-      * console.log(tables) // [{ namespace: ['default'], name: 'events' }]
-      * ```
-      *
-      * @example Working with namespaces
-      * ```js
-      * const catalog = supabase.storage.analytics.from('analytics-data')
-      *
-      * // List all namespaces
-      * const { data: namespaces } = await catalog.listNamespaces()
-      *
-      * // Create namespace with properties
-      * await catalog.createNamespace(
-      *   { namespace: ['production'] },
-      *   { properties: { owner: 'data-team', env: 'prod' } }
-      * )
-      * ```
-      *
-      * @example Cleanup operations
-      * ```js
-      * const catalog = supabase.storage.analytics.from('analytics-data')
-      *
-      * // Drop table with purge option (removes all data)
-      * const { error: dropError } = await catalog.dropTable(
-      *   { namespace: ['default'], name: 'events' },
-      *   { purge: true }
-      * )
-      *
-      * if (dropError?.isNotFound()) {
-      *   console.log('Table does not exist')
-      * }
-      *
-      * // Drop namespace (must be empty)
-      * await catalog.dropNamespace({ namespace: ['default'] })
-      * ```
-      *
-      * @remarks
-      * This method provides a bridge between Supabase's bucket management and the standard
-      * Apache Iceberg REST Catalog API. The bucket name maps to the Iceberg warehouse parameter.
-      * All authentication and configuration is handled automatically using your Supabase credentials.
-      *
-      * **Error Handling**: Invalid bucket names throw immediately. All catalog
-      * operations return `{ data, error }` where errors are `IcebergError` instances from iceberg-js.
-      * Use helper methods like `error.isNotFound()` or check `error.status` for specific error handling.
-      * Use `.throwOnError()` on the analytics client if you prefer exceptions for catalog operations.
-      *
-      * **Cleanup Operations**: When using `dropTable`, the `purge: true` option permanently
-      * deletes all table data. Without it, the table is marked as deleted but data remains.
-      *
-      * **Library Dependency**: The returned catalog wraps `IcebergRestCatalog` from iceberg-js.
-      * For complete API documentation and advanced usage, refer to the
-      * [iceberg-js documentation](https://supabase.github.io/iceberg-js/).
-      */
-      from(bucketName) {
-        var _this4 = this;
-        if (!isValidBucketName(bucketName)) throw new StorageError("Invalid bucket name: File, folder, and bucket names must follow AWS object key naming guidelines and should avoid the use of any other characters.");
-        const catalog = new IcebergRestCatalog({
-          baseUrl: this.url,
-          catalogName: bucketName,
-          auth: {
-            type: "custom",
-            getHeaders: async () => _this4.headers
-          },
-          fetch: this.fetch
-        });
-        const shouldThrowOnError = this.shouldThrowOnError;
-        return new Proxy(catalog, { get(target, prop) {
-          const value = target[prop];
-          if (typeof value !== "function") return value;
-          return async (...args) => {
-            try {
-              return {
-                data: await value.apply(target, args),
-                error: null
-              };
-            } catch (error) {
-              if (shouldThrowOnError) throw error;
-              return {
-                data: null,
-                error
-              };
-            }
-          };
-        } });
-      }
-    };
-    VectorIndexApi = class extends BaseApiClient {
-      /** Creates a new VectorIndexApi instance */
-      constructor(url, headers = {}, fetch$1) {
-        const finalUrl = url.replace(/\/$/, "");
-        const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
-        super(finalUrl, finalHeaders, fetch$1, "vectors");
-      }
-      /** Creates a new vector index within a bucket */
-      async createIndex(options) {
-        var _this = this;
-        return _this.handleOperation(async () => {
-          return await vectorsApi.post(_this.fetch, `${_this.url}/CreateIndex`, options, { headers: _this.headers }) || {};
-        });
-      }
-      /** Retrieves metadata for a specific vector index */
-      async getIndex(vectorBucketName, indexName) {
-        var _this2 = this;
-        return _this2.handleOperation(async () => {
-          return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetIndex`, {
-            vectorBucketName,
-            indexName
-          }, { headers: _this2.headers });
-        });
-      }
-      /** Lists vector indexes within a bucket with optional filtering and pagination */
-      async listIndexes(options) {
-        var _this3 = this;
-        return _this3.handleOperation(async () => {
-          return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListIndexes`, options, { headers: _this3.headers });
-        });
-      }
-      /** Deletes a vector index and all its data */
-      async deleteIndex(vectorBucketName, indexName) {
-        var _this4 = this;
-        return _this4.handleOperation(async () => {
-          return await vectorsApi.post(_this4.fetch, `${_this4.url}/DeleteIndex`, {
-            vectorBucketName,
-            indexName
-          }, { headers: _this4.headers }) || {};
-        });
-      }
-    };
-    VectorDataApi = class extends BaseApiClient {
-      /** Creates a new VectorDataApi instance */
-      constructor(url, headers = {}, fetch$1) {
-        const finalUrl = url.replace(/\/$/, "");
-        const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
-        super(finalUrl, finalHeaders, fetch$1, "vectors");
-      }
-      /** Inserts or updates vectors in batch (1-500 per request) */
-      async putVectors(options) {
-        var _this = this;
-        if (options.vectors.length < 1 || options.vectors.length > 500) throw new Error("Vector batch size must be between 1 and 500 items");
-        return _this.handleOperation(async () => {
-          return await vectorsApi.post(_this.fetch, `${_this.url}/PutVectors`, options, { headers: _this.headers }) || {};
-        });
-      }
-      /** Retrieves vectors by their keys in batch */
-      async getVectors(options) {
-        var _this2 = this;
-        return _this2.handleOperation(async () => {
-          return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetVectors`, options, { headers: _this2.headers });
-        });
-      }
-      /** Lists vectors in an index with pagination */
-      async listVectors(options) {
-        var _this3 = this;
-        if (options.segmentCount !== void 0) {
-          if (options.segmentCount < 1 || options.segmentCount > 16) throw new Error("segmentCount must be between 1 and 16");
-          if (options.segmentIndex !== void 0) {
-            if (options.segmentIndex < 0 || options.segmentIndex >= options.segmentCount) throw new Error(`segmentIndex must be between 0 and ${options.segmentCount - 1}`);
-          }
-        }
-        return _this3.handleOperation(async () => {
-          return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListVectors`, options, { headers: _this3.headers });
-        });
-      }
-      /** Queries for similar vectors using approximate nearest neighbor search */
-      async queryVectors(options) {
-        var _this4 = this;
-        return _this4.handleOperation(async () => {
-          return await vectorsApi.post(_this4.fetch, `${_this4.url}/QueryVectors`, options, { headers: _this4.headers });
-        });
-      }
-      /** Deletes vectors by their keys in batch (1-500 per request) */
-      async deleteVectors(options) {
-        var _this5 = this;
-        if (options.keys.length < 1 || options.keys.length > 500) throw new Error("Keys batch size must be between 1 and 500 items");
-        return _this5.handleOperation(async () => {
-          return await vectorsApi.post(_this5.fetch, `${_this5.url}/DeleteVectors`, options, { headers: _this5.headers }) || {};
-        });
-      }
-    };
-    VectorBucketApi = class extends BaseApiClient {
-      /** Creates a new VectorBucketApi instance */
-      constructor(url, headers = {}, fetch$1) {
-        const finalUrl = url.replace(/\/$/, "");
-        const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
-        super(finalUrl, finalHeaders, fetch$1, "vectors");
-      }
-      /** Creates a new vector bucket */
-      async createBucket(vectorBucketName) {
-        var _this = this;
-        return _this.handleOperation(async () => {
-          return await vectorsApi.post(_this.fetch, `${_this.url}/CreateVectorBucket`, { vectorBucketName }, { headers: _this.headers }) || {};
-        });
-      }
-      /** Retrieves metadata for a specific vector bucket */
-      async getBucket(vectorBucketName) {
-        var _this2 = this;
-        return _this2.handleOperation(async () => {
-          return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetVectorBucket`, { vectorBucketName }, { headers: _this2.headers });
-        });
-      }
-      /** Lists vector buckets with optional filtering and pagination */
-      async listBuckets(options = {}) {
-        var _this3 = this;
-        return _this3.handleOperation(async () => {
-          return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListVectorBuckets`, options, { headers: _this3.headers });
-        });
-      }
-      /** Deletes a vector bucket (must be empty first) */
-      async deleteBucket(vectorBucketName) {
-        var _this4 = this;
-        return _this4.handleOperation(async () => {
-          return await vectorsApi.post(_this4.fetch, `${_this4.url}/DeleteVectorBucket`, { vectorBucketName }, { headers: _this4.headers }) || {};
-        });
-      }
-    };
-    StorageVectorsClient = class extends VectorBucketApi {
-      /**
-      * @alpha
-      *
-      * Creates a StorageVectorsClient that can manage buckets, indexes, and vectors.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param url - Base URL of the Storage Vectors REST API.
-      * @param options.headers - Optional headers (for example `Authorization`) applied to every request.
-      * @param options.fetch - Optional custom `fetch` implementation for non-browser runtimes.
-      *
-      * @example Using supabase-js (recommended)
-      * ```typescript
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * ```
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```typescript
-      * import { StorageVectorsClient } from '@supabase/storage-js'
-      *
-      * const client = new StorageVectorsClient(url, options)
-      * ```
-      */
-      constructor(url, options = {}) {
-        super(url, options.headers || {}, options.fetch);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Access operations for a specific vector bucket
-      * Returns a scoped client for index and vector operations within the bucket
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param vectorBucketName - Name of the vector bucket
-      * @returns Bucket-scoped client with index and vector operations
-      *
-      * @example Accessing a vector bucket
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * ```
-      */
-      from(vectorBucketName) {
-        return new VectorBucketScope(this.url, this.headers, vectorBucketName, this.fetch);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Creates a new vector bucket
-      * Vector buckets are containers for vector indexes and their data
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param vectorBucketName - Unique name for the vector bucket
-      * @returns Promise with empty response on success or error
-      *
-      * @example Creating a vector bucket
-      * ```typescript
-      * const { data, error } = await supabase
-      *   .storage
-      *   .vectors
-      *   .createBucket('embeddings-prod')
-      * ```
-      */
-      async createBucket(vectorBucketName) {
-        var _superprop_getCreateBucket = () => super.createBucket, _this = this;
-        return _superprop_getCreateBucket().call(_this, vectorBucketName);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Retrieves metadata for a specific vector bucket
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param vectorBucketName - Name of the vector bucket
-      * @returns Promise with bucket metadata or error
-      *
-      * @example Get bucket metadata
-      * ```typescript
-      * const { data, error } = await supabase
-      *   .storage
-      *   .vectors
-      *   .getBucket('embeddings-prod')
-      *
-      * console.log('Bucket created:', data?.vectorBucket.creationTime)
-      * ```
-      */
-      async getBucket(vectorBucketName) {
-        var _superprop_getGetBucket = () => super.getBucket, _this2 = this;
-        return _superprop_getGetBucket().call(_this2, vectorBucketName);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Lists all vector buckets with optional filtering and pagination
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Optional filters (prefix, maxResults, nextToken)
-      * @returns Promise with list of buckets or error
-      *
-      * @example List vector buckets
-      * ```typescript
-      * const { data, error } = await supabase
-      *   .storage
-      *   .vectors
-      *   .listBuckets({ prefix: 'embeddings-' })
-      *
-      * data?.vectorBuckets.forEach(bucket => {
-      *   console.log(bucket.vectorBucketName)
-      * })
-      * ```
-      */
-      async listBuckets(options = {}) {
-        var _superprop_getListBuckets = () => super.listBuckets, _this3 = this;
-        return _superprop_getListBuckets().call(_this3, options);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Deletes a vector bucket (bucket must be empty)
-      * All indexes must be deleted before deleting the bucket
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param vectorBucketName - Name of the vector bucket to delete
-      * @returns Promise with empty response on success or error
-      *
-      * @example Delete a vector bucket
-      * ```typescript
-      * const { data, error } = await supabase
-      *   .storage
-      *   .vectors
-      *   .deleteBucket('embeddings-old')
-      * ```
-      */
-      async deleteBucket(vectorBucketName) {
-        var _superprop_getDeleteBucket = () => super.deleteBucket, _this4 = this;
-        return _superprop_getDeleteBucket().call(_this4, vectorBucketName);
-      }
-    };
-    VectorBucketScope = class extends VectorIndexApi {
-      /**
-      * @alpha
-      *
-      * Creates a helper that automatically scopes all index operations to the provided bucket.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @example Creating a vector bucket scope
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * ```
-      */
-      constructor(url, headers, vectorBucketName, fetch$1) {
-        super(url, headers, fetch$1);
-        this.vectorBucketName = vectorBucketName;
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Creates a new vector index in this bucket
-      * Convenience method that automatically includes the bucket name
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Index configuration (vectorBucketName is automatically set)
-      * @returns Promise with empty response on success or error
-      *
-      * @example Creating a vector index
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * await bucket.createIndex({
-      *   indexName: 'documents-openai',
-      *   dataType: 'float32',
-      *   dimension: 1536,
-      *   distanceMetric: 'cosine',
-      *   metadataConfiguration: {
-      *     nonFilterableMetadataKeys: ['raw_text']
-      *   }
-      * })
-      * ```
-      */
-      async createIndex(options) {
-        var _superprop_getCreateIndex = () => super.createIndex, _this5 = this;
-        return _superprop_getCreateIndex().call(_this5, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this5.vectorBucketName }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Lists indexes in this bucket
-      * Convenience method that automatically includes the bucket name
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Listing options (vectorBucketName is automatically set)
-      * @returns Promise with response containing indexes array and pagination token or error
-      *
-      * @example List indexes
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * const { data } = await bucket.listIndexes({ prefix: 'documents-' })
-      * ```
-      */
-      async listIndexes(options = {}) {
-        var _superprop_getListIndexes = () => super.listIndexes, _this6 = this;
-        return _superprop_getListIndexes().call(_this6, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this6.vectorBucketName }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Retrieves metadata for a specific index in this bucket
-      * Convenience method that automatically includes the bucket name
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param indexName - Name of the index to retrieve
-      * @returns Promise with index metadata or error
-      *
-      * @example Get index metadata
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * const { data } = await bucket.getIndex('documents-openai')
-      * console.log('Dimension:', data?.index.dimension)
-      * ```
-      */
-      async getIndex(indexName) {
-        var _superprop_getGetIndex = () => super.getIndex, _this7 = this;
-        return _superprop_getGetIndex().call(_this7, _this7.vectorBucketName, indexName);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Deletes an index from this bucket
-      * Convenience method that automatically includes the bucket name
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param indexName - Name of the index to delete
-      * @returns Promise with empty response on success or error
-      *
-      * @example Delete an index
-      * ```typescript
-      * const bucket = supabase.storage.vectors.from('embeddings-prod')
-      * await bucket.deleteIndex('old-index')
-      * ```
-      */
-      async deleteIndex(indexName) {
-        var _superprop_getDeleteIndex = () => super.deleteIndex, _this8 = this;
-        return _superprop_getDeleteIndex().call(_this8, _this8.vectorBucketName, indexName);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Access operations for a specific index within this bucket
-      * Returns a scoped client for vector data operations
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param indexName - Name of the index
-      * @returns Index-scoped client with vector data operations
-      *
-      * @example Accessing an index
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      *
-      * // Insert vectors
-      * await index.putVectors({
-      *   vectors: [
-      *     { key: 'doc-1', data: { float32: [...] }, metadata: { title: 'Intro' } }
-      *   ]
-      * })
-      *
-      * // Query similar vectors
-      * const { data } = await index.queryVectors({
-      *   queryVector: { float32: [...] },
-      *   topK: 5
-      * })
-      * ```
-      */
-      index(indexName) {
-        return new VectorIndexScope(this.url, this.headers, this.vectorBucketName, indexName, this.fetch);
-      }
-    };
-    VectorIndexScope = class extends VectorDataApi {
-      /**
-      *
-      * @alpha
-      *
-      * Creates a helper that automatically scopes all vector operations to the provided bucket/index names.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @example Creating a vector index scope
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * ```
-      */
-      constructor(url, headers, vectorBucketName, indexName, fetch$1) {
-        super(url, headers, fetch$1);
-        this.vectorBucketName = vectorBucketName;
-        this.indexName = indexName;
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Inserts or updates vectors in this index
-      * Convenience method that automatically includes bucket and index names
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Vector insertion options (bucket and index names automatically set)
-      * @returns Promise with empty response on success or error
-      *
-      * @example Insert vectors into an index
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * await index.putVectors({
-      *   vectors: [
-      *     {
-      *       key: 'doc-1',
-      *       data: { float32: [0.1, 0.2, ...] },
-      *       metadata: { title: 'Introduction', page: 1 }
-      *     }
-      *   ]
-      * })
-      * ```
-      */
-      async putVectors(options) {
-        var _superprop_getPutVectors = () => super.putVectors, _this9 = this;
-        return _superprop_getPutVectors().call(_this9, _objectSpread22(_objectSpread22({}, options), {}, {
-          vectorBucketName: _this9.vectorBucketName,
-          indexName: _this9.indexName
-        }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Retrieves vectors by keys from this index
-      * Convenience method that automatically includes bucket and index names
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Vector retrieval options (bucket and index names automatically set)
-      * @returns Promise with response containing vectors array or error
-      *
-      * @example Get vectors by keys
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * const { data } = await index.getVectors({
-      *   keys: ['doc-1', 'doc-2'],
-      *   returnMetadata: true
-      * })
-      * ```
-      */
-      async getVectors(options) {
-        var _superprop_getGetVectors = () => super.getVectors, _this10 = this;
-        return _superprop_getGetVectors().call(_this10, _objectSpread22(_objectSpread22({}, options), {}, {
-          vectorBucketName: _this10.vectorBucketName,
-          indexName: _this10.indexName
-        }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Lists vectors in this index with pagination
-      * Convenience method that automatically includes bucket and index names
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Listing options (bucket and index names automatically set)
-      * @returns Promise with response containing vectors array and pagination token or error
-      *
-      * @example List vectors with pagination
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * const { data } = await index.listVectors({
-      *   maxResults: 500,
-      *   returnMetadata: true
-      * })
-      * ```
-      */
-      async listVectors(options = {}) {
-        var _superprop_getListVectors = () => super.listVectors, _this11 = this;
-        return _superprop_getListVectors().call(_this11, _objectSpread22(_objectSpread22({}, options), {}, {
-          vectorBucketName: _this11.vectorBucketName,
-          indexName: _this11.indexName
-        }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Queries for similar vectors in this index
-      * Convenience method that automatically includes bucket and index names
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Query options (bucket and index names automatically set)
-      * @returns Promise with response containing vectors ordered by distance, an optional pagination token, or an error
-      *
-      * @example Query similar vectors
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * const { data } = await index.queryVectors({
-      *   queryVector: { float32: [0.1, 0.2, ...] },
-      *   topK: 5,
-      *   filter: { category: 'technical' },
-      *   returnDistance: true,
-      *   returnMetadata: true
-      * })
-      * ```
-      */
-      async queryVectors(options) {
-        var _superprop_getQueryVectors = () => super.queryVectors, _this12 = this;
-        return _superprop_getQueryVectors().call(_this12, _objectSpread22(_objectSpread22({}, options), {}, {
-          vectorBucketName: _this12.vectorBucketName,
-          indexName: _this12.indexName
-        }));
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Deletes vectors by keys from this index
-      * Convenience method that automatically includes bucket and index names
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      * @param options - Deletion options (bucket and index names automatically set)
-      * @returns Promise with empty response on success or error
-      *
-      * @example Delete vectors by keys
-      * ```typescript
-      * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
-      * await index.deleteVectors({
-      *   keys: ['doc-1', 'doc-2', 'doc-3']
-      * })
-      * ```
-      */
-      async deleteVectors(options) {
-        var _superprop_getDeleteVectors = () => super.deleteVectors, _this13 = this;
-        return _superprop_getDeleteVectors().call(_this13, _objectSpread22(_objectSpread22({}, options), {}, {
-          vectorBucketName: _this13.vectorBucketName,
-          indexName: _this13.indexName
-        }));
-      }
-    };
-    StorageClient = class extends StorageBucketApi {
-      /**
-      * Creates a client for Storage buckets, files, analytics, and vectors.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      *
-      * @example Using supabase-js (recommended)
-      * ```ts
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * const avatars = supabase.storage.from('avatars')
-      * ```
-      *
-      * @example Standalone import for bundle-sensitive environments
-      * ```ts
-      * import { StorageClient } from '@supabase/storage-js'
-      *
-      * const storage = new StorageClient('https://xyzcompany.supabase.co/storage/v1', {
-      *   apikey: 'your-publishable-key',
-      * })
-      * const avatars = storage.from('avatars')
-      * ```
-      */
-      constructor(url, headers = {}, fetch$1, opts) {
-        super(url, headers, fetch$1, opts);
-      }
-      /**
-      * Perform file operation in a bucket.
-      *
-      * @category Storage
-      * @subcategory File Buckets
-      *
-      * @param id The bucket id to operate on.
-      *
-      * @example Accessing a bucket
-      * ```typescript
-      * const avatars = supabase.storage.from('avatars')
-      * ```
-      */
-      from(id) {
-        return new StorageFileApi(this.url, this.headers, id, this.fetch);
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Access vector storage operations.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Vector Buckets
-      *
-      * @returns A StorageVectorsClient instance configured with the current storage settings.
-      */
-      get vectors() {
-        return new StorageVectorsClient(this.url + "/vector", {
-          headers: this.headers,
-          fetch: this.fetch
-        });
-      }
-      /**
-      *
-      * @alpha
-      *
-      * Access analytics storage operations using Iceberg tables.
-      *
-      * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
-      *
-      * @category Storage
-      * @subcategory Analytics Buckets
-      *
-      * @returns A StorageAnalyticsClient instance configured with the current storage settings.
-      */
-      get analytics() {
-        return new StorageAnalyticsClient(this.url + "/iceberg", this.headers, this.fetch);
-      }
-    };
   }
 });
 
@@ -132181,1032 +122499,65 @@ var require_main3 = __commonJS({
   }
 });
 
-// node_modules/@supabase/supabase-js/dist/index.mjs
-var dist_exports = {};
-__export(dist_exports, {
-  FunctionRegion: () => import_functions_js.FunctionRegion,
-  FunctionsError: () => import_functions_js.FunctionsError,
-  FunctionsFetchError: () => import_functions_js.FunctionsFetchError,
-  FunctionsHttpError: () => import_functions_js.FunctionsHttpError,
-  FunctionsRelayError: () => import_functions_js.FunctionsRelayError,
-  PostgrestError: () => PostgrestError,
-  StorageApiError: () => StorageApiError,
-  SupabaseClient: () => SupabaseClient,
-  createClient: () => createClient
+// scripts/exportSeed.ts
+var exportSeed_exports = {};
+__export(exportSeed_exports, {
+  exportCurrentDatabaseToSeedJson: () => exportCurrentDatabaseToSeedJson
 });
-function parseTraceParent(traceparent) {
-  if (!traceparent || typeof traceparent !== "string") return null;
-  const parts = traceparent.split("-");
-  if (parts.length !== 4) return null;
-  const [version$1, traceId, parentId, traceFlags] = parts;
-  if (version$1.length !== 2 || traceId.length !== 32 || parentId.length !== 16 || traceFlags.length !== 2) return null;
-  const hexRegex = /^[0-9a-f]+$/i;
-  if (!hexRegex.test(version$1) || !hexRegex.test(traceId) || !hexRegex.test(parentId) || !hexRegex.test(traceFlags)) return null;
-  if (traceId === "00000000000000000000000000000000" || parentId === "0000000000000000") return null;
-  return {
-    version: version$1,
-    traceId,
-    parentId,
-    traceFlags,
-    isSampled: (parseInt(traceFlags, 16) & 1) === 1
-  };
-}
-function shouldPropagateToTarget(targetUrl, targets) {
-  if (!targetUrl || !targets || targets.length === 0) return false;
-  let url;
-  if (targetUrl instanceof URL) url = targetUrl;
-  else try {
-    url = new URL(targetUrl);
-  } catch (error) {
-    return false;
-  }
-  for (const target of targets) try {
-    if (typeof target === "string") {
-      if (matchStringTarget(url.hostname, target)) return true;
-    } else if (target instanceof RegExp) {
-      if (target.test(url.hostname)) return true;
-    } else if (typeof target === "function") {
-      if (target(url)) return true;
-    }
-  } catch (error) {
-    continue;
-  }
-  return false;
-}
-function matchStringTarget(hostname, target) {
-  if (target === hostname) return true;
-  if (target.startsWith("*.")) {
-    const domain = target.slice(2);
-    if (hostname.endsWith(domain)) {
-      if (hostname === domain || hostname.endsWith("." + domain)) return true;
-    }
-  }
-  return false;
-}
-function getDefaultPropagationTargets(supabaseUrl2) {
-  const targets = [];
+import fs4 from "fs";
+import path3 from "path";
+async function exportCurrentDatabaseToSeedJson() {
+  console.log("--- \u062C\u0627\u0631\u064A \u0627\u0633\u062A\u062E\u0631\u0627\u062C \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062D\u0627\u0644\u064A\u0629 \u0644\u062D\u0641\u0638\u0647\u0627 \u0643\u0645\u0644\u0641 \u0627\u0644\u0623\u0633\u0627\u0633 (Initial Seed) ---");
   try {
-    const url = new URL(supabaseUrl2);
-    targets.push(url.hostname);
-  } catch (error) {
-  }
-  targets.push("*.supabase.co", "*.supabase.in");
-  targets.push("localhost", "127.0.0.1", "[::1]");
-  return targets;
-}
-function _typeof3(o) {
-  "@babel/helpers - typeof";
-  return _typeof3 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
-    return typeof o$1;
-  } : function(o$1) {
-    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
-  }, _typeof3(o);
-}
-function toPrimitive3(t2, r2) {
-  if ("object" != _typeof3(t2) || !t2) return t2;
-  var e2 = t2[Symbol.toPrimitive];
-  if (void 0 !== e2) {
-    var i2 = e2.call(t2, r2 || "default");
-    if ("object" != _typeof3(i2)) return i2;
-    throw new TypeError("@@toPrimitive must return a primitive value.");
-  }
-  return ("string" === r2 ? String : Number)(t2);
-}
-function toPropertyKey3(t2) {
-  var i2 = toPrimitive3(t2, "string");
-  return "symbol" == _typeof3(i2) ? i2 : i2 + "";
-}
-function _defineProperty3(e2, r2, t2) {
-  return (r2 = toPropertyKey3(r2)) in e2 ? Object.defineProperty(e2, r2, {
-    value: t2,
-    enumerable: true,
-    configurable: true,
-    writable: true
-  }) : e2[r2] = t2, e2;
-}
-function ownKeys4(e2, r2) {
-  var t2 = Object.keys(e2);
-  if (Object.getOwnPropertySymbols) {
-    var o = Object.getOwnPropertySymbols(e2);
-    r2 && (o = o.filter(function(r$1) {
-      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
-    })), t2.push.apply(t2, o);
-  }
-  return t2;
-}
-function _objectSpread23(e2) {
-  for (var r2 = 1; r2 < arguments.length; r2++) {
-    var t2 = null != arguments[r2] ? arguments[r2] : {};
-    r2 % 2 ? ownKeys4(Object(t2), true).forEach(function(r$1) {
-      _defineProperty3(e2, r$1, t2[r$1]);
-    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys4(Object(t2)).forEach(function(r$1) {
-      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
-    });
-  }
-  return e2;
-}
-function getTraceHeaders(input, targets, respectSampling) {
-  const extractTraceContext = getTraceContextExtractor();
-  if (!extractTraceContext) {
-    if (!warnedMissingTracingRuntime) {
-      warnedMissingTracingRuntime = true;
-      console.warn("@supabase/supabase-js: tracePropagation is enabled but the tracing runtime is not loaded, so trace headers will not be attached. Add `import '@supabase/supabase-js/tracing'` at your application entry point (requires the OpenTelemetry API package to be installed). The CDN/UMD build does not support trace propagation.");
-    }
-    return null;
-  }
-  if (!shouldPropagateToTarget(typeof input === "string" ? input : input instanceof URL ? input : input.url, targets)) return null;
-  const traceContext = extractTraceContext();
-  if (!traceContext || !traceContext.traceparent) {
-    var _traceContext$carrier;
-    if ((traceContext === null || traceContext === void 0 || (_traceContext$carrier = traceContext.carrierKeys) === null || _traceContext$carrier === void 0 ? void 0 : _traceContext$carrier.length) && !warnedNonW3CPropagator) {
-      warnedNonW3CPropagator = true;
-      const sentryHint = traceContext.carrierKeys.includes("sentry-trace") ? " Sentry detected: set `propagateTraceparent: true` in Sentry.init() to emit it." : " Configure your tracing SDK to emit W3C trace context on outgoing requests.";
-      console.warn(`@supabase/supabase-js: tracePropagation is enabled and a tracing SDK is active, but its propagator wrote [${traceContext.carrierKeys.join(", ")}] and no W3C traceparent header, so trace headers will not be attached.` + sentryHint);
-    }
-    return null;
-  }
-  if (respectSampling) {
-    const parsed = parseTraceParent(traceContext.traceparent);
-    if (parsed && !parsed.isSampled) return { traceparent: traceContext.traceparent };
-  }
-  return traceContext;
-}
-function normalizeTracePropagation(value) {
-  return typeof value === "boolean" ? { enabled: value } : value;
-}
-function ensureTrailingSlash(url) {
-  return url.endsWith("/") ? url : url + "/";
-}
-function checkTopLevelSchemaOption(options) {
-  if (warnedTopLevelSchema) return;
-  if (typeof options !== "object" || options === null || !("schema" in options) || options.schema === void 0) return;
-  warnedTopLevelSchema = true;
-  console.warn(`@supabase/supabase-js: The "schema" option must be nested under "db", e.g. createClient(url, key, { db: { schema: 'myschema' } }). A top-level "schema" is ignored and queries go to the default schema.`);
-}
-function applySettingDefaults(options, defaults2) {
-  var _DEFAULT_GLOBAL_OPTIO, _globalOptions$header, _ref, _tracePropagationOpti, _ref2, _tracePropagationOpti2;
-  const { db: dbOptions, auth: authOptions, realtime: realtimeOptions, global: globalOptions } = options;
-  const { db: DEFAULT_DB_OPTIONS$1, auth: DEFAULT_AUTH_OPTIONS$1, realtime: DEFAULT_REALTIME_OPTIONS$1, global: DEFAULT_GLOBAL_OPTIONS$1 } = defaults2;
-  const tracePropagationOptions = normalizeTracePropagation(options.tracePropagation);
-  const DEFAULT_TRACE_PROPAGATION_OPTIONS$1 = normalizeTracePropagation(defaults2.tracePropagation);
-  const result = {
-    db: _objectSpread23(_objectSpread23({}, DEFAULT_DB_OPTIONS$1), dbOptions),
-    auth: _objectSpread23(_objectSpread23({}, DEFAULT_AUTH_OPTIONS$1), authOptions),
-    realtime: _objectSpread23(_objectSpread23({}, DEFAULT_REALTIME_OPTIONS$1), realtimeOptions),
-    storage: {},
-    global: _objectSpread23(_objectSpread23(_objectSpread23({}, DEFAULT_GLOBAL_OPTIONS$1), globalOptions), {}, { headers: _objectSpread23(_objectSpread23({}, (_DEFAULT_GLOBAL_OPTIO = DEFAULT_GLOBAL_OPTIONS$1 === null || DEFAULT_GLOBAL_OPTIONS$1 === void 0 ? void 0 : DEFAULT_GLOBAL_OPTIONS$1.headers) !== null && _DEFAULT_GLOBAL_OPTIO !== void 0 ? _DEFAULT_GLOBAL_OPTIO : {}), (_globalOptions$header = globalOptions === null || globalOptions === void 0 ? void 0 : globalOptions.headers) !== null && _globalOptions$header !== void 0 ? _globalOptions$header : {}) }),
-    tracePropagation: {
-      enabled: (_ref = (_tracePropagationOpti = tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.enabled) !== null && _tracePropagationOpti !== void 0 ? _tracePropagationOpti : DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === null || DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === void 0 ? void 0 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1.enabled) !== null && _ref !== void 0 ? _ref : false,
-      respectSamplingDecision: (_ref2 = (_tracePropagationOpti2 = tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.respectSamplingDecision) !== null && _tracePropagationOpti2 !== void 0 ? _tracePropagationOpti2 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === null || DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === void 0 ? void 0 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1.respectSamplingDecision) !== null && _ref2 !== void 0 ? _ref2 : true
-    },
-    accessToken: async () => ""
-  };
-  if (options.accessToken) result.accessToken = options.accessToken;
-  else delete result.accessToken;
-  return result;
-}
-function validateSupabaseUrl(supabaseUrl2) {
-  const trimmedUrl = supabaseUrl2 === null || supabaseUrl2 === void 0 ? void 0 : supabaseUrl2.trim();
-  if (!trimmedUrl) throw new Error("supabaseUrl is required.");
-  if (!trimmedUrl.match(/^https?:\/\//i)) throw new Error("Invalid supabaseUrl: Must be a valid HTTP or HTTPS URL.");
-  try {
-    return new URL(ensureTrailingSlash(trimmedUrl));
-  } catch (_unused) {
-    throw Error("Invalid supabaseUrl: Provided URL is malformed.");
-  }
-}
-function shouldShowDeprecationWarning() {
-  if (typeof window !== "undefined" || globalThis["Deno"] !== void 0) return false;
-  const _process = globalThis["process"];
-  if (!_process) return false;
-  const processVersion = _process["version"];
-  if (processVersion === void 0 || processVersion === null) return false;
-  const versionMatch = processVersion.match(/^v(\d+)\./);
-  if (!versionMatch) return false;
-  return parseInt(versionMatch[1], 10) <= 20;
-}
-var import_functions_js, import_realtime_js, import_auth_js, version3, JS_ENV, JS_RUNTIME_VERSION, _Deno$version, _process$version, _runtimeMeta, DEFAULT_HEADERS2, DEFAULT_GLOBAL_OPTIONS, DEFAULT_DB_OPTIONS, DEFAULT_AUTH_OPTIONS, DEFAULT_REALTIME_OPTIONS, DEFAULT_TRACE_PROPAGATION_OPTIONS, resolveFetch2, resolveHeadersConstructor, isNewApiKey, TEMP_KEY_PREFIX, warnedKeySubtypes, checkApiKeyFormat, fetchWithAuth, warnedMissingTracingRuntime, warnedNonW3CPropagator, warnedTopLevelSchema, SupabaseAuthClient, SupabaseClient, createClient;
-var init_dist5 = __esm({
-  "node_modules/@supabase/supabase-js/dist/index.mjs"() {
-    init_tracingRegistry();
-    import_functions_js = __toESM(require_main(), 1);
-    init_dist2();
-    import_realtime_js = __toESM(require_main2(), 1);
-    init_dist4();
-    import_auth_js = __toESM(require_main3(), 1);
-    __reExport(dist_exports, __toESM(require_main2(), 1));
-    __reExport(dist_exports, __toESM(require_main3(), 1));
-    version3 = "2.117.2";
-    JS_ENV = "";
-    if (typeof Deno !== "undefined") {
-      JS_ENV = "deno";
-      JS_RUNTIME_VERSION = (_Deno$version = Deno.version) === null || _Deno$version === void 0 ? void 0 : _Deno$version.deno;
-    } else if (typeof document !== "undefined") JS_ENV = "web";
-    else if (typeof navigator !== "undefined" && navigator.product === "ReactNative") JS_ENV = "react-native";
-    else {
-      JS_ENV = "node";
-      const _process = globalThis["process"];
-      JS_RUNTIME_VERSION = _process === null || _process === void 0 || (_process$version = _process["version"]) === null || _process$version === void 0 ? void 0 : _process$version.replace(/^v/, "");
-    }
-    _runtimeMeta = [`runtime=${JS_ENV}`];
-    if (JS_RUNTIME_VERSION) _runtimeMeta.push(`runtime-version=${JS_RUNTIME_VERSION}`);
-    DEFAULT_HEADERS2 = { "X-Client-Info": `supabase-js/${version3}; ${_runtimeMeta.join("; ")}` };
-    DEFAULT_GLOBAL_OPTIONS = { headers: DEFAULT_HEADERS2 };
-    DEFAULT_DB_OPTIONS = { schema: "public" };
-    DEFAULT_AUTH_OPTIONS = {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      flowType: "implicit"
-    };
-    DEFAULT_REALTIME_OPTIONS = {};
-    DEFAULT_TRACE_PROPAGATION_OPTIONS = {
-      enabled: false,
-      respectSamplingDecision: true
-    };
-    resolveFetch2 = (customFetch2) => {
-      if (customFetch2) return (...args) => customFetch2(...args);
-      return (...args) => fetch(...args);
-    };
-    resolveHeadersConstructor = () => {
-      return Headers;
-    };
-    isNewApiKey = (key) => key.startsWith("sb_publishable_") || key.startsWith("sb_secret_");
-    TEMP_KEY_PREFIX = "sb_temp_";
-    warnedKeySubtypes = /* @__PURE__ */ new Set();
-    checkApiKeyFormat = (key) => {
-      var _key$match$, _key$match;
-      if (!key.startsWith("sb_") || isNewApiKey(key) || key.startsWith(TEMP_KEY_PREFIX)) return;
-      const subtype = (_key$match$ = (_key$match = key.match(/^sb_[a-zA-Z0-9]+_/)) === null || _key$match === void 0 ? void 0 : _key$match[0]) !== null && _key$match$ !== void 0 ? _key$match$ : "unknown";
-      if (warnedKeySubtypes.has(subtype)) return;
-      warnedKeySubtypes.add(subtype);
-      console.warn("@supabase/supabase-js: Unrecognized Supabase API key format. The client will proceed and send this key as-is; if you see authentication errors you may need to upgrade @supabase/supabase-js to a version that recognizes this key type.");
-    };
-    fetchWithAuth = (supabaseKey2, supabaseUrl2, getAccessToken, customFetch2, tracePropagationOptions, options) => {
-      const fetch$1 = resolveFetch2(customFetch2);
-      const HeadersConstructor = resolveHeadersConstructor();
-      const traceEnabled = (tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.enabled) === true;
-      const respectSampling = (tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.respectSamplingDecision) !== false;
-      const traceTargets = traceEnabled ? getDefaultPropagationTargets(supabaseUrl2) : null;
-      const allowKeyAsBearer = !((options === null || options === void 0 ? void 0 : options.omitApiKeyAsBearer) && isNewApiKey(supabaseKey2));
-      return async (input, init) => {
-        const realToken = await getAccessToken();
-        let headers = new HeadersConstructor(init === null || init === void 0 ? void 0 : init.headers);
-        if (!headers.has("apikey")) headers.set("apikey", supabaseKey2);
-        if (!headers.has("Authorization")) {
-          const bearer = realToken !== null && realToken !== void 0 ? realToken : allowKeyAsBearer ? supabaseKey2 : null;
-          if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
-        }
-        if (traceTargets) {
-          const traceHeaders = getTraceHeaders(input, traceTargets, respectSampling);
-          if (traceHeaders) {
-            if (traceHeaders.traceparent && !headers.has("traceparent")) headers.set("traceparent", traceHeaders.traceparent);
-            if (traceHeaders.tracestate && !headers.has("tracestate")) headers.set("tracestate", traceHeaders.tracestate);
-            if (traceHeaders.baggage && !headers.has("baggage")) headers.set("baggage", traceHeaders.baggage);
-          }
-        }
-        return fetch$1(input, _objectSpread23(_objectSpread23({}, init), {}, { headers }));
-      };
-    };
-    warnedMissingTracingRuntime = false;
-    warnedNonW3CPropagator = false;
-    warnedTopLevelSchema = false;
-    SupabaseAuthClient = class extends import_auth_js.AuthClient {
-      constructor(options) {
-        super(options);
-      }
-    };
-    SupabaseClient = class {
-      /**
-      * Create a new client for use in the browser.
-      *
-      * @category Initializing
-      *
-      * @param supabaseUrl The unique Supabase URL which is supplied when you create a new project in your project dashboard.
-      * @param supabaseKey The unique Supabase Key which is supplied when you create a new project in your project dashboard.
-      * @param options Optional configuration for the client:
-      * - `db.schema` — You can switch in between schemas. The schema needs to be on the list of exposed schemas inside Supabase.
-      * - `auth.autoRefreshToken` — Set to `true` if you want to automatically refresh the token before expiring.
-      * - `auth.persistSession` — Set to `true` if you want to automatically save the user session into local storage.
-      * - `auth.detectSessionInUrl` — Set to `true` if you want to automatically detect OAuth grants in the URL and sign in the user.
-      * - `realtime` — Options passed along to the realtime-js constructor.
-      * - `storage` — Options passed along to the storage-js constructor.
-      * - `global.fetch` — A custom fetch implementation.
-      * - `global.headers` — Any additional headers to send with each network request.
-      *
-      * @example Creating a client
-      * ```js
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * // Create a single supabase client for interacting with your database
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      * ```
-      *
-      * @example With a custom domain
-      * ```js
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * // Use a custom domain as the supabase URL
-      * const supabase = createClient('https://my-custom-domain.com', 'your-publishable-key')
-      * ```
-      *
-      * @example With additional parameters
-      * ```js
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const options = {
-      *   db: {
-      *     schema: 'public',
-      *   },
-      *   auth: {
-      *     autoRefreshToken: true,
-      *     persistSession: true,
-      *     detectSessionInUrl: true
-      *   },
-      *   global: {
-      *     headers: { 'x-my-custom-header': 'my-app-name' },
-      *   },
-      * }
-      * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", options)
-      * ```
-      *
-      * @exampleDescription With custom schemas
-      * By default the API server points to the `public` schema. You can enable other database schemas within the Dashboard.
-      * Go to [Settings > API > Exposed schemas](/dashboard/project/_/settings/api) and add the schema which you want to expose to the API.
-      *
-      * Note: each client connection can only access a single schema, so the code above can access the `other_schema` schema but cannot access the `public` schema.
-      *
-      * @example With custom schemas
-      * ```js
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
-      *   // Provide a custom schema. Defaults to "public".
-      *   db: { schema: 'other_schema' }
-      * })
-      * ```
-      *
-      * @exampleDescription Custom fetch implementation
-      * `supabase-js` uses the runtime's global `fetch` to make HTTP requests,
-      * but an alternative `fetch` implementation can be provided as an option.
-      * This is useful in environments where the global `fetch` is unavailable or where you want to customize request behavior.
-      *
-      * @example Custom fetch implementation
-      * ```js
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
-      *   global: { fetch: fetch.bind(globalThis) }
-      * })
-      * ```
-      *
-      * @exampleDescription React Native options with AsyncStorage
-      * For React Native we recommend using `AsyncStorage` as the storage implementation for Supabase Auth.
-      *
-      * @example React Native options with AsyncStorage
-      * ```js
-      * import 'react-native-url-polyfill/auto'
-      * import { createClient } from '@supabase/supabase-js'
-      * import AsyncStorage from "@react-native-async-storage/async-storage";
-      *
-      * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", {
-      *   auth: {
-      *     storage: AsyncStorage,
-      *     autoRefreshToken: true,
-      *     persistSession: true,
-      *     detectSessionInUrl: false,
-      *   },
-      * });
-      * ```
-      *
-      * @exampleDescription React Native options with Expo SecureStore
-      * If you wish to encrypt the user's session information, you can use `aes-js` and store the encryption key in Expo SecureStore.
-      * The `aes-js` library, a reputable JavaScript-only implementation of the AES encryption algorithm in CTR mode.
-      * A new 256-bit encryption key is generated using the `react-native-get-random-values` library.
-      * This key is stored inside Expo's SecureStore, while the value is encrypted and placed inside AsyncStorage.
-      *
-      * Please make sure that:
-      * - You keep the `expo-secure-store`, `aes-js` and `react-native-get-random-values` libraries up-to-date.
-      * - Choose the correct [`SecureStoreOptions`](https://docs.expo.dev/versions/latest/sdk/securestore/#securestoreoptions) for your app's needs.
-      *   E.g. [`SecureStore.WHEN_UNLOCKED`](https://docs.expo.dev/versions/latest/sdk/securestore/#securestorewhen_unlocked) regulates when the data can be accessed.
-      * - Carefully consider optimizations or other modifications to the above example, as those can lead to introducing subtle security vulnerabilities.
-      *
-      * @example React Native options with Expo SecureStore
-      * ```ts
-      * import 'react-native-url-polyfill/auto'
-      * import { createClient } from '@supabase/supabase-js'
-      * import AsyncStorage from '@react-native-async-storage/async-storage';
-      * import * as SecureStore from 'expo-secure-store';
-      * import * as aesjs from 'aes-js';
-      * import 'react-native-get-random-values';
-      *
-      * // As Expo's SecureStore does not support values larger than 2048
-      * // bytes, an AES-256 key is generated and stored in SecureStore, while
-      * // it is used to encrypt/decrypt values stored in AsyncStorage.
-      * class LargeSecureStore {
-      *   private async _encrypt(key: string, value: string) {
-      *     const encryptionKey = crypto.getRandomValues(new Uint8Array(256 / 8));
-      *
-      *     const cipher = new aesjs.ModeOfOperation.ctr(encryptionKey, new aesjs.Counter(1));
-      *     const encryptedBytes = cipher.encrypt(aesjs.utils.utf8.toBytes(value));
-      *
-      *     await SecureStore.setItemAsync(key, aesjs.utils.hex.fromBytes(encryptionKey));
-      *
-      *     return aesjs.utils.hex.fromBytes(encryptedBytes);
-      *   }
-      *
-      *   private async _decrypt(key: string, value: string) {
-      *     const encryptionKeyHex = await SecureStore.getItemAsync(key);
-      *     if (!encryptionKeyHex) {
-      *       return encryptionKeyHex;
-      *     }
-      *
-      *     const cipher = new aesjs.ModeOfOperation.ctr(aesjs.utils.hex.toBytes(encryptionKeyHex), new aesjs.Counter(1));
-      *     const decryptedBytes = cipher.decrypt(aesjs.utils.hex.toBytes(value));
-      *
-      *     return aesjs.utils.utf8.fromBytes(decryptedBytes);
-      *   }
-      *
-      *   async getItem(key: string) {
-      *     const encrypted = await AsyncStorage.getItem(key);
-      *     if (!encrypted) { return encrypted; }
-      *
-      *     return await this._decrypt(key, encrypted);
-      *   }
-      *
-      *   async removeItem(key: string) {
-      *     await AsyncStorage.removeItem(key);
-      *     await SecureStore.deleteItemAsync(key);
-      *   }
-      *
-      *   async setItem(key: string, value: string) {
-      *     const encrypted = await this._encrypt(key, value);
-      *
-      *     await AsyncStorage.setItem(key, encrypted);
-      *   }
-      * }
-      *
-      * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", {
-      *   auth: {
-      *     storage: new LargeSecureStore(),
-      *     autoRefreshToken: true,
-      *     persistSession: true,
-      *     detectSessionInUrl: false,
-      *   },
-      * });
-      * ```
-      *
-      * @example With a database query
-      * ```ts
-      * import { createClient } from '@supabase/supabase-js'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
-      *
-      * const { data } = await supabase.from('profiles').select('*')
-      * ```
-      *
-      * @exampleDescription With OpenTelemetry tracing
-      * Opt in to W3C trace context propagation so the `trace_id` from your
-      * client-side spans is attached to Supabase requests and appears in API
-      * Gateway and Edge Function logs. Requires `@opentelemetry/api` to be
-      * installed in your application and the tracing runtime to be loaded via
-      * `import '@supabase/supabase-js/tracing'`. See [Tracing with the JS SDK](https://supabase.com/docs/guides/telemetry/client-side-tracing).
-      *
-      * @example With OpenTelemetry tracing
-      * ```ts
-      * import '@supabase/supabase-js/tracing'
-      * import { createClient } from '@supabase/supabase-js'
-      * import { trace } from '@opentelemetry/api'
-      *
-      * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
-      *   tracePropagation: true,
-      * })
-      *
-      * const tracer = trace.getTracer('my-app')
-      *
-      * await tracer.startActiveSpan('fetch-users', async (span) => {
-      *   // Outgoing request carries the active trace context.
-      *   const { data, error } = await supabase.from('users').select('*')
-      *   span.end()
-      * })
-      * ```
-      */
-      constructor(supabaseUrl2, supabaseKey2, options) {
-        var _settings$auth$storag, _settings$global$head;
-        this.supabaseUrl = supabaseUrl2;
-        this.supabaseKey = supabaseKey2;
-        const baseUrl = validateSupabaseUrl(supabaseUrl2);
-        if (!supabaseKey2) throw new Error("supabaseKey is required.");
-        checkApiKeyFormat(supabaseKey2);
-        checkTopLevelSchemaOption(options);
-        this.realtimeUrl = new URL("realtime/v1", baseUrl);
-        this.realtimeUrl.protocol = this.realtimeUrl.protocol.replace("http", "ws");
-        this.authUrl = new URL("auth/v1", baseUrl);
-        this.storageUrl = new URL("storage/v1", baseUrl);
-        this.functionsUrl = new URL("functions/v1", baseUrl);
-        const defaultStorageKey = `sb-${baseUrl.hostname.split(".")[0]}-auth-token`;
-        const DEFAULTS = {
-          db: DEFAULT_DB_OPTIONS,
-          realtime: DEFAULT_REALTIME_OPTIONS,
-          auth: _objectSpread23(_objectSpread23({}, DEFAULT_AUTH_OPTIONS), {}, { storageKey: defaultStorageKey }),
-          global: DEFAULT_GLOBAL_OPTIONS,
-          tracePropagation: DEFAULT_TRACE_PROPAGATION_OPTIONS
-        };
-        const settings = applySettingDefaults(options !== null && options !== void 0 ? options : {}, DEFAULTS);
-        this.settings = settings;
-        this.storageKey = (_settings$auth$storag = settings.auth.storageKey) !== null && _settings$auth$storag !== void 0 ? _settings$auth$storag : "";
-        this.headers = (_settings$global$head = settings.global.headers) !== null && _settings$global$head !== void 0 ? _settings$global$head : {};
-        if (!settings.accessToken) {
-          var _settings$auth;
-          this.auth = this._initSupabaseAuthClient((_settings$auth = settings.auth) !== null && _settings$auth !== void 0 ? _settings$auth : {}, this.headers, settings.global.fetch);
-        } else {
-          this.accessToken = settings.accessToken;
-          this.auth = new Proxy({}, { get: (_, prop) => {
-            throw new Error(`@supabase/supabase-js: Supabase Client is configured with the accessToken option, accessing supabase.auth.${String(prop)} is not possible`);
-          } });
-        }
-        this.fetch = fetchWithAuth(supabaseKey2, supabaseUrl2, this._getSessionToken.bind(this), settings.global.fetch, settings.tracePropagation);
-        this.functionsFetch = fetchWithAuth(supabaseKey2, supabaseUrl2, this._getSessionToken.bind(this), settings.global.fetch, settings.tracePropagation, { omitApiKeyAsBearer: true });
-        this.realtime = this._initRealtimeClient(_objectSpread23({
-          headers: this.headers,
-          accessToken: this._getAccessToken.bind(this),
-          fetch: this.fetch
-        }, settings.realtime));
-        if (this.accessToken) Promise.resolve(this.accessToken()).then((token) => this.realtime.setAuth(token)).catch((e2) => console.warn("Failed to set initial Realtime auth token:", e2));
-        this.rest = new PostgrestClient(new URL("rest/v1", baseUrl).href, {
-          headers: this.headers,
-          schema: settings.db.schema,
-          fetch: this.fetch,
-          timeout: settings.db.timeout,
-          urlLengthLimit: settings.db.urlLengthLimit,
-          retry: settings.db.retry
-        });
-        this.storage = new StorageClient(this.storageUrl.href, this.headers, this.fetch, options === null || options === void 0 ? void 0 : options.storage);
-        if (!settings.accessToken) this._listenForAuthEvents();
-      }
-      /**
-      * Supabase Functions allows you to deploy and invoke edge functions.
-      */
-      get functions() {
-        return new import_functions_js.FunctionsClient(this.functionsUrl.href, {
-          headers: this.headers,
-          customFetch: this.functionsFetch
-        });
-      }
-      /**
-      * Perform a query on a table or a view.
-      *
-      * @param relation - The table or view name to query
-      */
-      from(relation) {
-        return this.rest.from(relation);
-      }
-      /**
-      * Select a schema to query or perform an function (rpc) call.
-      *
-      * The schema needs to be on the list of exposed schemas inside Supabase.
-      *
-      * @param schema - The schema to query
-      */
-      schema(schema) {
-        return this.rest.schema(schema);
-      }
-      /**
-      * Fetch the OpenAPI description PostgREST publishes for this client's schema.
-      *
-      * The document lists only the tables, views and functions the caller's role
-      * holds privileges on. The request carries the same `apikey` and
-      * `Authorization` headers as every other query, so the description is scoped
-      * to the signed-in user. Call `.schema()` first to describe a schema other
-      * than the client default.
-      *
-      * @example
-      * ```ts
-      * const { data, error } = await supabase.getOpenApiSpec()
-      * ```
-      */
-      getOpenApiSpec() {
-        return this.rest.getOpenApiSpec();
-      }
-      /**
-      * Perform a function call.
-      *
-      * @param fn - The function name to call
-      * @param args - The arguments to pass to the function call
-      * @param options - Named parameters
-      * @param options.head - When set to `true`, `data` will not be returned.
-      * Useful if you only need the count.
-      * @param options.get - When set to `true`, the function will be called with
-      * read-only access mode.
-      * @param options.count - Count algorithm to use to count rows returned by the
-      * function. Only applicable for [set-returning
-      * functions](https://www.postgresql.org/docs/current/functions-srf.html).
-      *
-      * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
-      * hood.
-      *
-      * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
-      * statistics under the hood.
-      *
-      * `"estimated"`: Uses exact count for low numbers and planned count for high
-      * numbers.
-      */
-      rpc(fn, args = {}, options = {
-        head: false,
-        get: false,
-        count: void 0
-      }) {
-        return this.rest.rpc(fn, args, options);
-      }
-      /**
-      * Creates a Realtime channel with Broadcast, Presence, and Postgres Changes.
-      *
-      * @param {string} name - The name of the Realtime channel.
-      * @param {Object} opts - The options to pass to the Realtime channel.
-      *
-      * @category Realtime
-      */
-      channel(name, opts = { config: {} }) {
-        return this.realtime.channel(name, opts);
-      }
-      /**
-      * Returns all Realtime channels.
-      *
-      * @category Realtime
-      *
-      * @example Get all channels
-      * ```js
-      * const channels = supabase.getChannels()
-      * ```
-      */
-      getChannels() {
-        return this.realtime.getChannels();
-      }
-      /**
-      * Unsubscribes and removes Realtime channel from Realtime client.
-      *
-      * @param {RealtimeChannel} channel - The name of the Realtime channel.
-      *
-      *
-      * @category Realtime
-      *
-      * @remarks
-      * - Removing a channel is a great way to maintain the performance of your project's Realtime service as well as your database if you're listening to Postgres changes. Supabase will automatically handle cleanup 30 seconds after a client is disconnected, but unused channels may cause degradation as more clients are simultaneously subscribed.
-      *
-      * @example Removes a channel
-      * ```js
-      * supabase.removeChannel(myChannel)
-      * ```
-      */
-      removeChannel(channel) {
-        return this.realtime.removeChannel(channel);
-      }
-      /**
-      * Unsubscribes and removes all Realtime channels from Realtime client.
-      *
-      * @category Realtime
-      *
-      * @remarks
-      * - Removing channels is a great way to maintain the performance of your project's Realtime service as well as your database if you're listening to Postgres changes. Supabase will automatically handle cleanup 30 seconds after a client is disconnected, but unused channels may cause degradation as more clients are simultaneously subscribed.
-      *
-      * @example Remove all channels
-      * ```js
-      * supabase.removeAllChannels()
-      * ```
-      */
-      removeAllChannels() {
-        return this.realtime.removeAllChannels();
-      }
-      /**
-      * The raw session token — the custom `accessToken` result or the signed-in user's JWT —
-      * or `null` when there is no session. Unlike {@link _getAccessToken} it does not fall back
-      * to `supabaseKey`, so callers can distinguish "no session" from "has session".
-      */
-      async _getSessionToken() {
-        var _this = this;
-        var _data$session$access_, _data$session;
-        if (_this.accessToken) return await _this.accessToken();
-        const { data } = await _this.auth.getSession();
-        return (_data$session$access_ = (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) !== null && _data$session$access_ !== void 0 ? _data$session$access_ : null;
-      }
-      async _getAccessToken() {
-        var _this2 = this;
-        var _await$this$_getSessi;
-        return (_await$this$_getSessi = await _this2._getSessionToken()) !== null && _await$this$_getSessi !== void 0 ? _await$this$_getSessi : _this2.supabaseKey;
-      }
-      _initSupabaseAuthClient({ autoRefreshToken, persistSession, detectSessionInUrl, storage, userStorage, storageKey, flowType, lock, debug, throwOnError, experimental, lockAcquireTimeout, skipAutoInitialize }, headers, fetch$1) {
-        const authHeaders = {
-          Authorization: `Bearer ${this.supabaseKey}`,
-          apikey: `${this.supabaseKey}`
-        };
-        return new SupabaseAuthClient({
-          url: this.authUrl.href,
-          headers: _objectSpread23(_objectSpread23({}, authHeaders), headers),
-          storageKey,
-          autoRefreshToken,
-          persistSession,
-          detectSessionInUrl,
-          storage,
-          userStorage,
-          flowType,
-          lock,
-          debug,
-          throwOnError,
-          experimental,
-          fetch: fetch$1,
-          lockAcquireTimeout,
-          skipAutoInitialize,
-          hasCustomAuthorizationHeader: Object.keys(this.headers).some((key) => key.toLowerCase() === "authorization")
-        });
-      }
-      _initRealtimeClient(options) {
-        return new import_realtime_js.RealtimeClient(this.realtimeUrl.href, _objectSpread23(_objectSpread23({}, options), {}, { params: _objectSpread23(_objectSpread23({}, { apikey: this.supabaseKey }), options === null || options === void 0 ? void 0 : options.params) }));
-      }
-      _listenForAuthEvents() {
-        return this.auth.onAuthStateChange((event, session) => {
-          this._handleTokenChanged(event, "CLIENT", session === null || session === void 0 ? void 0 : session.access_token);
-        });
-      }
-      _handleTokenChanged(event, source, token) {
-        if ((event === "TOKEN_REFRESHED" || event === "SIGNED_IN" || event === "INITIAL_SESSION") && this.changedAccessToken !== token) {
-          this.changedAccessToken = token;
-          this.realtime.setAuth(token);
-        } else if (event === "SIGNED_OUT") {
-          this.realtime.setAuth();
-          if (source == "STORAGE") this.auth.signOut();
-          this.changedAccessToken = void 0;
-        }
-      }
-    };
-    createClient = (supabaseUrl2, supabaseKey2, options) => {
-      return new SupabaseClient(supabaseUrl2, supabaseKey2, options);
-    };
-    if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 20 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 22 or later. For more information, visit: https://github.com/orgs/supabase/discussions/45715");
-  }
-});
-
-// src/lib/supabaseClient.ts
-function getEnvVar(key) {
-  if (typeof process !== "undefined" && process.env && process.env[key]) {
-    return process.env[key];
-  }
-  try {
-    const metaEnv = import.meta.env;
-    if (metaEnv && metaEnv[key]) {
-      return metaEnv[key];
-    }
-  } catch {
-  }
-  return void 0;
-}
-function getSupabaseClient() {
-  if (!isSupabaseConfigured) {
-    return null;
-  }
-  if (!cachedClient) {
-    cachedClient = createClient(supabaseUrl, supabaseKey, {
-      auth: {
-        persistSession: typeof window !== "undefined",
-        autoRefreshToken: true
-      }
-    });
-  }
-  return cachedClient;
-}
-var fallbackUrl, fallbackKey, dynamicUrl, dynamicKey, supabaseUrl, supabaseKey, isSupabaseConfigured, cachedClient;
-var init_supabaseClient = __esm({
-  "src/lib/supabaseClient.ts"() {
-    init_dist5();
-    fallbackUrl = "https://tctaqmtvypibxsaehawf.supabase.co";
-    fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg";
-    dynamicUrl = "";
-    dynamicKey = "";
-    supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || fallbackUrl;
-    supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || fallbackKey;
-    isSupabaseConfigured = Boolean(
-      supabaseUrl && supabaseKey && supabaseUrl.startsWith("https://") && !supabaseUrl.includes("placeholder") && !supabaseUrl.includes("your-project")
-    );
-    cachedClient = null;
-  }
-});
-
-// src/services/supabaseSyncService.ts
-var supabaseSyncService_exports = {};
-__export(supabaseSyncService_exports, {
-  SupabaseSyncService: () => SupabaseSyncService
-});
-var SupabaseSyncService;
-var init_supabaseSyncService = __esm({
-  "src/services/supabaseSyncService.ts"() {
-    init_supabaseClient();
-    init_memoryStore();
-    SupabaseSyncService = {
-      /**
-       * Health-check the Supabase connection
-       */
-      async checkConnection() {
-        if (!isSupabaseConfigured) {
-          return {
-            configured: false,
-            connected: false,
-            message: "\u0625\u0639\u062F\u0627\u062F\u0627\u062A Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629 \u0628\u0639\u062F. \u064A\u0639\u0645\u0644 \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0622\u0646 \u0628\u0643\u0641\u0627\u0621\u0629 \u0643\u0627\u0645\u0644\u0629 \u0639\u0644\u0649 \u0627\u0644\u0645\u062D\u0631\u0643 \u0627\u0644\u0645\u062D\u0644\u064A \u0648\u0642\u0631\u0635 \u0627\u0644\u062A\u062E\u0632\u064A\u0646."
-          };
-        }
-        const client = getSupabaseClient();
-        if (!client) {
-          return {
-            configured: false,
-            connected: false,
-            message: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0639\u0645\u064A\u0644 Supabase."
-          };
-        }
-        const startTime = Date.now();
-        try {
-          const { data, error } = await Promise.race([
-            client.from("mosques").select("id", { count: "exact", head: true }),
-            new Promise(
-              (_, reject) => setTimeout(() => reject(new Error("\u0627\u0646\u062A\u0647\u062A \u0645\u0647\u0644\u0629 \u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase (5s)")), 5e3)
-            )
-          ]);
-          if (error) {
-            if (error.code === "PGRST205" || error.message?.includes("schema cache") || error.message?.includes("not find")) {
-              const latencyMs2 = Date.now() - startTime;
-              return {
-                configured: true,
-                connected: true,
-                latencyMs: latencyMs2,
-                message: `\u062A\u0645 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase \u0628\u0646\u062C\u0627\u062D (${latencyMs2} ms). \u064A\u0631\u062C\u0649 \u0627\u0644\u0622\u0646 \u062A\u0634\u063A\u064A\u0644 \u0645\u0644\u0641 supabase_schema.sql \u0641\u064A SQL Editor \u0644\u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0627\u0648\u0644.`,
-                error: "TABLES_NOT_CREATED_YET"
-              };
-            }
-            return {
-              configured: true,
-              connected: false,
-              error: error.message,
-              message: `\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase: ${error.message}`
-            };
-          }
-          const latencyMs = Date.now() - startTime;
-          let counts = void 0;
-          try {
-            const [mRes, iRes, sRes, aRes] = await Promise.all([
-              client.from("mosques").select("*", { count: "exact", head: true }),
-              client.from("imams").select("*", { count: "exact", head: true }),
-              client.from("monthly_schedules").select("*", { count: "exact", head: true }),
-              client.from("assignments").select("*", { count: "exact", head: true })
-            ]);
-            counts = {
-              mosques: mRes.count ?? 0,
-              imams: iRes.count ?? 0,
-              schedules: sRes.count ?? 0,
-              assignments: aRes.count ?? 0
-            };
-          } catch {
-          }
-          return {
-            configured: true,
-            connected: true,
-            latencyMs,
-            counts,
-            url: "https://tctaqmtvypibxsaehawf.supabase.co",
-            message: `\u0645\u062A\u0635\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase \u0628\u0646\u062C\u0627\u062D (\u0632\u0645\u0646 \u0627\u0644\u0627\u0633\u062A\u062C\u0627\u0628\u0629: ${latencyMs} \u0645\u0644\u064A \u062B\u0627\u0646\u064A\u0629)`
-          };
-        } catch (err) {
-          return {
-            configured: true,
-            connected: false,
-            error: err.message,
-            message: `\u062A\u0639\u0630\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase: ${err.message}`
-          };
-        }
+    const mosquesData = await db.select().from(mosques);
+    const imamsData = await db.select().from(imams);
+    const schedulesData = await db.select().from(monthlySchedules);
+    const fridaysData = await db.select().from(fridays);
+    const assignmentsData = await db.select().from(assignments);
+    const rulesData = await db.select().from(mosqueImamRules);
+    const fixedPatternsData = await db.select().from(fixedAssignmentPatterns);
+    const fixedPatternItemsData = await db.select().from(fixedAssignmentPatternItems);
+    const usersData = await db.select().from(users);
+    const dump = {
+      exportDate: (/* @__PURE__ */ new Date()).toISOString(),
+      counts: {
+        mosques: mosquesData.length,
+        imams: imamsData.length,
+        schedules: schedulesData.length,
+        assignments: assignmentsData.length,
+        rules: rulesData.length,
+        patterns: fixedPatternsData.length
       },
-      /**
-       * Push all current local data (Mosques, Imams, Rules, Schedules, Assignments) to Supabase
-       */
-      async pushLocalToSupabase() {
-        const client = getSupabaseClient();
-        if (!client) {
-          throw new Error("Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623. \u064A\u0631\u062C\u0649 \u0625\u0636\u0627\u0641\u0629 SUPABASE_URL \u0648 SUPABASE_ANON_KEY \u0641\u064A \u0645\u0644\u0641 \u0627\u0644\u0628\u064A\u0626\u0629 .env \u0623\u0648\u0644\u0627\u064B.");
-        }
-        const mosques2 = memoryStore.getMosques();
-        const imams2 = memoryStore.getImams();
-        const schedules = memoryStore.getSchedules();
-        if (mosques2.length > 0) {
-          const dbMosques = mosques2.map((m2) => ({
-            id: m2.id,
-            name: m2.name,
-            code: m2.code,
-            region: m2.region || "\u0627\u0644\u0648\u0633\u0637",
-            address: m2.address || null,
-            manager_name: m2.managerName || null,
-            phone: m2.phone || null,
-            whatsapp: m2.whatsapp || null,
-            fixed_imam_id: m2.fixedImamId || null,
-            is_active: m2.isActive ?? true,
-            notes: m2.notes || null,
-            updated_at: (/* @__PURE__ */ new Date()).toISOString()
-          }));
-          const { error: mosqueErr } = await client.from("mosques").upsert(dbMosques, { onConflict: "id" });
-          if (mosqueErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0625\u0644\u0649 \u0627\u0644\u0633\u062D\u0627\u0628\u0629: ${mosqueErr.message}`);
-        }
-        if (imams2.length > 0) {
-          const dbImams = imams2.map((i2) => ({
-            id: i2.id,
-            name: i2.name,
-            phone: i2.phone || null,
-            whatsapp: i2.whatsapp || null,
-            type: i2.type || "FLEXIBLE",
-            region: i2.region || "\u0627\u0644\u0648\u0633\u0637",
-            min_fridays: i2.minFridays || 1,
-            max_fridays: i2.maxFridays || 4,
-            target_fridays: i2.targetFridays || 2,
-            is_active: i2.isActive ?? true,
-            notes: i2.notes || null,
-            updated_at: (/* @__PURE__ */ new Date()).toISOString()
-          }));
-          const { error: imamErr } = await client.from("imams").upsert(dbImams, { onConflict: "id" });
-          if (imamErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0625\u0644\u0649 \u0627\u0644\u0633\u062D\u0627\u0628\u0629: ${imamErr.message}`);
-        }
-        const rules = memoryStore.getRules ? memoryStore.getRules() : [];
-        if (rules.length > 0) {
-          const dbRules = rules.map((r2) => ({
-            id: r2.id,
-            mosque_id: r2.mosqueId,
-            imam_id: r2.imamId,
-            relationship_type: r2.relationshipType,
-            priority: r2.priority || 1,
-            notes: r2.notes || null
-          }));
-          const { error: ruleErr } = await client.from("mosque_imam_rules").upsert(dbRules, { onConflict: "id" });
-          if (ruleErr) console.warn("Supabase rules sync warning:", ruleErr.message);
-        }
-        let totalAssignmentsSynced = 0;
-        if (schedules.length > 0) {
-          for (const s2 of schedules) {
-            const { error: schedErr } = await client.from("monthly_schedules").upsert(
-              {
-                id: s2.id,
-                hijri_year: s2.hijriYear,
-                hijri_month: s2.hijriMonth,
-                month_name: s2.monthName,
-                calendar_provider: s2.calendarProvider || "UMM_AL_QURA",
-                timezone: s2.timezone || "Asia/Riyadh",
-                fridays_count: s2.fridaysCount,
-                status: s2.status,
-                current_version: s2.currentVersion || 1,
-                approved_by: s2.approvedBy || null,
-                approved_at: s2.approvedAt || null,
-                published_at: s2.publishedAt || null,
-                updated_at: (/* @__PURE__ */ new Date()).toISOString()
-              },
-              { onConflict: "id" }
-            );
-            if (schedErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062C\u062F\u0648\u0644 ${s2.id}: ${schedErr.message}`);
-            const details = memoryStore.getScheduleDetails(s2.id);
-            if (details?.fridays && details.fridays.length > 0) {
-              const dbFridays = details.fridays.map((f3) => ({
-                id: f3.id,
-                schedule_id: s2.id,
-                friday_index: f3.fridayIndex,
-                hijri_date: f3.hijriDate || "",
-                gregorian_date: f3.gregorianDate || "",
-                gregorian_iso: f3.gregorianIso || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
-                period_status: f3.periodStatus || "CURRENT",
-                is_past: Boolean(f3.isPast)
-              }));
-              const { error: friErr } = await client.from("fridays").upsert(dbFridays, { onConflict: "id" });
-              if (friErr) console.warn("Supabase fridays sync warning:", friErr.message);
-            }
-            if (details?.assignments && details.assignments.length > 0) {
-              const validImamIds = new Set(imams2.map((i2) => Number(i2.id)));
-              const dbAssignments = details.assignments.map((a) => ({
-                id: a.id,
-                schedule_id: a.scheduleId,
-                mosque_id: a.mosqueId,
-                friday_index: a.fridayIndex,
-                imam_id: a.imamId && validImamIds.has(Number(a.imamId)) ? Number(a.imamId) : null,
-                is_locked: a.isLocked || false,
-                source: a.source || "BALANCED",
-                notes: a.notes || null,
-                updated_at: (/* @__PURE__ */ new Date()).toISOString()
-              }));
-              const { error: assignErr } = await client.from("assignments").upsert(dbAssignments, { onConflict: "id" });
-              if (assignErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062A\u0643\u0644\u064A\u0641\u0627\u062A \u0644\u0644\u062C\u062F\u0648\u0644 ${s2.id}: ${assignErr.message}`);
-              totalAssignmentsSynced += dbAssignments.length;
-            }
-          }
-        }
-        return {
-          success: true,
-          message: "\u062A\u0645\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0648\u0631\u0641\u0639 \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0628\u0646\u062C\u0627\u062D \u0625\u0644\u0649 \u0633\u062D\u0627\u0628\u0629 Supabase \u2601\uFE0F",
-          syncedAt: (/* @__PURE__ */ new Date()).toISOString(),
-          mosquesCount: mosques2.length,
-          imamsCount: imams2.length,
-          schedulesCount: schedules.length,
-          assignmentsCount: totalAssignmentsSynced
-        };
-      }
+      mosques: mosquesData,
+      imams: imamsData,
+      monthlySchedules: schedulesData,
+      fridays: fridaysData,
+      assignments: assignmentsData,
+      mosqueImamRules: rulesData,
+      fixedAssignmentPatterns: fixedPatternsData,
+      fixedAssignmentPatternItems: fixedPatternItemsData,
+      users: usersData
     };
+    const filePath = path3.resolve("src/db/initialSeed.json");
+    fs4.writeFileSync(filePath, JSON.stringify(dump, null, 2), "utf8");
+    console.log("\u062A\u0645 \u062D\u0641\u0638 \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0628\u0646\u062C\u0627\u062D \u0641\u064A \u0645\u0644\u0641:", filePath);
+    console.log("\u0625\u062D\u0635\u0627\u0626\u064A\u0627\u062A \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u062D\u0641\u0648\u0638:", dump.counts);
+    return dump;
+  } catch (err) {
+    console.error("\u062E\u0637\u0623 \u0623\u062B\u0646\u0627\u0621 \u062A\u0635\u062F\u064A\u0631 \u0645\u0644\u0641 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0623\u0633\u0627\u0633\u064A:", err);
+    throw err;
+  }
+}
+var init_exportSeed = __esm({
+  "scripts/exportSeed.ts"() {
+    init_db2();
+    init_schema2();
+    if (import.meta.url === `file://${process.argv[1]}`) {
+      exportCurrentDatabaseToSeedJson().then(() => process.exit(0)).catch((e2) => {
+        console.error(e2);
+        process.exit(1);
+      });
+    }
   }
 });
 
@@ -133218,7 +122569,570 @@ var import_express = __toESM(require_express2(), 1);
 init_db2();
 init_schema2();
 init_drizzle_orm();
-init_schedulingEngine();
+
+// src/services/schedulingEngine.ts
+var SeededRandom = class {
+  constructor(seedStr = "FRIDAY-SCHEDULER-V1") {
+    let hash = 0;
+    for (let i2 = 0; i2 < seedStr.length; i2++) {
+      hash = (hash << 5) - hash + seedStr.charCodeAt(i2);
+      hash |= 0;
+    }
+    this.seed = Math.abs(hash) || 123456789;
+  }
+  next() {
+    this.seed = (this.seed * 9301 + 49297) % 233280;
+    return this.seed / 233280;
+  }
+};
+var SchedulingEngine = class {
+  /**
+   * الدالة الرئيسية لتوليد جدول خطباء الجمعة
+   */
+  static generate(input) {
+    const rng = new SeededRandom(input.seed || `${input.monthName}-${input.hijriYear}-${input.fridaysCount}`);
+    const method = input.distributionMethod || "Balanced Random";
+    const activeMosques = input.mosques.filter((m2) => m2.isActive);
+    const activeImams = input.imams.filter((i2) => i2.isActive);
+    const imamMap = new Map(activeImams.map((i2) => [i2.id, i2]));
+    const mosqueMap = new Map(activeMosques.map((m2) => [m2.id, m2]));
+    const unavailableSet = /* @__PURE__ */ new Set();
+    for (const a of input.availabilities) {
+      if (!a.isAvailable) {
+        unavailableSet.add(`${a.imamId}:${a.fridayIndex}`);
+      }
+    }
+    const rulesMap = /* @__PURE__ */ new Map();
+    for (const r2 of input.rules) {
+      rulesMap.set(`${r2.mosqueId}:${r2.imamId}`, r2);
+    }
+    const lockedMap = /* @__PURE__ */ new Map();
+    if (input.lockedAssignments) {
+      for (const l of input.lockedAssignments) {
+        lockedMap.set(`${l.mosqueId}:${l.fridayIndex}`, l);
+      }
+    }
+    const assignmentsGrid = /* @__PURE__ */ new Map();
+    const imamFridaysCount = {};
+    for (const imam of activeImams) {
+      imamFridaysCount[imam.id] = 0;
+    }
+    const fridayImamBooking = /* @__PURE__ */ new Map();
+    const conflicts2 = [];
+    for (const [key, locked] of lockedMap.entries()) {
+      assignmentsGrid.set(key, {
+        fridayIndex: locked.fridayIndex,
+        mosqueId: locked.mosqueId,
+        imamId: locked.imamId,
+        source: locked.source || "MANUAL",
+        isLocked: true,
+        notes: locked.notes || void 0
+      });
+      if (locked.imamId) {
+        imamFridaysCount[locked.imamId] = (imamFridaysCount[locked.imamId] || 0) + 1;
+        fridayImamBooking.set(`${locked.imamId}:${locked.fridayIndex}`, locked.mosqueId);
+      }
+    }
+    const isTargetCell = (mosqueId, fridayIndex) => {
+      if (input.targetMosqueId && input.targetMosqueId !== mosqueId) return false;
+      if (input.targetFridayIndex && input.targetFridayIndex !== fridayIndex) return false;
+      return true;
+    };
+    const patternMosqueIds = /* @__PURE__ */ new Set();
+    if (input.fixedPatterns && input.fixedPatterns.length > 0) {
+      for (const pattern of input.fixedPatterns) {
+        patternMosqueIds.add(pattern.mosqueId);
+        const mosque = mosqueMap.get(pattern.mosqueId);
+        if (!mosque || !mosque.isActive) continue;
+        for (const item of pattern.items) {
+          const f3 = item.fridayIndex;
+          if (f3 > input.fridaysCount) continue;
+          const cellKey = `${pattern.mosqueId}:${f3}`;
+          if (assignmentsGrid.has(cellKey)) {
+            continue;
+          }
+          if (!isTargetCell(pattern.mosqueId, f3)) {
+            continue;
+          }
+          const imam = imamMap.get(item.imamId);
+          if (!imam || !imam.isActive) {
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: pattern.mosqueId,
+              fridayIndex: f3,
+              imamId: item.imamId,
+              ruleCode: "FIXED_IMAM_INACTIVE",
+              message: `\u0627\u0644\u062E\u0637\u064A\u0628 \u0627\u0644\u0645\u062B\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u063A\u064A\u0631 \u0646\u0634\u0637 \u0623\u0648 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F.`,
+              possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0648\u0627\u062E\u062A\u064A\u0627\u0631 \u062E\u0637\u064A\u0628 \u0646\u0634\u0637", "\u0625\u0644\u063A\u0627\u0621 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0645\u0624\u0642\u062A\u0627\u064B"]
+            });
+            continue;
+          }
+          if (unavailableSet.has(`${imam.id}:${f3}`)) {
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: pattern.mosqueId,
+              fridayIndex: f3,
+              imamId: imam.id,
+              ruleCode: "FIXED_UNAVAILABLE",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u062A\u062B\u0628\u064A\u062A: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062B\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u0644\u0643\u0646\u0647 \u0645\u0633\u062C\u0644 \u0628\u0627\u0639\u062A\u0630\u0627\u0631 \u0631\u0633\u0645\u064A / \u063A\u064A\u0631 \u0645\u062A\u0627\u062D.`,
+              possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0644\u062C\u0645\u0639\u0629 \u0623\u062E\u0631\u0649", "\u062A\u0643\u0644\u064A\u0641 \u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629"]
+            });
+            continue;
+          }
+          if (fridayImamBooking.has(`${imam.id}:${f3}`)) {
+            const bookedMosqueId = fridayImamBooking.get(`${imam.id}:${f3}`);
+            const bookedMosque = mosqueMap.get(bookedMosqueId);
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: pattern.mosqueId,
+              fridayIndex: f3,
+              imamId: imam.id,
+              ruleCode: "FIXED_DOUBLE_BOOKING",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u062A\u062B\u0628\u064A\u062A \u0645\u0632\u062F\u0648\u062C: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062B\u0628\u062A \u0641\u064A \u0623\u0643\u062B\u0631 \u0645\u0646 \u0645\u0633\u062C\u062F \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u2014 (${bookedMosque?.name || "\u0645\u0633\u062C\u062F \u0622\u062E\u0631"}) \u0648 (${mosque.name}).`,
+              possibleResolutions: ["\u062A\u062F\u062E\u0644 \u0645\u062F\u064A\u0631 \u0627\u0644\u062C\u062F\u0648\u0644 \u0648\u062A\u0639\u062F\u064A\u0644 \u0623\u062D\u062F \u0627\u0644\u0645\u0633\u062C\u062F\u064A\u0646 \u064A\u062F\u0648\u064A\u0627\u064B"]
+            });
+            continue;
+          }
+          const rule = rulesMap.get(`${mosque.id}:${imam.id}`);
+          if (rule && rule.relationshipType === "FORBIDDEN") {
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: pattern.mosqueId,
+              fridayIndex: f3,
+              imamId: imam.id,
+              ruleCode: "FIXED_FORBIDDEN",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u0642\u0627\u0639\u062F\u0629: \u0627\u0644\u0634\u064A\u062E (${imam.name}) \u0645\u062D\u0638\u0648\u0631 \u0645\u0646 \u0627\u0644\u062E\u0637\u0627\u0628\u0629 \u0641\u064A \u0645\u0633\u062C\u062F (${mosque.name}) \u062D\u0633\u0628 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F.`,
+              possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0623\u0648 \u0627\u0633\u062A\u0628\u062F\u0627\u0644 \u0627\u0644\u062E\u0637\u064A\u0628"]
+            });
+            continue;
+          }
+          assignmentsGrid.set(cellKey, {
+            fridayIndex: f3,
+            mosqueId: pattern.mosqueId,
+            imamId: imam.id,
+            source: "FIXED",
+            isLocked: true,
+            notes: item.notes || `\u0645\u062B\u0628\u062A \u0628\u0627\u0644\u0646\u0645\u0637 (${pattern.patternType}) \u0644\u0644\u062C\u0645\u0639\u0629 (${f3})`
+          });
+          imamFridaysCount[imam.id] = (imamFridaysCount[imam.id] || 0) + 1;
+          fridayImamBooking.set(`${imam.id}:${f3}`, pattern.mosqueId);
+        }
+      }
+    }
+    for (const mosque of activeMosques) {
+      if (patternMosqueIds.has(mosque.id) || !mosque.fixedImamId) continue;
+      const fixedImam = imamMap.get(mosque.fixedImamId);
+      if (!fixedImam) continue;
+      const pattern = mosque.fixedPattern || "ALL";
+      const count = mosque.fixedCount || input.fridaysCount;
+      for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
+        const cellKey = `${mosque.id}:${f3}`;
+        if (assignmentsGrid.has(cellKey)) {
+          continue;
+        }
+        if (!isTargetCell(mosque.id, f3)) {
+          continue;
+        }
+        let isFixedThisFriday = false;
+        if (pattern === "ALL") {
+          isFixedThisFriday = true;
+        } else if (pattern === "FIRST_N" && f3 <= count) {
+          isFixedThisFriday = true;
+        } else if (pattern === "LAST_N" && f3 > input.fridaysCount - count) {
+          isFixedThisFriday = true;
+        } else if (pattern === "SPECIFIC_FRIDAYS" && mosque.specificFridays?.includes(f3)) {
+          isFixedThisFriday = true;
+        } else if (pattern === "ANY_N") {
+          const currentCount = imamFridaysCount[fixedImam.id] || 0;
+          if (currentCount < count) {
+            isFixedThisFriday = true;
+          }
+        }
+        if (isFixedThisFriday) {
+          const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f3}`);
+          const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f3}`);
+          if (!isUnavailable && !isAlreadyBooked) {
+            assignmentsGrid.set(cellKey, {
+              fridayIndex: f3,
+              mosqueId: mosque.id,
+              imamId: fixedImam.id,
+              source: "FIXED",
+              isLocked: true,
+              notes: `\u062B\u0627\u0628\u062A \u0648\u0641\u0642 \u0646\u0645\u0637 (${pattern})`
+            });
+            imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
+            fridayImamBooking.set(`${fixedImam.id}:${f3}`, mosque.id);
+          }
+        }
+      }
+    }
+    const sortedMosques = [...activeMosques].sort((a, b) => {
+      const aRules = input.rules.filter((r2) => r2.mosqueId === a.id);
+      const bRules = input.rules.filter((r2) => r2.mosqueId === b.id);
+      return bRules.length - aRules.length;
+    });
+    for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
+      for (const mosque of sortedMosques) {
+        const cellKey = `${mosque.id}:${f3}`;
+        if (assignmentsGrid.has(cellKey)) {
+          continue;
+        }
+        if (!isTargetCell(mosque.id, f3)) {
+          continue;
+        }
+        const candidates = [];
+        for (const imam of activeImams) {
+          if (unavailableSet.has(`${imam.id}:${f3}`)) {
+            continue;
+          }
+          if (fridayImamBooking.has(`${imam.id}:${f3}`)) {
+            continue;
+          }
+          const rule = rulesMap.get(`${mosque.id}:${imam.id}`);
+          if (rule && rule.relationshipType === "FORBIDDEN") {
+            continue;
+          }
+          const currentCount = imamFridaysCount[imam.id] || 0;
+          if (currentCount >= imam.maxFridays) {
+            continue;
+          }
+          const isPreferred = rule?.relationshipType === "PREFERRED";
+          const isDiscouraged = rule?.relationshipType === "DISCOURAGED";
+          const priority = rule?.priority || 999;
+          const deficitToTarget = imam.targetFridays - currentCount;
+          let score = 0;
+          if (isPreferred) {
+            score += 1e3 - Math.min(priority * 20, 500);
+          } else if (isDiscouraged) {
+            score -= 800;
+          } else {
+            score += 100;
+          }
+          if (method === "Balanced" || method === "Balanced Random") {
+            if (currentCount < imam.minFridays) {
+              score += 400 * (imam.minFridays - currentCount);
+            }
+            score += 150 * deficitToTarget;
+          }
+          const preachedLastFridayHere = f3 > 1 && assignmentsGrid.get(`${mosque.id}:${f3 - 1}`)?.imamId === imam.id;
+          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id) {
+            score -= 2e3;
+          }
+          let previousVisitsInMonth = 0;
+          for (let prevF = 1; prevF < f3; prevF++) {
+            if (assignmentsGrid.get(`${mosque.id}:${prevF}`)?.imamId === imam.id) {
+              previousVisitsInMonth++;
+            }
+          }
+          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id) {
+            score -= 450 * previousVisitsInMonth;
+          }
+          if (input.history && input.history.length > 0 && mosque.fixedImamId !== imam.id) {
+            const historyVisits = input.history.filter((h2) => h2.mosqueId === mosque.id && h2.imamId === imam.id).length;
+            if (historyVisits > 0) {
+              score -= 300 * Math.min(historyVisits, 3);
+            }
+          }
+          if (imam.region && mosque.region && imam.region === mosque.region) {
+            score += 150;
+          }
+          if (method === "Random" || method === "Balanced Random") {
+            const noise = (rng.next() - 0.5) * (method === "Random" ? 300 : 25);
+            score += noise;
+          }
+          candidates.push({
+            imam,
+            rule,
+            isPreferred,
+            priority,
+            isDiscouraged,
+            score,
+            assignedCount: currentCount,
+            deficitToTarget
+          });
+        }
+        if (candidates.length > 0) {
+          candidates.sort((a, b) => b.score - a.score);
+          const best = candidates[0];
+          let source = "BALANCED_RANDOM";
+          if (best.isPreferred) {
+            source = "PREFERENCE";
+          } else if (method === "Balanced") {
+            source = "BALANCED";
+          } else if (method === "Random") {
+            source = "RANDOM";
+          }
+          assignmentsGrid.set(cellKey, {
+            fridayIndex: f3,
+            mosqueId: mosque.id,
+            imamId: best.imam.id,
+            source,
+            isLocked: false,
+            notes: best.isPreferred ? `\u062A\u0641\u0636\u064A\u0644 \u0631\u0642\u0645 (${best.priority}) \u0644\u0644\u0645\u0633\u062C\u062F` : void 0
+          });
+          imamFridaysCount[best.imam.id] = (imamFridaysCount[best.imam.id] || 0) + 1;
+          fridayImamBooking.set(`${best.imam.id}:${f3}`, mosque.id);
+        } else {
+          assignmentsGrid.set(cellKey, {
+            fridayIndex: f3,
+            mosqueId: mosque.id,
+            imamId: null,
+            source: "BALANCED_RANDOM",
+            isLocked: false,
+            notes: "\u062A\u0639\u0630\u0631 \u0625\u064A\u062C\u0627\u062F \u062E\u0637\u064A\u0628 \u0645\u0624\u0647\u0644 \u0648\u0641\u0642 \u0627\u0644\u0642\u064A\u0648\u062F \u0627\u0644\u062D\u0627\u0644\u064A\u0629"
+          });
+        }
+      }
+    }
+    for (const [key, assignment] of assignmentsGrid.entries()) {
+      if (!assignment.imamId) {
+        const [mIdStr, fIdxStr] = key.split(":");
+        const mosqueId = Number(mIdStr);
+        const fridayIndex = Number(fIdxStr);
+        const mosque = mosqueMap.get(mosqueId);
+        conflicts2.push({
+          severity: "CRITICAL",
+          mosqueId,
+          fridayIndex,
+          ruleCode: "EMPTY_MOSQUE",
+          message: `\u0627\u0644\u0645\u0633\u062C\u062F (${mosque?.name || mosqueId}) \u0628\u062F\u0648\u0646 \u062E\u0637\u064A\u0628 \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${fridayIndex})`,
+          possibleResolutions: [
+            "\u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0623\u062D\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u0631\u0646\u064A\u0646 \u0627\u0644\u0645\u0624\u0647\u0644\u064A\u0646",
+            "\u0627\u0644\u0633\u0645\u0627\u062D \u0628\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0641\u0636\u0644 \u0645\u0624\u0642\u062A\u0627\u064B",
+            "\u062A\u0639\u064A\u064A\u0646 \u062E\u0637\u064A\u0628 \u064A\u062F\u0648\u064A\u0627\u064B \u0648\u062A\u0623\u0643\u064A\u062F \u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A"
+          ]
+        });
+      }
+    }
+    for (const assignment of assignmentsGrid.values()) {
+      if (!assignment.imamId) continue;
+      const rule = rulesMap.get(`${assignment.mosqueId}:${assignment.imamId}`);
+      if (rule && rule.relationshipType === "FORBIDDEN") {
+        const mosque = mosqueMap.get(assignment.mosqueId);
+        const imam = imamMap.get(assignment.imamId);
+        conflicts2.push({
+          severity: "CRITICAL",
+          mosqueId: assignment.mosqueId,
+          fridayIndex: assignment.fridayIndex,
+          imamId: assignment.imamId,
+          ruleCode: "FORBIDDEN_IMAM",
+          message: `\u062A\u0645 \u062A\u0639\u064A\u064A\u0646 \u0627\u0644\u062E\u0637\u064A\u0628 (${imam?.name}) \u0641\u064A \u0645\u0633\u062C\u062F (${mosque?.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${assignment.fridayIndex}) \u0631\u063A\u0645 \u0648\u062C\u0648\u062F \u0642\u064A\u062F \u0645\u0646\u0639 (FORBIDDEN)`,
+          possibleResolutions: [
+            "\u0627\u0633\u062A\u0628\u062F\u0627\u0644 \u0627\u0644\u062E\u0637\u064A\u0628 \u0628\u062E\u0637\u064A\u0628 \u0645\u0633\u0645\u0648\u062D \u0623\u0648 \u0645\u0641\u0636\u0644",
+            "\u062A\u0639\u062F\u064A\u0644 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0646\u0639 \u0641\u064A \u0628\u0631\u0648\u0641\u0627\u064A\u0644 \u0627\u0644\u0645\u0633\u062C\u062F \u0625\u0630\u0627 \u0632\u0627\u0644 \u0633\u0628\u0628 \u0627\u0644\u0645\u0646\u0639"
+          ]
+        });
+      }
+    }
+    for (const assignment of assignmentsGrid.values()) {
+      if (!assignment.imamId) continue;
+      if (unavailableSet.has(`${assignment.imamId}:${assignment.fridayIndex}`)) {
+        const imam = imamMap.get(assignment.imamId);
+        const mosque = mosqueMap.get(assignment.mosqueId);
+        conflicts2.push({
+          severity: "CRITICAL",
+          mosqueId: assignment.mosqueId,
+          fridayIndex: assignment.fridayIndex,
+          imamId: assignment.imamId,
+          ruleCode: "IMAM_UNAVAILABLE",
+          message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam?.name}) \u063A\u064A\u0631 \u0645\u062A\u0627\u062D \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${assignment.fridayIndex}) \u0648\u062A\u0645 \u062A\u0639\u064A\u064A\u0646\u0647 \u0641\u064A \u0645\u0633\u062C\u062F (${mosque?.name})`,
+          possibleResolutions: [
+            "\u0625\u0633\u0646\u0627\u062F \u0627\u0644\u0645\u0633\u062C\u062F \u0644\u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0645\u062A\u0627\u062D",
+            "\u062A\u062D\u062F\u064A\u062B \u062C\u062F\u0648\u0644 \u0639\u062F\u0645 \u0627\u0644\u062A\u0648\u0641\u0631 \u0644\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u062D\u0627\u0644 \u0623\u0635\u0628\u062D \u0645\u062A\u0627\u062D\u0627\u064B"
+          ]
+        });
+      }
+    }
+    for (const imam of activeImams) {
+      const count = imamFridaysCount[imam.id] || 0;
+      if (count < imam.minFridays) {
+        conflicts2.push({
+          severity: "WARNING",
+          imamId: imam.id,
+          ruleCode: "UNDER_MINIMUM",
+          message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam.name}) \u062D\u0635\u0644 \u0639\u0644\u0649 (${count}) \u062C\u0645\u0639\u0627\u062A \u0648\u0647\u0648 \u0623\u0642\u0644 \u0645\u0646 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0627\u0644\u0645\u0637\u0644\u0648\u0628 (${imam.minFridays})`,
+          possibleResolutions: [
+            "\u0625\u0639\u0627\u062F\u0629 \u062A\u0648\u0632\u064A\u0639 \u0628\u0639\u0636 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0634\u0627\u063A\u0631\u0629 \u0644\u0635\u0627\u0644\u062D\u0647",
+            "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0644\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0628\u064A\u0627\u0646\u0627\u062A\u0647"
+          ]
+        });
+      } else if (count > imam.maxFridays) {
+        conflicts2.push({
+          severity: "WARNING",
+          imamId: imam.id,
+          ruleCode: "OVER_MAXIMUM",
+          message: `\u0627\u0644\u062E\u0637\u064A\u0628 (${imam.name}) \u062A\u0645 \u062A\u0639\u064A\u064A\u0646\u0647 \u0641\u064A (${count}) \u062C\u0645\u0639\u0627\u062A \u0645\u062A\u062C\u0627\u0648\u0632\u0627\u064B \u062D\u062F\u0647 \u0627\u0644\u0623\u0642\u0635\u0649 (${imam.maxFridays})`,
+          possibleResolutions: [
+            "\u062A\u0633\u062C\u064A\u0644 \u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A \u0645\u0639\u062A\u0645\u062F (Override)",
+            "\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0632\u0627\u0626\u062F\u0629 \u0639\u0644\u0649 \u062E\u0637\u0628\u0627\u0621 \u0622\u062E\u0631\u064A\u0646"
+          ]
+        });
+      }
+    }
+    const allAssignmentsList = Array.from(assignmentsGrid.values());
+    const totalAssignments = allAssignmentsList.length;
+    const filledAssignments = allAssignmentsList.filter((a) => a.imamId !== null).length;
+    const unfilledAssignments = totalAssignments - filledAssignments;
+    let fixedCount = 0;
+    let preferenceCount = 0;
+    let balancedCount = 0;
+    let randomCount = 0;
+    let manualCount = 0;
+    let overrideCount = 0;
+    let totalPreferredRequests = 0;
+    let satisfiedPreferred = 0;
+    for (const a of allAssignmentsList) {
+      if (a.source === "FIXED") fixedCount++;
+      else if (a.source === "PREFERENCE") preferenceCount++;
+      else if (a.source === "BALANCED") balancedCount++;
+      else if (a.source === "RANDOM") randomCount++;
+      else if (a.source === "BALANCED_RANDOM") balancedCount++;
+      else if (a.source === "MANUAL") manualCount++;
+      else if (a.source === "OVERRIDE") overrideCount++;
+      const mosqueRules = input.rules.filter((r2) => r2.mosqueId === a.mosqueId && r2.relationshipType === "PREFERRED");
+      if (mosqueRules.length > 0) {
+        totalPreferredRequests++;
+        if (a.imamId && mosqueRules.some((r2) => r2.imamId === a.imamId)) {
+          satisfiedPreferred++;
+        }
+      }
+    }
+    const preferenceSatisfactionRate = totalPreferredRequests > 0 ? Math.round(satisfiedPreferred / totalPreferredRequests * 100) : 100;
+    let totalTargetDeficit = 0;
+    let totalTargetNeeded = 0;
+    for (const imam of activeImams) {
+      totalTargetNeeded += imam.targetFridays;
+      const assigned = imamFridaysCount[imam.id] || 0;
+      totalTargetDeficit += Math.abs(imam.targetFridays - assigned);
+    }
+    const targetFulfillmentRate = totalTargetNeeded > 0 ? Math.max(0, Math.round(100 - totalTargetDeficit / totalTargetNeeded * 50)) : 100;
+    return {
+      assignments: allAssignmentsList,
+      conflicts: conflicts2,
+      stats: {
+        totalAssignments,
+        filledAssignments,
+        unfilledAssignments,
+        fixedCount,
+        preferenceCount,
+        balancedCount,
+        randomCount,
+        manualCount,
+        overrideCount,
+        criticalConflictsCount: conflicts2.filter((c) => c.severity === "CRITICAL").length,
+        warningConflictsCount: conflicts2.filter((c) => c.severity === "WARNING").length
+      },
+      imamUsage: imamFridaysCount,
+      qualityMetrics: {
+        preferenceSatisfactionRate,
+        targetFulfillmentRate,
+        balanceFairnessScore: Math.max(0, 100 - conflicts2.length * 5)
+      }
+    };
+  }
+  /**
+   * محرك اقتراح خطباء الطوارئ والاحتياط
+   * يبحث عن أفضل الخطباء البدلاء المتاحين لجمعة ومسجد معين عند حدوث اعتذار طارئ
+   */
+  static findEmergencyReplacements(params) {
+    const {
+      fridayIndex,
+      mosqueId,
+      currentImamId,
+      allMosques,
+      allImams,
+      rules,
+      existingAssignments,
+      unavailabilities = [],
+      history = [],
+      standbyImamIds = []
+    } = params;
+    const mosque = allMosques.find((m2) => m2.id === mosqueId);
+    if (!mosque) return [];
+    const unavailSet = new Set(
+      unavailabilities.filter((u) => u.fridayIndex === fridayIndex && !u.isAvailable).map((u) => u.imamId)
+    );
+    const bookedThisFriday = new Set(
+      existingAssignments.filter((a) => a.fridayIndex === fridayIndex && a.imamId && a.imamId !== currentImamId).map((a) => a.imamId)
+    );
+    const imamLoads = {};
+    for (const a of existingAssignments) {
+      if (a.imamId && a.imamId !== currentImamId) {
+        imamLoads[a.imamId] = (imamLoads[a.imamId] || 0) + 1;
+      }
+    }
+    const rulesMap = /* @__PURE__ */ new Map();
+    for (const r2 of rules) {
+      if (r2.mosqueId === mosqueId) {
+        rulesMap.set(r2.imamId, r2);
+      }
+    }
+    const standbySet = new Set(standbyImamIds);
+    const candidates = [];
+    for (const imam of allImams) {
+      if (!imam.isActive) continue;
+      if (currentImamId && imam.id === currentImamId) continue;
+      if (bookedThisFriday.has(imam.id)) continue;
+      if (unavailSet.has(imam.id)) continue;
+      const rule = rulesMap.get(imam.id);
+      if (rule && rule.relationshipType === "FORBIDDEN") continue;
+      const currentLoad = imamLoads[imam.id] || 0;
+      if (currentLoad >= imam.maxFridays) continue;
+      const isPreferred = rule?.relationshipType === "PREFERRED";
+      const isDiscouraged = rule?.relationshipType === "DISCOURAGED";
+      const isNearby = !!(imam.region && mosque.region && imam.region === mosque.region);
+      const isStandby = standbySet.has(imam.id);
+      let score = 50;
+      const reasons = [];
+      if (isStandby) {
+        score += 20;
+        reasons.push("\u0645\u0635\u0646\u0651\u0641 \u0643\u062E\u0637\u064A\u0628 \u0637\u0648\u0627\u0631\u0626 \u0648\u0627\u062D\u062A\u064A\u0627\u0637 \u0645\u0639\u062A\u0645\u062F");
+      }
+      if (isPreferred) {
+        score += 25 - Math.min((rule?.priority || 1) * 3, 15);
+        reasons.push("\u0645\u0641\u0636\u0644 \u0644\u0625\u062F\u0627\u0631\u0629 \u0648\u0631\u0648\u0627\u062F \u0627\u0644\u0645\u0633\u062C\u062F");
+      } else if (isDiscouraged) {
+        score -= 30;
+      }
+      if (isNearby) {
+        score += 15;
+        reasons.push(`\u0645\u0637\u0627\u0628\u0642 \u0644\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062C\u063A\u0631\u0627\u0641\u064A\u0629 (${mosque.region})`);
+      }
+      if (currentLoad < imam.targetFridays) {
+        score += 10;
+        reasons.push(`\u0644\u062F\u064A\u0647 \u0645\u062A\u0633\u0639 \u0641\u064A \u062D\u0635\u062A\u0647 \u0627\u0644\u0634\u0647\u0631\u064A\u0629 (${currentLoad} \u0645\u0646 ${imam.targetFridays})`);
+      } else if (currentLoad < imam.minFridays) {
+        score += 15;
+        reasons.push(`\u0623\u0648\u0644\u0648\u064A\u0629 \u0627\u0633\u062A\u0643\u0645\u0627\u0644 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 (${currentLoad} \u0645\u0646 ${imam.minFridays})`);
+      }
+      const visitsThisMonth = existingAssignments.filter(
+        (a) => a.mosqueId === mosqueId && a.imamId === imam.id && a.fridayIndex !== fridayIndex
+      ).length;
+      if (visitsThisMonth > 0 && mosque.fixedImamId !== imam.id) {
+        score -= 15;
+      }
+      const histVisits = history.filter((h2) => h2.mosqueId === mosqueId && h2.imamId === imam.id).length;
+      if (histVisits === 0) {
+        score += 5;
+        reasons.push("\u062A\u0646\u0648\u064A\u0639 \u0648\u062A\u062C\u062F\u064A\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 (\u0644\u0645 \u064A\u062E\u0637\u0628 \u0628\u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0624\u062E\u0631\u0627\u064B)");
+      }
+      const compatibilityScore = Math.max(10, Math.min(100, Math.round(score)));
+      candidates.push({
+        imam,
+        compatibilityScore,
+        isPreferred,
+        isDiscouraged,
+        isNearby,
+        isStandby,
+        reason: reasons.length > 0 ? reasons.join(" \u2022 ") : "\u062C\u0627\u0647\u0632 \u0648\u0645\u062A\u0627\u062D \u0628\u062F\u0648\u0646 \u062A\u0639\u0627\u0631\u0636\u0627\u062A \u0632\u0645\u0646\u064A\u0629",
+        currentMonthLoad: currentLoad,
+        maxFridays: imam.maxFridays,
+        targetFridays: imam.targetFridays
+      });
+    }
+    return candidates.sort((a, b) => b.compatibilityScore - a.compatibilityScore);
+  }
+};
 
 // src/db/seed.ts
 init_db2();
@@ -134159,8 +124073,569 @@ var DEFAULT_ORGANIZATION_SETTINGS = {
   lastCalendarSyncAt: (/* @__PURE__ */ new Date()).toISOString()
 };
 
-// src/server/api.ts
-init_calendarService();
+// src/services/calendar/calendarProvider.ts
+var HIJRI_MONTH_NAMES = {
+  1: "\u0645\u062D\u0631\u0645",
+  2: "\u0635\u0641\u0631",
+  3: "\u0631\u0628\u064A\u0639 \u0627\u0644\u0623\u0648\u0644",
+  4: "\u0631\u0628\u064A\u0639 \u0627\u0644\u0622\u062E\u0631",
+  5: "\u062C\u0645\u0627\u062F\u0649 \u0627\u0644\u0623\u0648\u0644\u0649",
+  6: "\u062C\u0645\u0627\u062F\u0649 \u0627\u0644\u0622\u062E\u0631\u0629",
+  7: "\u0631\u062C\u0628",
+  8: "\u0634\u0639\u0628\u0627\u0646",
+  9: "\u0631\u0645\u0636\u0627\u0646",
+  10: "\u0634\u0648\u0627\u0644",
+  11: "\u0630\u0648 \u0627\u0644\u0642\u0639\u062F\u0629",
+  12: "\u0630\u0648 \u0627\u0644\u062D\u062C\u0629"
+};
+var GREGORIAN_MONTH_NAMES = {
+  1: "\u064A\u0646\u0627\u064A\u0631",
+  2: "\u0641\u0628\u0631\u0627\u064A\u0631",
+  3: "\u0645\u0627\u0631\u0633",
+  4: "\u0623\u0628\u0631\u064A\u0644",
+  5: "\u0645\u0627\u064A\u0648",
+  6: "\u064A\u0648\u0646\u064A\u0648",
+  7: "\u064A\u0648\u0644\u064A\u0648",
+  8: "\u0623\u063A\u0633\u0637\u0633",
+  9: "\u0633\u0628\u062A\u0645\u0628\u0631",
+  10: "\u0623\u0643\u062A\u0648\u0628\u0631",
+  11: "\u0646\u0648\u0641\u0645\u0628\u0631",
+  12: "\u062F\u064A\u0633\u0645\u0628\u0631"
+};
+var ARABIC_WEEKDAYS = {
+  0: "\u0627\u0644\u0623\u062D\u062F",
+  1: "\u0627\u0644\u0625\u062B\u0646\u064A\u0646",
+  2: "\u0627\u0644\u062B\u0644\u0627\u062B\u0627\u0621",
+  3: "\u0627\u0644\u0623\u0631\u0628\u0639\u0627\u0621",
+  4: "\u0627\u0644\u062E\u0645\u064A\u0633",
+  5: "\u0627\u0644\u062C\u0645\u0639\u0629",
+  6: "\u0627\u0644\u0633\u0628\u062A"
+};
+var FRIDAY_ORDINALS = [
+  "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u0623\u0648\u0644\u0649",
+  "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062B\u0627\u0646\u064A\u0629",
+  "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062B\u0627\u0644\u062B\u0629",
+  "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u0631\u0627\u0628\u0639\u0629",
+  "\u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062E\u0627\u0645\u0633\u0629"
+];
+var TIMEZONE_LABELS = {
+  "Asia/Riyadh": "\u062A\u0648\u0642\u064A\u062A \u0645\u0643\u0629 \u0627\u0644\u0645\u0643\u0631\u0645\u0629 (GMT+3)",
+  "Africa/Cairo": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0642\u0627\u0647\u0631\u0629 (GMT+2/3)",
+  "Asia/Dubai": "\u062A\u0648\u0642\u064A\u062A \u062F\u0628\u064A (GMT+4)",
+  "Asia/Kuwait": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0643\u0648\u064A\u062A (GMT+3)",
+  "Asia/Amman": "\u062A\u0648\u0642\u064A\u062A \u0639\u0645\u0651\u0627\u0646 (GMT+3)",
+  "Asia/Qatar": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u062F\u0648\u062D\u0629 (GMT+3)",
+  "Asia/Muscat": "\u062A\u0648\u0642\u064A\u062A \u0645\u0633\u0642\u0637 (GMT+4)",
+  "Asia/Bahrain": "\u062A\u0648\u0642\u064A\u062A \u0627\u0644\u0645\u0646\u0627\u0645\u0629 (GMT+3)"
+};
+var UmmAlQuraCalendarProvider = class _UmmAlQuraCalendarProvider {
+  constructor() {
+    this.type = "UMM_AL_QURA";
+    this.nameArabic = "\u062A\u0642\u0648\u064A\u0645 \u0623\u0645 \u0627\u0644\u0642\u0631\u0649";
+  }
+  static {
+    // Cache for calculated Hijri months to ensure zero lag and high efficiency
+    this.monthCache = /* @__PURE__ */ new Map();
+  }
+  /**
+   * استخراج بيانات التاريخ الهجري بدقة من كائن Date
+   */
+  gregorianToHijri(date2, timezone = "Africa/Cairo") {
+    try {
+      const dtf = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura-nu-latn", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        weekday: "narrow"
+      });
+      const parts = dtf.formatToParts(date2);
+      let year = 1448;
+      let month = 9;
+      let day = 1;
+      for (const p of parts) {
+        if (p.type === "year") year = parseInt(p.value, 10) || year;
+        if (p.type === "month") month = parseInt(p.value, 10) || month;
+        if (p.type === "day") day = parseInt(p.value, 10) || day;
+      }
+      const dayOfWeekIndex = date2.getDay();
+      const dayName = ARABIC_WEEKDAYS[dayOfWeekIndex] || "\u0627\u0644\u062C\u0645\u0639\u0629";
+      const monthName = HIJRI_MONTH_NAMES[month] || `\u0634\u0647\u0631 ${month}`;
+      return {
+        year,
+        month,
+        day,
+        monthName,
+        dayName,
+        formatted: `${day} ${monthName} ${year} \u0647\u0640`
+      };
+    } catch {
+      return {
+        year: 1448,
+        month: 9,
+        day: 1,
+        monthName: "\u0631\u0645\u0636\u0627\u0646",
+        dayName: "\u0627\u0644\u062C\u0645\u0639\u0629",
+        formatted: "1 \u0631\u0645\u0636\u0627\u0646 1448 \u0647\u0640"
+      };
+    }
+  }
+  /**
+   * استخراج بيانات التاريخ الميلادي
+   */
+  gregorianToInfo(date2, timezone = "Africa/Cairo") {
+    const dtf = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric"
+    });
+    const parts = dtf.formatToParts(date2);
+    let year = date2.getUTCFullYear();
+    let month = date2.getUTCMonth() + 1;
+    let day = date2.getUTCDate();
+    for (const p of parts) {
+      if (p.type === "year") year = parseInt(p.value, 10) || year;
+      if (p.type === "month") month = parseInt(p.value, 10) || month;
+      if (p.type === "day") day = parseInt(p.value, 10) || day;
+    }
+    const dayName = ARABIC_WEEKDAYS[date2.getDay()] || "";
+    const monthName = GREGORIAN_MONTH_NAMES[month] || `\u0634\u0647\u0631 ${month}`;
+    const iso = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return {
+      year,
+      month,
+      day,
+      monthName,
+      dayName,
+      formatted: `${day} ${monthName} ${year} \u0645`,
+      iso
+    };
+  }
+  /**
+   * استخراج البداية والنهاية والجمعات الحقيقية للشهر الهجري
+   */
+  getHijriMonthInfo(hijriYear, hijriMonth, timezone = "Africa/Cairo") {
+    const todayIso = this.gregorianToInfo(/* @__PURE__ */ new Date(), timezone).iso;
+    const cacheKey = `${this.type}:${timezone}:${hijriYear}:${hijriMonth}:${todayIso}`;
+    const cached = _UmmAlQuraCalendarProvider.monthCache.get(cacheKey);
+    if (cached) return cached;
+    const approxGregYear = Math.floor(1970 + (hijriYear - 1389) * 0.970224);
+    const dtf = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura-nu-latn", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "numeric",
+      day: "numeric"
+    });
+    const getH = (date2) => {
+      const parts = dtf.formatToParts(date2);
+      let y = 0, m2 = 0, d = 0;
+      for (const p of parts) {
+        if (p.type === "year") y = parseInt(p.value, 10);
+        if (p.type === "month") m2 = parseInt(p.value, 10);
+        if (p.type === "day") d = parseInt(p.value, 10);
+      }
+      return { year: y, month: m2, day: d };
+    };
+    let startDate = null;
+    let endDate = null;
+    const scanner = new Date(Date.UTC(approxGregYear - 1, Math.max(0, hijriMonth - 2), 1, 12, 0, 0));
+    for (let step = 0; step < 950; step++) {
+      const h2 = getH(scanner);
+      if (h2.year === hijriYear && h2.month === hijriMonth) {
+        if (!startDate) startDate = new Date(scanner.getTime());
+        endDate = new Date(scanner.getTime());
+      } else if (startDate && (h2.year > hijriYear || h2.year === hijriYear && h2.month > hijriMonth)) {
+        break;
+      }
+      scanner.setUTCDate(scanner.getUTCDate() + 1);
+    }
+    if (!startDate || !endDate) {
+      startDate = new Date(Date.UTC(2027, 1, 8, 12, 0, 0));
+      endDate = new Date(Date.UTC(2027, 2, 8, 12, 0, 0));
+    }
+    const daysCount = Math.round((endDate.getTime() - startDate.getTime()) / (86400 * 1e3)) + 1;
+    const startG = this.gregorianToInfo(startDate, timezone);
+    const endG = this.gregorianToInfo(endDate, timezone);
+    const todayInfo = this.gregorianToInfo(/* @__PURE__ */ new Date(), timezone);
+    let periodStatus = "CURRENT";
+    let statusLabelArabic = "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A";
+    if (endG.iso < todayIso) {
+      periodStatus = "PAST";
+      statusLabelArabic = "\u0645\u0646\u062A\u0647\u064A";
+    } else if (startG.iso > todayIso) {
+      periodStatus = "FUTURE";
+      statusLabelArabic = "\u0642\u0627\u062F\u0645";
+    } else {
+      periodStatus = "CURRENT";
+      statusLabelArabic = "\u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A";
+    }
+    const isPast = periodStatus === "PAST";
+    const isCurrent = periodStatus === "CURRENT";
+    const isFuture = periodStatus === "FUTURE";
+    const isCreatable = periodStatus !== "PAST";
+    const isEditable = periodStatus !== "PAST";
+    const fridays2 = [];
+    const iterator = new Date(startDate.getTime());
+    let fridayIndex = 1;
+    let pastFridaysCount = 0;
+    let futureFridaysCount = 0;
+    while (iterator <= endDate) {
+      if (iterator.getUTCDay() === 5) {
+        const hf = getH(iterator);
+        const gInfo = this.gregorianToInfo(iterator, timezone);
+        const monthName2 = HIJRI_MONTH_NAMES[hf.month] || `\u0634\u0647\u0631 ${hf.month}`;
+        const ordinalName = FRIDAY_ORDINALS[fridayIndex - 1] || `\u0627\u0644\u062C\u0645\u0639\u0629 ${fridayIndex}`;
+        const isFridayPast = gInfo.iso < todayIso;
+        let fridayPeriodStatus = "FUTURE";
+        if (isFridayPast) {
+          fridayPeriodStatus = "PAST";
+          pastFridaysCount++;
+        } else if (gInfo.iso === todayIso) {
+          fridayPeriodStatus = "CURRENT";
+          futureFridaysCount++;
+        } else {
+          fridayPeriodStatus = "FUTURE";
+          futureFridaysCount++;
+        }
+        fridays2.push({
+          fridayIndex,
+          ordinalName,
+          hijriYear: hf.year,
+          hijriMonth: hf.month,
+          hijriDay: hf.day,
+          hijriDate: `${hf.day} ${monthName2} ${hf.year} \u0647\u0640`,
+          gregorianDate: gInfo.formatted,
+          gregorianIso: gInfo.iso,
+          dayOfWeek: "\u0627\u0644\u062C\u0645\u0639\u0629",
+          isWithinMonth: true,
+          periodStatus: fridayPeriodStatus,
+          isPast: isFridayPast,
+          isLocked: isFridayPast
+          // Past fridays are locked
+        });
+        fridayIndex++;
+      }
+      iterator.setUTCDate(iterator.getUTCDate() + 1);
+    }
+    const monthName = HIJRI_MONTH_NAMES[hijriMonth] || `\u0634\u0647\u0631 ${hijriMonth}`;
+    const result = {
+      hijriYear,
+      hijriMonth,
+      monthName,
+      startDateGregorian: startG.iso,
+      endDateGregorian: endG.iso,
+      startDateFormatted: `1 ${monthName} ${hijriYear} \u0647\u0640 / ${startG.formatted}`,
+      endDateFormatted: `${daysCount} ${monthName} ${hijriYear} \u0647\u0640 / ${endG.formatted}`,
+      daysCount,
+      fridaysCount: fridays2.length,
+      fridays: fridays2,
+      calendarProvider: this.type,
+      providerNameArabic: this.nameArabic,
+      timezone,
+      calculatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      periodStatus,
+      statusLabelArabic,
+      isPast,
+      isCurrent,
+      isFuture,
+      isCreatable,
+      isEditable,
+      pastFridaysCount,
+      futureFridaysCount
+    };
+    _UmmAlQuraCalendarProvider.monthCache.set(cacheKey, result);
+    return result;
+  }
+  /**
+   * التاريخ والوقت الحالي الموحد
+   */
+  getCurrentDateTime(timezone = "Africa/Cairo") {
+    const now = /* @__PURE__ */ new Date();
+    const hijri = this.gregorianToHijri(now, timezone);
+    const gregorian = this.gregorianToInfo(now, timezone);
+    const timeDtf = new Intl.DateTimeFormat("ar-SA", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    });
+    const time24Dtf = new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    });
+    const timeString = timeDtf.format(now);
+    const timeString24 = time24Dtf.format(now);
+    const timezoneLabel = TIMEZONE_LABELS[timezone] || timezone;
+    const fullFormatted = `${hijri.dayName} ${hijri.formatted} \u0627\u0644\u0645\u0648\u0627\u0641\u0642 ${gregorian.formatted}`;
+    const fullFormattedWithTime = `${fullFormatted} \u2014 ${timeString} (${timezoneLabel})`;
+    return {
+      hijri,
+      gregorian,
+      timeString,
+      timeString24,
+      dayName: hijri.dayName,
+      fullFormatted,
+      fullFormattedWithTime,
+      timezone,
+      timezoneLabel,
+      calendarProvider: this.type,
+      providerNameArabic: this.nameArabic,
+      lastSync: now.toISOString()
+    };
+  }
+};
+var OfficialLocalCalendarProvider = class extends UmmAlQuraCalendarProvider {
+  constructor() {
+    super(...arguments);
+    this.type = "OFFICIAL_LOCAL";
+    this.nameArabic = "\u0627\u0644\u062A\u0642\u0648\u064A\u0645 \u0627\u0644\u0631\u0633\u0645\u064A \u0627\u0644\u0645\u062D\u0644\u064A";
+  }
+};
+var CustomCalendarProvider = class extends UmmAlQuraCalendarProvider {
+  constructor() {
+    super(...arguments);
+    this.type = "CUSTOM";
+    this.nameArabic = "\u062A\u0642\u0648\u064A\u0645 \u0645\u062E\u0635\u0635";
+  }
+};
+var CalendarProviderFactory = class {
+  static {
+    this.providers = {
+      UMM_AL_QURA: new UmmAlQuraCalendarProvider(),
+      OFFICIAL_LOCAL: new OfficialLocalCalendarProvider(),
+      CUSTOM: new CustomCalendarProvider()
+    };
+  }
+  static getProvider(type = "UMM_AL_QURA") {
+    return this.providers[type] || this.providers.UMM_AL_QURA;
+  }
+};
+
+// src/services/calendar/calendarService.ts
+var CalendarService = class {
+  static {
+    this.defaultProvider = "UMM_AL_QURA";
+  }
+  static {
+    this.defaultTimezone = "Africa/Cairo";
+  }
+  static {
+    this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  /**
+   * تعيين الإعدادات الافتراضية المركزية للخدمة
+   */
+  static configureDefaults(provider, timezone) {
+    if (provider) this.defaultProvider = provider;
+    if (timezone) this.defaultTimezone = timezone;
+    this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+  }
+  static getDefaultProvider() {
+    return this.defaultProvider;
+  }
+  static getDefaultTimezone() {
+    return this.defaultTimezone;
+  }
+  static getLastSyncTimestamp() {
+    return this.lastSyncTimestamp;
+  }
+  /**
+   * الحصول على معلومات وتفاصيل الشهر الهجري وجمعاته الفعلية وحالته الزمنية
+   * هذه الدالة هي مصدر الحقيقة الرئيسي لإنشاء الجداول والتحقق الزمني
+   */
+  static getHijriMonthDetails(hijriYear, hijriMonth, options) {
+    const providerType = options?.provider || this.defaultProvider;
+    const timezone = options?.timezone || this.defaultTimezone;
+    const provider = CalendarProviderFactory.getProvider(providerType);
+    return provider.getHijriMonthInfo(hijriYear, hijriMonth, timezone);
+  }
+  /**
+   * الحصول على قائمة الجمعات الحقيقية للشهر الهجري المحدد
+   * يستخدم مباشرة في محرك الجدولة (Scheduling Engine)
+   */
+  static getHijriMonthFridays(hijriYear, hijriMonth, options) {
+    const details = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
+    return details.fridays;
+  }
+  /**
+   * الحصول على التاريخ والوقت الحالي الموحد وفق التقويم والمنطقة الزمنية
+   */
+  static getCurrentDateTime(options) {
+    const providerType = options?.provider || this.defaultProvider;
+    const timezone = options?.timezone || this.defaultTimezone;
+    const provider = CalendarProviderFactory.getProvider(providerType);
+    const info = provider.getCurrentDateTime(timezone);
+    info.lastSync = this.lastSyncTimestamp;
+    return info;
+  }
+  /**
+   * التحقق الصارم من حالة الشهر قبل الإنشاء أو التعديل (Strict Time Policy Validation)
+   */
+  static validateSchedulePeriod(hijriYear, hijriMonth, options) {
+    const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
+    if (monthDetails.periodStatus === "PAST") {
+      return {
+        isValid: false,
+        periodStatus: "PAST",
+        error: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u062C\u062F\u064A\u062F \u0644\u0647. \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A \u0623\u0648 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0642\u0627\u062F\u0645.",
+        monthDetails
+      };
+    }
+    return {
+      isValid: true,
+      periodStatus: monthDetails.periodStatus,
+      monthDetails
+    };
+  }
+  /**
+   * التحقق من جمعة معينة هل هي في الماضي ومحمية من التعديل (Past Friday Locked)
+   */
+  static validateFridayAction(hijriYear, hijriMonth, fridayIndex, options) {
+    const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
+    if (monthDetails.periodStatus === "PAST") {
+      return {
+        isAllowed: false,
+        isPastFriday: true,
+        reason: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 \u0648\u0647\u0648 \u0645\u062A\u0627\u062D \u0644\u0644\u0627\u0637\u0644\u0627\u0639 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0641\u0642\u0637."
+      };
+    }
+    const fridayItem = monthDetails.fridays.find((f3) => f3.fridayIndex === fridayIndex);
+    if (!fridayItem) {
+      return {
+        isAllowed: false,
+        isPastFriday: false,
+        reason: `\u0627\u0644\u062C\u0645\u0639\u0629 \u0631\u0642\u0645 (${fridayIndex}) \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631.`
+      };
+    }
+    if (fridayItem.isPast) {
+      return {
+        isAllowed: false,
+        isPastFriday: true,
+        reason: "\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0646\u062A\u0647\u062A \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0645\u0646 \u062E\u0644\u0627\u0644 \u0627\u0644\u062C\u062F\u0648\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629. \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0627\u0637\u0644\u0627\u0639 \u0639\u0644\u064A\u0647\u0627 \u0645\u0646 \u0633\u062C\u0644 \u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0648\u0627\u0644\u062A\u0627\u0631\u064A\u062E.",
+        fridayItem
+      };
+    }
+    return {
+      isAllowed: true,
+      isPastFriday: false,
+      fridayItem
+    };
+  }
+  /**
+   * قائمة الشهور الـ 12 لسنة هجرية مع حالة كل شهر (منتهي / الحالي / قادم)
+   */
+  static getHijriMonthsWithStatus(hijriYear, options) {
+    const list = [];
+    for (let m2 = 1; m2 <= 12; m2++) {
+      const details = this.getHijriMonthDetails(hijriYear, m2, options);
+      list.push({
+        number: m2,
+        name: details.monthName,
+        hijriYear,
+        periodStatus: details.periodStatus,
+        statusLabelArabic: details.statusLabelArabic,
+        isPast: details.isPast,
+        isCurrent: details.isCurrent,
+        isFuture: details.isFuture,
+        isCreatable: details.isCreatable,
+        isEditable: details.isEditable,
+        startDateGregorian: details.startDateGregorian,
+        endDateGregorian: details.endDateGregorian,
+        fridaysCount: details.fridaysCount,
+        pastFridaysCount: details.pastFridaysCount,
+        futureFridaysCount: details.futureFridaysCount
+      });
+    }
+    return list;
+  }
+  /**
+   * اختيار الشهر الافتراضي الذكي عند فتح معالج إنشاء الجداول:
+   * 1. الشهر الحالي إذا لم يكن قد أُنشئ له جدول بعد.
+   * 2. أول شهر قادم متاح للجدولة إذا كان الشهر الحالي مُنشأ بالفعل.
+   */
+  static getDefaultWizardMonth(existingSchedules = [], options) {
+    const current = this.getCurrentDateTime(options);
+    const curYear = current.hijri.year;
+    const curMonth = current.hijri.month;
+    const curExists = existingSchedules.some(
+      (s2) => s2.hijriYear === curYear && s2.hijriMonth === curMonth
+    );
+    if (!curExists) {
+      const curDetails = this.getHijriMonthDetails(curYear, curMonth, options);
+      if (curDetails.periodStatus !== "PAST") {
+        return { hijriYear: curYear, hijriMonth: curMonth };
+      }
+    }
+    let testYear = curYear;
+    let testMonth = curMonth + 1;
+    if (testMonth > 12) {
+      testMonth = 1;
+      testYear += 1;
+    }
+    for (let step = 0; step < 12; step++) {
+      const exists2 = existingSchedules.some(
+        (s2) => s2.hijriYear === testYear && s2.hijriMonth === testMonth
+      );
+      if (!exists2) {
+        return { hijriYear: testYear, hijriMonth: testMonth };
+      }
+      testMonth++;
+      if (testMonth > 12) {
+        testMonth = 1;
+        testYear++;
+      }
+    }
+    return { hijriYear: curYear, hijriMonth: curMonth < 12 ? curMonth + 1 : 1 };
+  }
+  /**
+   * تحويل تاريخ ميلادي إلى هجري موحد
+   */
+  static gregorianToHijri(date2, options) {
+    const providerType = options?.provider || this.defaultProvider;
+    const timezone = options?.timezone || this.defaultTimezone;
+    const provider = CalendarProviderFactory.getProvider(providerType);
+    return provider.gregorianToHijri(date2, timezone);
+  }
+  /**
+   * تنسيق التاريخ الثنائي (هجري أولاً ثم ميلادي)
+   * مثال: "13 رمضان 1448 هـ الموافق 19 فبراير 2027 م"
+   */
+  static formatBilingualDate(hijriDate, gregorianDate) {
+    if (!gregorianDate) return hijriDate;
+    return `${hijriDate} (\u0627\u0644\u0645\u0648\u0627\u0641\u0642: ${gregorianDate})`;
+  }
+  /**
+   * قائمة السنوات الهجرية المتاحة للاختيار
+   */
+  static getAvailableHijriYears() {
+    const currentYear = this.getCurrentDateTime().hijri.year;
+    const years = [];
+    for (let y = currentYear - 2; y <= currentYear + 4; y++) {
+      years.push(y);
+    }
+    return years;
+  }
+  /**
+   * قائمة الشهور الهجرية الـ 12 مع الأسماء
+   */
+  static getHijriMonthsList() {
+    return Object.entries(HIJRI_MONTH_NAMES).map(([num, name]) => ({
+      id: Number(num),
+      number: Number(num),
+      name
+    }));
+  }
+  /**
+   * مزامنة وتحديث حالة التقويم والوقت
+   */
+  static syncCalendar(options) {
+    this.lastSyncTimestamp = (/* @__PURE__ */ new Date()).toISOString();
+    return this.getCurrentDateTime(options);
+  }
+};
 
 // src/services/location/egyptLocationService.ts
 var EgyptAdministrativeProvider = class {
@@ -135001,8 +125476,9470 @@ function buildCsvWithBom(data) {
   return combined;
 }
 
+// node_modules/@supabase/supabase-js/dist/index.mjs
+var dist_exports = {};
+__export(dist_exports, {
+  FunctionRegion: () => import_functions_js.FunctionRegion,
+  FunctionsError: () => import_functions_js.FunctionsError,
+  FunctionsFetchError: () => import_functions_js.FunctionsFetchError,
+  FunctionsHttpError: () => import_functions_js.FunctionsHttpError,
+  FunctionsRelayError: () => import_functions_js.FunctionsRelayError,
+  PostgrestError: () => PostgrestError,
+  StorageApiError: () => StorageApiError,
+  SupabaseClient: () => SupabaseClient,
+  createClient: () => createClient
+});
+
+// node_modules/@supabase/supabase-js/dist/tracingRegistry.mjs
+var EXTRACTOR_KEY = Symbol.for("@supabase/supabase-js.traceContextExtractor");
+function getTraceContextExtractor() {
+  return globalThis[EXTRACTOR_KEY];
+}
+
+// node_modules/@supabase/supabase-js/dist/index.mjs
+var import_functions_js = __toESM(require_main(), 1);
+
+// node_modules/@supabase/postgrest-js/dist/index.mjs
+var PostgrestError = class extends Error {
+  /**
+  * @example
+  * ```ts
+  * import PostgrestError from '@supabase/postgrest-js'
+  *
+  * throw new PostgrestError({
+  *   message: 'Row level security prevented the request',
+  *   details: 'RLS denied the insert',
+  *   hint: 'Check your policies',
+  *   code: 'PGRST301',
+  * })
+  * ```
+  */
+  constructor(context) {
+    super(context.message);
+    this.name = "PostgrestError";
+    this.details = context.details;
+    this.hint = context.hint;
+    this.code = context.code;
+  }
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      details: this.details,
+      hint: this.hint,
+      code: this.code
+    };
+  }
+};
+var DEFAULT_MAX_RETRIES = 3;
+var getRetryDelay = (attemptIndex) => Math.min(1e3 * 2 ** attemptIndex, 3e4);
+var RETRYABLE_STATUS_CODES = [520, 503];
+var RETRYABLE_METHODS = [
+  "GET",
+  "HEAD",
+  "OPTIONS"
+];
+function _typeof(o) {
+  "@babel/helpers - typeof";
+  return _typeof = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
+    return typeof o$1;
+  } : function(o$1) {
+    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
+  }, _typeof(o);
+}
+function toPrimitive(t2, r2) {
+  if ("object" != _typeof(t2) || !t2) return t2;
+  var e2 = t2[Symbol.toPrimitive];
+  if (void 0 !== e2) {
+    var i2 = e2.call(t2, r2 || "default");
+    if ("object" != _typeof(i2)) return i2;
+    throw new TypeError("@@toPrimitive must return a primitive value.");
+  }
+  return ("string" === r2 ? String : Number)(t2);
+}
+function toPropertyKey(t2) {
+  var i2 = toPrimitive(t2, "string");
+  return "symbol" == _typeof(i2) ? i2 : i2 + "";
+}
+function _defineProperty(e2, r2, t2) {
+  return (r2 = toPropertyKey(r2)) in e2 ? Object.defineProperty(e2, r2, {
+    value: t2,
+    enumerable: true,
+    configurable: true,
+    writable: true
+  }) : e2[r2] = t2, e2;
+}
+function ownKeys2(e2, r2) {
+  var t2 = Object.keys(e2);
+  if (Object.getOwnPropertySymbols) {
+    var o = Object.getOwnPropertySymbols(e2);
+    r2 && (o = o.filter(function(r$1) {
+      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
+    })), t2.push.apply(t2, o);
+  }
+  return t2;
+}
+function _objectSpread2(e2) {
+  for (var r2 = 1; r2 < arguments.length; r2++) {
+    var t2 = null != arguments[r2] ? arguments[r2] : {};
+    r2 % 2 ? ownKeys2(Object(t2), true).forEach(function(r$1) {
+      _defineProperty(e2, r$1, t2[r$1]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys2(Object(t2)).forEach(function(r$1) {
+      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
+    });
+  }
+  return e2;
+}
+function sleep(ms, signal) {
+  return new Promise((resolve) => {
+    if (signal === null || signal === void 0 ? void 0 : signal.aborted) {
+      resolve();
+      return;
+    }
+    const id = setTimeout(() => {
+      signal === null || signal === void 0 || signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(id);
+      resolve();
+    }
+    signal === null || signal === void 0 || signal.addEventListener("abort", onAbort);
+  });
+}
+function shouldRetry(method, status, attemptCount, retryEnabled) {
+  if (!retryEnabled || attemptCount >= DEFAULT_MAX_RETRIES) return false;
+  if (!RETRYABLE_METHODS.includes(method)) return false;
+  if (!RETRYABLE_STATUS_CODES.includes(status)) return false;
+  return true;
+}
+async function fetchWithRetry(fetchImpl, url, request, retryEnabled) {
+  let attemptCount = 0;
+  while (true) {
+    const headers = _objectSpread2({}, request.headers);
+    if (attemptCount > 0) headers["X-Retry-Count"] = String(attemptCount);
+    let res;
+    try {
+      res = await fetchImpl(url, {
+        method: request.method,
+        headers,
+        body: request.body,
+        signal: request.signal
+      });
+    } catch (fetchError) {
+      if ((fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) === "AbortError" || (fetchError === null || fetchError === void 0 ? void 0 : fetchError.code) === "ABORT_ERR") throw fetchError;
+      if (!RETRYABLE_METHODS.includes(request.method)) throw fetchError;
+      if (retryEnabled && attemptCount < DEFAULT_MAX_RETRIES) {
+        const delay = getRetryDelay(attemptCount);
+        attemptCount++;
+        await sleep(delay, request.signal);
+        continue;
+      }
+      throw fetchError;
+    }
+    if (shouldRetry(request.method, res.status, attemptCount, retryEnabled)) {
+      var _res$headers$get, _res$headers;
+      const retryAfterHeader = (_res$headers$get = (_res$headers = res.headers) === null || _res$headers === void 0 ? void 0 : _res$headers.get("Retry-After")) !== null && _res$headers$get !== void 0 ? _res$headers$get : null;
+      const delay = retryAfterHeader !== null ? Math.max(0, parseInt(retryAfterHeader, 10) || 0) * 1e3 : getRetryDelay(attemptCount);
+      await res.text();
+      attemptCount++;
+      await sleep(delay, request.signal);
+      continue;
+    }
+    return res;
+  }
+}
+var PostgrestBuilder = class {
+  /**
+  * Creates a builder configured for a specific PostgREST request.
+  *
+  * @example Using supabase-js (recommended)
+  * ```ts
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const { data, error } = await supabase.from('users').select('*')
+  * ```
+  *
+  * @category Database
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```ts
+  * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
+  *
+  * const builder = new PostgrestQueryBuilder(
+  *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
+  *   { headers: new Headers({ apikey: 'your-publishable-key' }) }
+  * )
+  * ```
+  */
+  constructor(builder) {
+    var _builder$shouldThrowO, _builder$isMaybeSingl, _builder$shouldStripN, _builder$urlLengthLim, _builder$retry;
+    this.shouldThrowOnError = false;
+    this.retryEnabled = true;
+    this.method = builder.method;
+    this.url = builder.url;
+    this.headers = new Headers(builder.headers);
+    this.schema = builder.schema;
+    this.body = builder.body;
+    this.shouldThrowOnError = (_builder$shouldThrowO = builder.shouldThrowOnError) !== null && _builder$shouldThrowO !== void 0 ? _builder$shouldThrowO : false;
+    this.signal = builder.signal;
+    this.isMaybeSingle = (_builder$isMaybeSingl = builder.isMaybeSingle) !== null && _builder$isMaybeSingl !== void 0 ? _builder$isMaybeSingl : false;
+    this.shouldStripNulls = (_builder$shouldStripN = builder.shouldStripNulls) !== null && _builder$shouldStripN !== void 0 ? _builder$shouldStripN : false;
+    this.urlLengthLimit = (_builder$urlLengthLim = builder.urlLengthLimit) !== null && _builder$urlLengthLim !== void 0 ? _builder$urlLengthLim : 8e3;
+    this.retryEnabled = (_builder$retry = builder.retry) !== null && _builder$retry !== void 0 ? _builder$retry : true;
+    if (builder.fetch) this.fetch = builder.fetch;
+    else this.fetch = fetch;
+  }
+  /**
+  * If there's an error with the query, throwOnError will reject the promise by
+  * throwing the error instead of returning it as part of a successful response.
+  *
+  * {@link https://github.com/supabase/supabase-js/issues/92}
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  */
+  throwOnError() {
+    this.shouldThrowOnError = true;
+    return this;
+  }
+  /**
+  * Strip null values from the response data. Properties with `null` values
+  * will be omitted from the returned JSON objects.
+  *
+  * Requires PostgREST 11.2.0+.
+  *
+  * {@link https://docs.postgrest.org/en/stable/references/api/resource_representation.html#stripped-nulls}
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .stripNulls()
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text, bio text);
+  *
+  * insert into
+  *   characters (id, name, bio)
+  * values
+  *   (1, 'Luke', null),
+  *   (2, 'Leia', 'Princess of Alderaan');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Luke"
+  *     },
+  *     {
+  *       "id": 2,
+  *       "name": "Leia",
+  *       "bio": "Princess of Alderaan"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  stripNulls() {
+    if (this.headers.get("Accept") === "text/csv") throw new Error("stripNulls() cannot be used with csv()");
+    this.shouldStripNulls = true;
+    return this;
+  }
+  /**
+  * Set an HTTP header on this single PostgREST request, overriding any header
+  * with the same name set on the client.
+  *
+  * This is an advanced escape hatch for one-off needs (passing a custom
+  * `Authorization` for a single query, attaching a tracing header, etc.).
+  * Most callers do not need it: configure client-wide headers via the
+  * `headers` option when constructing the client, and authentication via
+  * Supabase Auth.
+  *
+  * @param name - HTTP header name
+  * @param value - HTTP header value
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  */
+  setHeader(name, value) {
+    this.headers = new Headers(this.headers);
+    this.headers.set(name, value);
+    return this;
+  }
+  /**
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * Configure retry behavior for this request.
+  *
+  * By default, retries are enabled for idempotent requests (GET, HEAD, OPTIONS)
+  * that fail with network errors or specific HTTP status codes (503, 520).
+  * Retries use exponential backoff (1s, 2s, 4s) with a maximum of 3 attempts.
+  *
+  * @param enabled - Whether to enable retries for this request
+  *
+  * @example
+  * ```ts
+  * // Disable retries for a specific query
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .select()
+  *   .retry(false)
+  * ```
+  */
+  retry(enabled) {
+    this.retryEnabled = enabled;
+    return this;
+  }
+  then(onfulfilled, onrejected) {
+    var _this = this;
+    if (this.schema === void 0) {
+    } else if (["GET", "HEAD"].includes(this.method)) this.headers.set("Accept-Profile", this.schema);
+    else this.headers.set("Content-Profile", this.schema);
+    if (this.method !== "GET" && this.method !== "HEAD") this.headers.set("Content-Type", "application/json");
+    if (this.shouldStripNulls) {
+      const currentAccept = this.headers.get("Accept");
+      if (currentAccept === "application/vnd.pgrst.object+json") this.headers.set("Accept", "application/vnd.pgrst.object+json;nulls=stripped");
+      else if (!currentAccept || currentAccept === "application/json") this.headers.set("Accept", "application/vnd.pgrst.array+json;nulls=stripped");
+    }
+    const _fetch = this.fetch;
+    const executeWithRetry = async () => {
+      const headers = {};
+      _this.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      const res$1 = await fetchWithRetry(_fetch, _this.url.toString(), {
+        method: _this.method,
+        headers,
+        body: JSON.stringify(_this.body, (_, value) => typeof value === "bigint" ? value.toString() : value),
+        signal: _this.signal
+      }, _this.retryEnabled);
+      return await _this.processResponse(res$1);
+    };
+    let res = executeWithRetry();
+    if (!this.shouldThrowOnError) res = res.catch((fetchError) => {
+      var _fetchError$name2;
+      let errorDetails = "";
+      let hint = "";
+      let code = "";
+      const cause = fetchError === null || fetchError === void 0 ? void 0 : fetchError.cause;
+      if (cause) {
+        var _cause$message, _cause$code, _fetchError$name, _cause$name;
+        const causeMessage = (_cause$message = cause === null || cause === void 0 ? void 0 : cause.message) !== null && _cause$message !== void 0 ? _cause$message : "";
+        const causeCode = (_cause$code = cause === null || cause === void 0 ? void 0 : cause.code) !== null && _cause$code !== void 0 ? _cause$code : "";
+        errorDetails = `${(_fetchError$name = fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) !== null && _fetchError$name !== void 0 ? _fetchError$name : "FetchError"}: ${fetchError === null || fetchError === void 0 ? void 0 : fetchError.message}`;
+        errorDetails += `
+
+Caused by: ${(_cause$name = cause === null || cause === void 0 ? void 0 : cause.name) !== null && _cause$name !== void 0 ? _cause$name : "Error"}: ${causeMessage}`;
+        if (causeCode) errorDetails += ` (${causeCode})`;
+        if (cause === null || cause === void 0 ? void 0 : cause.stack) errorDetails += `
+${cause.stack}`;
+      } else {
+        var _fetchError$stack;
+        errorDetails = (_fetchError$stack = fetchError === null || fetchError === void 0 ? void 0 : fetchError.stack) !== null && _fetchError$stack !== void 0 ? _fetchError$stack : "";
+      }
+      const urlLength = this.url.toString().length;
+      if ((fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) === "AbortError" || (fetchError === null || fetchError === void 0 ? void 0 : fetchError.code) === "ABORT_ERR") {
+        code = "";
+        hint = "Request was aborted (timeout or manual cancellation)";
+        if (urlLength > this.urlLengthLimit) hint += `. Note: Your request URL is ${urlLength} characters, which may exceed server limits. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [many IDs])), consider using an RPC function to pass values server-side.`;
+      } else if ((cause === null || cause === void 0 ? void 0 : cause.name) === "HeadersOverflowError" || (cause === null || cause === void 0 ? void 0 : cause.code) === "UND_ERR_HEADERS_OVERFLOW") {
+        code = "";
+        hint = "HTTP headers exceeded server limits (typically 16KB)";
+        if (urlLength > this.urlLengthLimit) hint += `. Your request URL is ${urlLength} characters. If selecting many fields, consider using views. If filtering with large arrays (e.g., .in('id', [200+ IDs])), consider using an RPC function instead.`;
+      }
+      return {
+        success: false,
+        error: {
+          message: `${(_fetchError$name2 = fetchError === null || fetchError === void 0 ? void 0 : fetchError.name) !== null && _fetchError$name2 !== void 0 ? _fetchError$name2 : "FetchError"}: ${fetchError === null || fetchError === void 0 ? void 0 : fetchError.message}`,
+          details: errorDetails,
+          hint,
+          code
+        },
+        data: null,
+        count: null,
+        status: 0,
+        statusText: ""
+      };
+    });
+    return res.then(onfulfilled, onrejected);
+  }
+  /**
+  * Process a fetch response and return the standardized postgrest response.
+  */
+  async processResponse(res) {
+    var _this2 = this;
+    let error = null;
+    let data = null;
+    let count = null;
+    let status = res.status;
+    let statusText = res.statusText;
+    if (res.ok) {
+      var _this$headers$get2, _res$headers$get;
+      if (_this2.method !== "HEAD") {
+        var _this$headers$get;
+        const body = await res.text();
+        if (body === "") {
+        } else if (_this2.headers.get("Accept") === "text/csv") data = body;
+        else if (_this2.headers.get("Accept") && ((_this$headers$get = _this2.headers.get("Accept")) === null || _this$headers$get === void 0 ? void 0 : _this$headers$get.includes("application/vnd.pgrst.plan+text"))) data = body;
+        else try {
+          data = JSON.parse(body);
+        } catch (_unused) {
+          error = { message: body };
+          data = null;
+          if (_this2.shouldThrowOnError) throw new PostgrestError({
+            message: body,
+            details: "",
+            hint: "",
+            code: ""
+          });
+        }
+      }
+      const countHeader = (_this$headers$get2 = _this2.headers.get("Prefer")) === null || _this$headers$get2 === void 0 ? void 0 : _this$headers$get2.match(/count=(exact|planned|estimated)/);
+      const contentRange = (_res$headers$get = res.headers.get("content-range")) === null || _res$headers$get === void 0 ? void 0 : _res$headers$get.split("/");
+      if (countHeader && contentRange && contentRange.length > 1) count = parseInt(contentRange[1]);
+      if (_this2.isMaybeSingle && Array.isArray(data)) if (data.length > 1) {
+        error = {
+          code: "PGRST116",
+          details: `Results contain ${data.length} rows, application/vnd.pgrst.object+json requires 1 row`,
+          hint: null,
+          message: "JSON object requested, multiple (or no) rows returned"
+        };
+        data = null;
+        count = null;
+        status = 406;
+        statusText = "Not Acceptable";
+        if (_this2.shouldThrowOnError) {
+          var _error$hint;
+          throw new PostgrestError(_objectSpread2(_objectSpread2({}, error), {}, { hint: (_error$hint = error.hint) !== null && _error$hint !== void 0 ? _error$hint : "" }));
+        }
+      } else if (data.length === 1) data = data[0];
+      else data = null;
+    } else {
+      const body = await res.text();
+      try {
+        error = JSON.parse(body);
+        if (Array.isArray(error) && res.status === 404) {
+          data = [];
+          error = null;
+          status = 200;
+          statusText = "OK";
+        }
+      } catch (_unused2) {
+        if (res.status === 404 && body === "") {
+          status = 204;
+          statusText = "No Content";
+        } else error = { message: body };
+      }
+      if (error && _this2.shouldThrowOnError) throw new PostgrestError(error);
+    }
+    return {
+      success: error === null,
+      error,
+      data,
+      count,
+      status,
+      statusText
+    };
+  }
+  /**
+  * Override the type of the returned `data`.
+  *
+  * @typeParam NewResult - The new result type to override with
+  * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  */
+  returns() {
+    return this;
+  }
+  /**
+  * Override the type of the returned `data` field in the response.
+  *
+  * @typeParam NewResult - The new type to cast the response data to
+  * @typeParam Options - Optional type configuration (defaults to { merge: true })
+  * @typeParam Options.merge - When true, merges the new type with existing return type. When false, replaces the existing types entirely (defaults to true)
+  * @example
+  * ```typescript
+  * // Merge with existing types (default behavior)
+  * const query = supabase
+  *   .from('users')
+  *   .select()
+  *   .overrideTypes<{ custom_field: string }>()
+  *
+  * // Replace existing types completely
+  * const replaceQuery = supabase
+  *   .from('users')
+  *   .select()
+  *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
+  * ```
+  * @returns A PostgrestBuilder instance with the new type
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example Complete Override type of successful response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .overrideTypes<Array<MyType>, { merge: false }>()
+  * ```
+  *
+  * @exampleResponse Complete Override type of successful response
+  * ```ts
+  * let x: typeof data // MyType[]
+  * ```
+  *
+  * @example Complete Override type of object response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .maybeSingle()
+  *   .overrideTypes<MyType, { merge: false }>()
+  * ```
+  *
+  * @exampleResponse Complete Override type of object response
+  * ```ts
+  * let x: typeof data // MyType | null
+  * ```
+  *
+  * @example Partial Override type of successful response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .overrideTypes<Array<{ status: "A" | "B" }>>()
+  * ```
+  *
+  * @exampleResponse Partial Override type of successful response
+  * ```ts
+  * let x: typeof data // Array<CountryRowProperties & { status: "A" | "B" }>
+  * ```
+  *
+  * @example Partial Override type of object response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .maybeSingle()
+  *   .overrideTypes<{ status: "A" | "B" }>()
+  * ```
+  *
+  * @exampleResponse Partial Override type of object response
+  * ```ts
+  * let x: typeof data // CountryRowProperties & { status: "A" | "B" } | null
+  * ```
+  *
+  * @example Merge vs replace existing types
+  * ```typescript
+  * // Merge with existing types (default behavior)
+  * const query = supabase
+  *   .from('users')
+  *   .select()
+  *   .overrideTypes<{ custom_field: string }>()
+  *
+  * // Replace existing types completely
+  * const replaceQuery = supabase
+  *   .from('users')
+  *   .select()
+  *   .overrideTypes<{ id: number; name: string }, { merge: false }>()
+  * ```
+  */
+  overrideTypes() {
+    return this;
+  }
+};
+var PostgrestTransformBuilder = class extends PostgrestBuilder {
+  throwOnError() {
+    return super.throwOnError();
+  }
+  /**
+  * Perform a SELECT on the query result.
+  *
+  * By default, `.insert()`, `.update()`, `.upsert()`, and `.delete()` do not
+  * return modified rows. By calling this method, modified rows are returned in
+  * `data`.
+  *
+  * @param columns - The columns to retrieve, separated by commas
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `upsert()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .upsert({ id: 1, name: 'Han Solo' })
+  *   .select()
+  * ```
+  *
+  * @exampleSql With `upsert()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Han');
+  * ```
+  *
+  * @exampleResponse With `upsert()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Han Solo"
+  *     }
+  *   ],
+  *   "status": 201,
+  *   "statusText": ""
+  * }
+  * ```
+  */
+  select(columns) {
+    let quoted = false;
+    const cleanedColumns = (columns !== null && columns !== void 0 ? columns : "*").split("").map((c) => {
+      if (/\s/.test(c) && !quoted) return "";
+      if (c === '"') quoted = !quoted;
+      return c;
+    }).join("");
+    this.url.searchParams.set("select", cleanedColumns);
+    this.headers.append("Prefer", "return=representation");
+    return this;
+  }
+  /**
+  * Order the query result by `column`.
+  *
+  * You can call this method multiple times to order by multiple columns.
+  *
+  * You can order referenced tables, but it only affects the ordering of the
+  * parent table if you use `!inner` in the query.
+  *
+  * @param column - The column to order by
+  * @param options - Named parameters
+  * @param options.ascending - If `true`, the result will be in ascending order
+  * @param options.nullsFirst - If `true`, `null`s appear first. If `false`,
+  * `null`s appear last.
+  * @param options.referencedTable - Set this to order a referenced table by
+  * its columns
+  * @param options.foreignTable - Deprecated, use `options.referencedTable`
+  * instead
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('id, name')
+  *   .order('id', { ascending: false })
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 3,
+  *       "name": "Han"
+  *     },
+  *     {
+  *       "id": 2,
+  *       "name": "Leia"
+  *     },
+  *     {
+  *       "id": 1,
+  *       "name": "Luke"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription On a referenced table
+  * Ordering with `referencedTable` doesn't affect the ordering of the
+  * parent table.
+  *
+  * @example On a referenced table
+  * ```ts
+  *   const { data, error } = await supabase
+  *     .from('orchestral_sections')
+  *     .select(`
+  *       name,
+  *       instruments (
+  *         name
+  *       )
+  *     `)
+  *     .order('name', { referencedTable: 'instruments', ascending: false })
+  *
+  * ```
+  *
+  * @exampleSql On a referenced table
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 1, 'harp'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse On a referenced table
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "strings",
+  *       "instruments": [
+  *         {
+  *           "name": "violin"
+  *         },
+  *         {
+  *           "name": "harp"
+  *         }
+  *       ]
+  *     },
+  *     {
+  *       "name": "woodwinds",
+  *       "instruments": []
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Order parent table by a referenced table
+  * Ordering with `referenced_table(col)` affects the ordering of the
+  * parent table.
+  *
+  * @example Order parent table by a referenced table
+  * ```ts
+  *   const { data, error } = await supabase
+  *     .from('instruments')
+  *     .select(`
+  *       name,
+  *       section:orchestral_sections (
+  *         name
+  *       )
+  *     `)
+  *     .order('section(name)', { ascending: true })
+  *
+  * ```
+  *
+  * @exampleSql Order parent table by a referenced table
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 2, 'flute'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse Order parent table by a referenced table
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "violin",
+  *       "orchestral_sections": {"name": "strings"}
+  *     },
+  *     {
+  *       "name": "flute",
+  *       "orchestral_sections": {"name": "woodwinds"}
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  order(column, { ascending = true, nullsFirst, foreignTable, referencedTable = foreignTable } = {}) {
+    const key = referencedTable ? `${referencedTable}.order` : "order";
+    const existingOrder = this.url.searchParams.get(key);
+    this.url.searchParams.set(key, `${existingOrder ? `${existingOrder},` : ""}${column}.${ascending ? "asc" : "desc"}${nullsFirst === void 0 ? "" : nullsFirst ? ".nullsfirst" : ".nullslast"}`);
+    return this;
+  }
+  /**
+  * Limit the query result by `rows`.
+  *
+  * @param rows - The maximum number of rows to return
+  * @param options - Named parameters
+  * @param options.referencedTable - Set this to limit rows of referenced
+  * tables instead of the parent table
+  * @param options.foreignTable - Deprecated, use `options.referencedTable`
+  * instead
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  *   .limit(1)
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "Luke"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example On a referenced table
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('orchestral_sections')
+  *   .select(`
+  *     name,
+  *     instruments (
+  *       name
+  *     )
+  *   `)
+  *   .limit(1, { referencedTable: 'instruments' })
+  * ```
+  *
+  * @exampleSql On a referenced table
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 1, 'harp'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse On a referenced table
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "strings",
+  *       "instruments": [
+  *         {
+  *           "name": "violin"
+  *         }
+  *       ]
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  limit(rows, { foreignTable, referencedTable = foreignTable } = {}) {
+    const key = typeof referencedTable === "undefined" ? "limit" : `${referencedTable}.limit`;
+    this.url.searchParams.set(key, `${rows}`);
+    return this;
+  }
+  /**
+  * Limit the query result by starting at an offset `from` and ending at the offset `to`.
+  * Only records within this range are returned.
+  * This respects the query order and if there is no order clause the range could behave unexpectedly.
+  * The `from` and `to` values are 0-based and inclusive: `range(1, 3)` will include the second, third
+  * and fourth rows of the query.
+  *
+  * @param from - The starting index from which to limit the result
+  * @param to - The last index to which to limit the result
+  * @param options - Named parameters
+  * @param options.referencedTable - Set this to limit rows of referenced
+  * tables instead of the parent table
+  * @param options.foreignTable - Deprecated, use `options.referencedTable`
+  * instead
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  *   .range(0, 1)
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "Luke"
+  *     },
+  *     {
+  *       "name": "Leia"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  range(from, to, { foreignTable, referencedTable = foreignTable } = {}) {
+    const keyOffset = typeof referencedTable === "undefined" ? "offset" : `${referencedTable}.offset`;
+    const keyLimit = typeof referencedTable === "undefined" ? "limit" : `${referencedTable}.limit`;
+    this.url.searchParams.set(keyOffset, `${from}`);
+    this.url.searchParams.set(keyLimit, `${to - from + 1}`);
+    return this;
+  }
+  /**
+  * Set the AbortSignal for the fetch request.
+  *
+  * @param signal - The AbortSignal to use for the fetch request
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @remarks
+  * You can use this to set a timeout for the request.
+  *
+  * @exampleDescription Aborting requests in-flight
+  * You can use an [`AbortController`](https://developer.mozilla.org/en-US/docs/Web/API/AbortController) to abort requests.
+  * Note that `status` and `statusText` don't mean anything for aborted requests as the request wasn't fulfilled.
+  *
+  * @example Aborting requests in-flight
+  * ```ts
+  * const ac = new AbortController()
+  *
+  * const { data, error } = await supabase
+  *   .from('very_big_table')
+  *   .select()
+  *   .abortSignal(ac.signal)
+  *
+  * // Abort the request after 100 ms
+  * setTimeout(() => ac.abort(), 100)
+  * ```
+  *
+  * @exampleResponse Aborting requests in-flight
+  * ```json
+  *   {
+  *     "error": {
+  *       "message": "AbortError: The user aborted a request.",
+  *       "details": "",
+  *       "hint": "The request was aborted locally via the provided AbortSignal.",
+  *       "code": ""
+  *     },
+  *     "status": 0,
+  *     "statusText": ""
+  *   }
+  *
+  * ```
+  *
+  * @example Set a timeout
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('very_big_table')
+  *   .select()
+  *   .abortSignal(AbortSignal.timeout(1000 /* ms *\/))
+  * ```
+  *
+  * @exampleResponse Set a timeout
+  * ```json
+  *   {
+  *     "error": {
+  *       "message": "FetchError: The user aborted a request.",
+  *       "details": "",
+  *       "hint": "",
+  *       "code": ""
+  *     },
+  *     "status": 0,
+  *     "statusText": ""
+  *   }
+  *
+  * ```
+  */
+  abortSignal(signal) {
+    this.signal = signal;
+    return this;
+  }
+  /**
+  * Return `data` as a single object instead of an array of objects.
+  *
+  * Query result must be one row (e.g. using `.limit(1)`), otherwise this
+  * returns an error.
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  *   .limit(1)
+  *   .single()
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": {
+  *     "name": "Luke"
+  *   },
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  single() {
+    this.headers.set("Accept", "application/vnd.pgrst.object+json");
+    return this;
+  }
+  /**
+  * Return `data` as a single object instead of an array of objects.
+  *
+  * Query result must be zero or one row (e.g. using `.limit(1)`), otherwise
+  * this returns an error.
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .eq('name', 'Katniss')
+  *   .maybeSingle()
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  maybeSingle() {
+    this.isMaybeSingle = true;
+    return this;
+  }
+  /**
+  * Return `data` as a string in CSV format.
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @exampleDescription Return data as CSV
+  * By default, the data is returned in JSON format, but can also be returned as Comma Separated Values.
+  *
+  * @example Return data as CSV
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .csv()
+  * ```
+  *
+  * @exampleSql Return data as CSV
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse Return data as CSV
+  * ```json
+  * {
+  *   "data": "id,name\n1,Luke\n2,Leia\n3,Han",
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  csv() {
+    this.headers.set("Accept", "text/csv");
+    return this;
+  }
+  /**
+  * Return `data` as an object in [GeoJSON](https://geojson.org) format.
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  */
+  geojson() {
+    this.headers.set("Accept", "application/geo+json");
+    return this;
+  }
+  /**
+  * Return `data` as the EXPLAIN plan for the query.
+  *
+  * You need to enable the
+  * [db_plan_enabled](https://supabase.com/docs/guides/database/debugging-performance#enabling-explain)
+  * setting before using this method.
+  *
+  * @param options - Named parameters
+  *
+  * @param options.analyze - If `true`, the query will be executed and the
+  * actual run time will be returned
+  *
+  * @param options.verbose - If `true`, the query identifier will be returned
+  * and `data` will include the output columns of the query
+  *
+  * @param options.settings - If `true`, include information on configuration
+  * parameters that affect query planning
+  *
+  * @param options.buffers - If `true`, include information on buffer usage
+  *
+  * @param options.wal - If `true`, include information on WAL record generation
+  *
+  * @param options.format - The format of the output, can be `"text"` (default)
+  * or `"json"`
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @exampleDescription Get the execution plan
+  * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
+  *
+  * @example Get the execution plan
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .explain()
+  * ```
+  *
+  * @exampleSql Get the execution plan
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse Get the execution plan
+  * ```js
+  * Aggregate  (cost=33.34..33.36 rows=1 width=112)
+  *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40)
+  *         ->  Seq Scan on characters  (cost=0.00..22.00 rows=1200 width=40)
+  * ```
+  *
+  * @exampleDescription Get the execution plan with analyze and verbose
+  * By default, the data is returned in TEXT format, but can also be returned as JSON by using the `format` parameter.
+  *
+  * @example Get the execution plan with analyze and verbose
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .explain({analyze:true,verbose:true})
+  * ```
+  *
+  * @exampleSql Get the execution plan with analyze and verbose
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse Get the execution plan with analyze and verbose
+  * ```js
+  * Aggregate  (cost=33.34..33.36 rows=1 width=112) (actual time=0.041..0.041 rows=1 loops=1)
+  *   Output: NULL::bigint, count(ROW(characters.id, characters.name)), COALESCE(json_agg(ROW(characters.id, characters.name)), '[]'::json), NULLIF(current_setting('response.headers'::text, true), ''::text), NULLIF(current_setting('response.status'::text, true), ''::text)
+  *   ->  Limit  (cost=0.00..18.33 rows=1000 width=40) (actual time=0.005..0.006 rows=3 loops=1)
+  *         Output: characters.id, characters.name
+  *         ->  Seq Scan on public.characters  (cost=0.00..22.00 rows=1200 width=40) (actual time=0.004..0.005 rows=3 loops=1)
+  *               Output: characters.id, characters.name
+  * Query Identifier: -4730654291623321173
+  * Planning Time: 0.407 ms
+  * Execution Time: 0.119 ms
+  * ```
+  */
+  explain({ analyze = false, verbose = false, settings = false, buffers = false, wal = false, format = "text" } = {}) {
+    var _this$headers$get;
+    const options = [
+      analyze ? "analyze" : null,
+      verbose ? "verbose" : null,
+      settings ? "settings" : null,
+      buffers ? "buffers" : null,
+      wal ? "wal" : null
+    ].filter(Boolean).join("|");
+    const forMediatype = (_this$headers$get = this.headers.get("Accept")) !== null && _this$headers$get !== void 0 ? _this$headers$get : "application/json";
+    this.headers.set("Accept", `application/vnd.pgrst.plan+${format}; for="${forMediatype}"; options=${options};`);
+    if (format === "json") return this;
+    else return this;
+  }
+  /**
+  * Dry-run this request: execute the query but discard the changes.
+  *
+  * Server-side, PostgREST runs the query inside a transaction and rolls it back
+  * instead of committing. The response still contains the data that *would* have
+  * been returned — `RETURNING` clauses execute and RLS, triggers, and constraints
+  * are all evaluated — but no row is actually inserted, updated, or deleted.
+  *
+  * This affects only the single request it is chained to. The JS caller has no
+  * handle on the transaction: supabase-js does not group multiple queries into
+  * one transaction. For multi-statement transactional logic, use a database
+  * function (`supabase.rpc(...)`).
+  *
+  * Sets the `Prefer: tx=rollback` header. See PostgREST's docs on transaction
+  * preferences for the underlying mechanism.
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @example Validate an insert without persisting
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('countries')
+  *   .insert({ name: 'France' })
+  *   .select()
+  *   .rollback()
+  * // `data` shows what would have been inserted; nothing is saved.
+  * ```
+  */
+  rollback() {
+    this.headers.append("Prefer", "tx=rollback");
+    return this;
+  }
+  /**
+  * Override the type of the returned `data`.
+  *
+  * @typeParam NewResult - The new result type to override with
+  * @deprecated Use overrideTypes<yourType, { merge: false }>() method at the end of your call chain instead
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  *
+  * @remarks
+  * - Deprecated: use overrideTypes method instead
+  *
+  * @example Override type of successful response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .returns<Array<MyType>>()
+  * ```
+  *
+  * @exampleResponse Override type of successful response
+  * ```js
+  * let x: typeof data // MyType[]
+  * ```
+  *
+  * @example Override type of object response
+  * ```ts
+  * const { data } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .maybeSingle()
+  *   .returns<MyType>()
+  * ```
+  *
+  * @exampleResponse Override type of object response
+  * ```js
+  * let x: typeof data // MyType | null
+  * ```
+  */
+  returns() {
+    return this;
+  }
+  /**
+  * Set the maximum number of rows that can be affected by the query.
+  * Only available in PostgREST v13+ and only works with PATCH and DELETE methods.
+  *
+  * @param rows - The maximum number of rows that can be affected
+  *
+  * @category Database
+  * @subcategory Using modifiers
+  */
+  maxAffected(rows) {
+    this.headers.append("Prefer", "handling=strict");
+    this.headers.append("Prefer", `max-affected=${rows}`);
+    return this;
+  }
+};
+var PostgrestReservedCharsRegexp = /* @__PURE__ */ new RegExp("[,()]");
+var PostgrestFilterBuilder = class extends PostgrestTransformBuilder {
+  throwOnError() {
+    return super.throwOnError();
+  }
+  /**
+  * Match only rows where `column` is equal to `value`.
+  *
+  * To check if the value of `column` is NULL, you should use `.is()` instead.
+  *
+  * @param column - The column to filter on
+  * @param value - The value to filter with
+  *
+  * @category Database
+  * @subcategory Using filters
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .eq('name', 'Leia')
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 2,
+  *       "name": "Leia"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  eq(column, value) {
+    this.url.searchParams.append(column, `eq.${value}`);
+    return this;
+  }
+  /**
+  * Match only rows where `column` is not equal to `value`.
+  *
+  * This filter does not include rows where `column` is `NULL`. To match null
+  * values, use `.is(column, null)` instead.
+  *
+  * @param column - The column to filter on
+  * @param value - The value to filter with
+  *
+  * @category Database
+  * @subcategory Using filters
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .neq('name', 'Leia')
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Luke"
+  *     },
+  *     {
+  *       "id": 3,
+  *       "name": "Han"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  neq(column, value) {
+    this.url.searchParams.append(column, `neq.${value}`);
+    return this;
+  }
+  gt(column, value) {
+    this.url.searchParams.append(column, `gt.${value}`);
+    return this;
+  }
+  gte(column, value) {
+    this.url.searchParams.append(column, `gte.${value}`);
+    return this;
+  }
+  lt(column, value) {
+    this.url.searchParams.append(column, `lt.${value}`);
+    return this;
+  }
+  lte(column, value) {
+    this.url.searchParams.append(column, `lte.${value}`);
+    return this;
+  }
+  like(column, pattern) {
+    this.url.searchParams.append(column, `like.${pattern}`);
+    return this;
+  }
+  likeAllOf(column, patterns) {
+    this.url.searchParams.append(column, `like(all).{${patterns.join(",")}}`);
+    return this;
+  }
+  likeAnyOf(column, patterns) {
+    this.url.searchParams.append(column, `like(any).{${patterns.join(",")}}`);
+    return this;
+  }
+  ilike(column, pattern) {
+    this.url.searchParams.append(column, `ilike.${pattern}`);
+    return this;
+  }
+  ilikeAllOf(column, patterns) {
+    this.url.searchParams.append(column, `ilike(all).{${patterns.join(",")}}`);
+    return this;
+  }
+  ilikeAnyOf(column, patterns) {
+    this.url.searchParams.append(column, `ilike(any).{${patterns.join(",")}}`);
+    return this;
+  }
+  regexMatch(column, pattern) {
+    this.url.searchParams.append(column, `match.${pattern}`);
+    return this;
+  }
+  regexIMatch(column, pattern) {
+    this.url.searchParams.append(column, `imatch.${pattern}`);
+    return this;
+  }
+  is(column, value) {
+    this.url.searchParams.append(column, `is.${value}`);
+    return this;
+  }
+  /**
+  * Match only rows where `column` IS DISTINCT FROM `value`.
+  *
+  * Unlike `.neq()`, this treats `NULL` as a comparable value. Two `NULL` values
+  * are considered equal (not distinct), and comparing `NULL` with any non-NULL
+  * value returns true (distinct).
+  *
+  * @param column - The column to filter on
+  * @param value - The value to filter with
+  */
+  isDistinct(column, value) {
+    this.url.searchParams.append(column, `isdistinct.${value}`);
+    return this;
+  }
+  /**
+  * Match only rows where `column` is included in the `values` array.
+  *
+  * @param column - The column to filter on
+  * @param values - The values array to filter with
+  *
+  * @category Database
+  * @subcategory Using filters
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  *   .in('name', ['Leia', 'Han'])
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 2,
+  *       "name": "Leia"
+  *     },
+  *     {
+  *       "id": 3,
+  *       "name": "Han"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  in(column, values) {
+    const cleanedValues = Array.from(new Set(values)).map((s2) => {
+      if (typeof s2 === "string" && PostgrestReservedCharsRegexp.test(s2)) return `"${s2}"`;
+      else return `${s2}`;
+    }).join(",");
+    this.url.searchParams.append(column, `in.(${cleanedValues})`);
+    return this;
+  }
+  /**
+  * Match only rows where `column` is NOT included in the `values` array.
+  *
+  * @param column - The column to filter on
+  * @param values - The values array to filter with
+  */
+  notIn(column, values) {
+    const cleanedValues = Array.from(new Set(values)).map((s2) => {
+      if (typeof s2 === "string" && PostgrestReservedCharsRegexp.test(s2)) return `"${s2}"`;
+      else return `${s2}`;
+    }).join(",");
+    this.url.searchParams.append(column, `not.in.(${cleanedValues})`);
+    return this;
+  }
+  contains(column, value) {
+    if (typeof value === "string") this.url.searchParams.append(column, `cs.${value}`);
+    else if (Array.isArray(value)) this.url.searchParams.append(column, `cs.{${value.join(",")}}`);
+    else this.url.searchParams.append(column, `cs.${JSON.stringify(value)}`);
+    return this;
+  }
+  containedBy(column, value) {
+    if (typeof value === "string") this.url.searchParams.append(column, `cd.${value}`);
+    else if (Array.isArray(value)) this.url.searchParams.append(column, `cd.{${value.join(",")}}`);
+    else this.url.searchParams.append(column, `cd.${JSON.stringify(value)}`);
+    return this;
+  }
+  rangeGt(column, range) {
+    this.url.searchParams.append(column, `sr.${range}`);
+    return this;
+  }
+  rangeGte(column, range) {
+    this.url.searchParams.append(column, `nxl.${range}`);
+    return this;
+  }
+  rangeLt(column, range) {
+    this.url.searchParams.append(column, `sl.${range}`);
+    return this;
+  }
+  rangeLte(column, range) {
+    this.url.searchParams.append(column, `nxr.${range}`);
+    return this;
+  }
+  rangeAdjacent(column, range) {
+    this.url.searchParams.append(column, `adj.${range}`);
+    return this;
+  }
+  overlaps(column, value) {
+    if (typeof value === "string") this.url.searchParams.append(column, `ov.${value}`);
+    else this.url.searchParams.append(column, `ov.{${value.join(",")}}`);
+    return this;
+  }
+  textSearch(column, query, { config, type } = {}) {
+    let typePart = "";
+    if (type === "plain") typePart = "pl";
+    else if (type === "phrase") typePart = "ph";
+    else if (type === "websearch") typePart = "w";
+    const configPart = config === void 0 ? "" : `(${config})`;
+    this.url.searchParams.append(column, `${typePart}fts${configPart}.${query}`);
+    return this;
+  }
+  match(query) {
+    Object.entries(query).filter(([_, value]) => value !== void 0).forEach(([column, value]) => {
+      this.url.searchParams.append(column, `eq.${value}`);
+    });
+    return this;
+  }
+  /**
+  * Match only rows which doesn't satisfy the filter.
+  *
+  * Unlike most filters, `opearator` and `value` are used as-is and need to
+  * follow [PostgREST
+  * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
+  * to make sure they are properly sanitized.
+  *
+  * @param column - The column to filter on
+  * @param operator - The operator to be negated to filter with, following
+  * PostgREST syntax
+  * @param value - The value to filter with, following PostgREST syntax
+  *
+  * @category Database
+  * @subcategory Using filters
+  *
+  * @remarks
+  * not() expects you to use the raw PostgREST syntax for the filter values.
+  *
+  * ```ts
+  * .not('id', 'in', '(5,6,7)')  // Use `()` for `in` filter
+  * .not('arraycol', 'cs', '{"a","b"}')  // Use `cs` for `contains()`, `{}` for array values
+  * ```
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('countries')
+  *   .select()
+  *   .not('name', 'is', null)
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  *
+  * insert into
+  *   countries (id, name)
+  * values
+  *   (1, 'null'),
+  *   (2, null);
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  *   {
+  *     "data": [
+  *       {
+  *         "id": 1,
+  *         "name": "null"
+  *       }
+  *     ],
+  *     "status": 200,
+  *     "statusText": "OK"
+  *   }
+  *
+  * ```
+  */
+  not(column, operator, value) {
+    this.url.searchParams.append(column, `not.${operator}.${value}`);
+    return this;
+  }
+  /**
+  * Match only rows which satisfy at least one of the filters.
+  *
+  * Unlike most filters, `filters` is used as-is and needs to follow [PostgREST
+  * syntax](https://postgrest.org/en/stable/api.html#operators). You also need
+  * to make sure it's properly sanitized.
+  *
+  * It's currently not possible to do an `.or()` filter across multiple tables.
+  *
+  * @param filters - The filters to use, following PostgREST syntax
+  * @param options - Named parameters
+  * @param options.referencedTable - Set this to filter on referenced tables
+  * instead of the parent table
+  * @param options.foreignTable - Deprecated, use `referencedTable` instead
+  *
+  * @category Database
+  * @subcategory Using filters
+  *
+  * @remarks
+  * or() expects you to use the raw PostgREST syntax for the filter names and values.
+  *
+  * ```ts
+  * .or('id.in.(5,6,7), arraycol.cs.{"a","b"}')  // Use `()` for `in` filter, `{}` for array values and `cs` for `contains()`.
+  * .or('id.in.(5,6,7), arraycol.cd.{"a","b"}')  // Use `cd` for `containedBy()`
+  * ```
+  *
+  * @example With `select()`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  *   .or('id.eq.2,name.eq.Han')
+  * ```
+  *
+  * @exampleSql With `select()`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse With `select()`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "Leia"
+  *     },
+  *     {
+  *       "name": "Han"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example Use `or` with `and`
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  *   .or('id.gt.3,and(id.eq.1,name.eq.Luke)')
+  * ```
+  *
+  * @exampleSql Use `or` with `and`
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse Use `or` with `and`
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "Luke"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example Use `or` on referenced tables
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('orchestral_sections')
+  *   .select(`
+  *     name,
+  *     instruments!inner (
+  *       name
+  *     )
+  *   `)
+  *   .or('section_id.eq.1,name.eq.guzheng', { referencedTable: 'instruments' })
+  * ```
+  *
+  * @exampleSql Use `or` on referenced tables
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 2, 'flute'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse Use `or` on referenced tables
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "strings",
+  *       "instruments": [
+  *         {
+  *           "name": "violin"
+  *         }
+  *       ]
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  or(filters, { foreignTable, referencedTable = foreignTable } = {}) {
+    const key = referencedTable ? `${referencedTable}.or` : "or";
+    this.url.searchParams.append(key, `(${filters})`);
+    return this;
+  }
+  filter(column, operator, value) {
+    this.url.searchParams.append(column, `${operator}.${value}`);
+    return this;
+  }
+};
+var PostgrestQueryBuilder = class {
+  /**
+  * Creates a query builder scoped to a Postgres table or view.
+  *
+  * @category Database
+  *
+  * @param url - The URL for the query
+  * @param options - Named parameters
+  * @param options.headers - Custom headers
+  * @param options.schema - Postgres schema to use
+  * @param options.fetch - Custom fetch implementation
+  * @param options.urlLengthLimit - Maximum URL length before warning
+  * @param options.retry - Enable automatic retries for transient errors (default: true)
+  *
+  * @example Using supabase-js (recommended)
+  * ```ts
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const { data, error } = await supabase.from('users').select('*')
+  * ```
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```ts
+  * import { PostgrestQueryBuilder } from '@supabase/postgrest-js'
+  *
+  * const query = new PostgrestQueryBuilder(
+  *   new URL('https://xyzcompany.supabase.co/rest/v1/users'),
+  *   { headers: { apikey: 'your-publishable-key' }, retry: true }
+  * )
+  * ```
+  */
+  constructor(url, { headers = {}, schema, fetch: fetch$1, urlLengthLimit = 8e3, retry }) {
+    this.url = url;
+    this.headers = new Headers(headers);
+    this.schema = schema;
+    this.fetch = fetch$1;
+    this.urlLengthLimit = urlLengthLimit;
+    this.retry = retry;
+  }
+  /**
+  * Clone URL and headers to prevent shared state between operations.
+  */
+  cloneRequestState() {
+    return {
+      url: new URL(this.url.toString()),
+      headers: new Headers(this.headers)
+    };
+  }
+  /**
+  * Perform a SELECT query on the table or view.
+  *
+  * @param columns - The columns to retrieve, separated by commas. Columns can be renamed when returned with `customName:columnName`
+  *
+  * @param options - Named parameters
+  *
+  * @param options.head - When set to `true`, `data` will not be returned.
+  * Useful if you only need the count.
+  *
+  * @param options.count - Count algorithm to use to count rows in the table or view.
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @remarks
+  * When using `count` with `.range()` or `.limit()`, the returned `count` is the total number of rows
+  * that match your filters, not the number of rows in the current page. Use this to build pagination UI.
+  
+  * - By default, Supabase projects return a maximum of 1,000 rows. This setting can be changed in your project's [API settings](/dashboard/project/_/settings/api). It's recommended that you keep it low to limit the payload size of accidental or malicious requests. You can use `range()` queries to paginate through your data.
+  * - `select()` can be combined with [Filters](/docs/reference/javascript/using-filters)
+  * - `select()` can be combined with [Modifiers](/docs/reference/javascript/using-modifiers)
+  * - `apikey` is a reserved keyword if you're using the [Supabase Platform](/docs/guides/platform) and [should be avoided as a column name](https://github.com/supabase/supabase/issues/5465). *
+  * @category Database
+  *
+  * @example Getting your data
+  * ```js
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select()
+  * ```
+  *
+  * @exampleSql Getting your data
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Harry'),
+  *   (2, 'Frodo'),
+  *   (3, 'Katniss');
+  * ```
+  *
+  * @exampleResponse Getting your data
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Harry"
+  *     },
+  *     {
+  *       "id": 2,
+  *       "name": "Frodo"
+  *     },
+  *     {
+  *       "id": 3,
+  *       "name": "Katniss"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Handling errors
+  * The most useful field on a Postgres error is usually `hint` — when the database knows the fix, it puts the literal SQL there. For example, a permission-denied error (`code: '42501'`) arrives with a `hint` like `"Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;"`. Log the full `error` object so the hint isn't hidden behind `error.message`.
+  *
+  * @example Handling errors
+  * ```js
+  * const { data, error } = await supabase.from('characters').select()
+  * if (error) {
+  *   // Logs the full error: message, code, details, and hint.
+  *   console.error(error)
+  *   return
+  * }
+  * ```
+  *
+  * @exampleResponse Handling errors
+  * ```json
+  * {
+  *   "error": {
+  *     "code": "42501",
+  *     "details": null,
+  *     "hint": "Grant the required privileges to the current role with: GRANT SELECT ON public.characters TO anon;",
+  *     "message": "permission denied for table characters"
+  *   },
+  *   "status": 401,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @example Selecting specific columns
+  * ```js
+  * const { data, error } = await supabase
+  *   .from('characters')
+  *   .select('name')
+  * ```
+  *
+  * @exampleSql Selecting specific columns
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Frodo'),
+  *   (2, 'Harry'),
+  *   (3, 'Katniss');
+  * ```
+  *
+  * @exampleResponse Selecting specific columns
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "Frodo"
+  *     },
+  *     {
+  *       "name": "Harry"
+  *     },
+  *     {
+  *       "name": "Katniss"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Query referenced tables
+  * If your database has foreign key relationships, you can query related tables too.
+  *
+  * @example Query referenced tables
+  * ```js
+  * const { data, error } = await supabase
+  *   .from('orchestral_sections')
+  *   .select(`
+  *     name,
+  *     instruments (
+  *       name
+  *     )
+  *   `)
+  * ```
+  *
+  * @exampleSql Query referenced tables
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 2, 'flute'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse Query referenced tables
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "strings",
+  *       "instruments": [
+  *         {
+  *           "name": "violin"
+  *         }
+  *       ]
+  *     },
+  *     {
+  *       "name": "woodwinds",
+  *       "instruments": [
+  *         {
+  *           "name": "flute"
+  *         }
+  *       ]
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Query referenced tables with spaces in their names
+  * If your table name contains spaces, you must use double quotes in the `select` statement to reference the table.
+  *
+  * @example Query referenced tables with spaces in their names
+  * ```js
+  * const { data, error } = await supabase
+  *   .from('orchestral sections')
+  *   .select(`
+  *     name,
+  *     "musical instruments" (
+  *       name
+  *     )
+  *   `)
+  * ```
+  *
+  * @exampleSql Query referenced tables with spaces in their names
+  * ```sql
+  * create table
+  *   "orchestral sections" (id int8 primary key, name text);
+  * create table
+  *   "musical instruments" (
+  *     id int8 primary key,
+  *     section_id int8 not null references "orchestral sections",
+  *     name text
+  *   );
+  *
+  * insert into
+  *   "orchestral sections" (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   "musical instruments" (id, section_id, name)
+  * values
+  *   (1, 2, 'flute'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse Query referenced tables with spaces in their names
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "strings",
+  *       "musical instruments": [
+  *         {
+  *           "name": "violin"
+  *         }
+  *       ]
+  *     },
+  *     {
+  *       "name": "woodwinds",
+  *       "musical instruments": [
+  *         {
+  *           "name": "flute"
+  *         }
+  *       ]
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Query referenced tables through a join table
+  * If you're in a situation where your tables are **NOT** directly
+  * related, but instead are joined by a _join table_, you can still use
+  * the `select()` method to query the related data. The join table needs
+  * to have the foreign keys as part of its composite primary key.
+  *
+  * @example Query referenced tables through a join table
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .select(`
+  *     name,
+  *     teams (
+  *       name
+  *     )
+  *   `)
+  *   
+  * ```
+  *
+  * @exampleSql Query referenced tables through a join table
+  * ```sql
+  * create table
+  *   users (
+  *     id int8 primary key,
+  *     name text
+  *   );
+  * create table
+  *   teams (
+  *     id int8 primary key,
+  *     name text
+  *   );
+  * -- join table
+  * create table
+  *   users_teams (
+  *     user_id int8 not null references users,
+  *     team_id int8 not null references teams,
+  *     -- both foreign keys must be part of a composite primary key
+  *     primary key (user_id, team_id)
+  *   );
+  *
+  * insert into
+  *   users (id, name)
+  * values
+  *   (1, 'Kiran'),
+  *   (2, 'Evan');
+  * insert into
+  *   teams (id, name)
+  * values
+  *   (1, 'Green'),
+  *   (2, 'Blue');
+  * insert into
+  *   users_teams (user_id, team_id)
+  * values
+  *   (1, 1),
+  *   (1, 2),
+  *   (2, 2);
+  * ```
+  *
+  * @exampleResponse Query referenced tables through a join table
+  * ```json
+  *   {
+  *     "data": [
+  *       {
+  *         "name": "Kiran",
+  *         "teams": [
+  *           {
+  *             "name": "Green"
+  *           },
+  *           {
+  *             "name": "Blue"
+  *           }
+  *         ]
+  *       },
+  *       {
+  *         "name": "Evan",
+  *         "teams": [
+  *           {
+  *             "name": "Blue"
+  *           }
+  *         ]
+  *       }
+  *     ],
+  *     "status": 200,
+  *     "statusText": "OK"
+  *   }
+  *   
+  * ```
+  *
+  * @exampleDescription Query the same referenced table multiple times
+  * If you need to query the same referenced table twice, use the name of the
+  * joined column to identify which join to use. You can also give each
+  * column an alias.
+  *
+  * @example Query the same referenced table multiple times
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('messages')
+  *   .select(`
+  *     content,
+  *     from:sender_id(name),
+  *     to:receiver_id(name)
+  *   `)
+  *
+  * // To infer types, use the name of the table (in this case `users`) and
+  * // the name of the foreign key constraint.
+  * const { data, error } = await supabase
+  *   .from('messages')
+  *   .select(`
+  *     content,
+  *     from:users!messages_sender_id_fkey(name),
+  *     to:users!messages_receiver_id_fkey(name)
+  *   `)
+  * ```
+  *
+  * @exampleSql Query the same referenced table multiple times
+  * ```sql
+  *  create table
+  *  users (id int8 primary key, name text);
+  *
+  *  create table
+  *    messages (
+  *      sender_id int8 not null references users,
+  *      receiver_id int8 not null references users,
+  *      content text
+  *    );
+  *
+  *  insert into
+  *    users (id, name)
+  *  values
+  *    (1, 'Kiran'),
+  *    (2, 'Evan');
+  *
+  *  insert into
+  *    messages (sender_id, receiver_id, content)
+  *  values
+  *    (1, 2, '👋');
+  *  ```
+  * ```
+  *
+  * @exampleResponse Query the same referenced table multiple times
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "content": "👋",
+  *       "from": {
+  *         "name": "Kiran"
+  *       },
+  *       "to": {
+  *         "name": "Evan"
+  *       }
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Query nested foreign tables through a join table
+  * You can use the result of a joined table to gather data in
+  * another foreign table. With multiple references to the same foreign
+  * table you must specify the column on which to conduct the join.
+  *
+  * @example Query nested foreign tables through a join table
+  * ```ts
+  *   const { data, error } = await supabase
+  *     .from('games')
+  *     .select(`
+  *       game_id:id,
+  *       away_team:teams!games_away_team_fkey (
+  *         users (
+  *           id,
+  *           name
+  *         )
+  *       )
+  *     `)
+  *   
+  * ```
+  *
+  * @exampleSql Query nested foreign tables through a join table
+  * ```sql
+  * ```sql
+  * create table
+  *   users (
+  *     id int8 primary key,
+  *     name text
+  *   );
+  * create table
+  *   teams (
+  *     id int8 primary key,
+  *     name text
+  *   );
+  * -- join table
+  * create table
+  *   users_teams (
+  *     user_id int8 not null references users,
+  *     team_id int8 not null references teams,
+  *
+  *     primary key (user_id, team_id)
+  *   );
+  * create table
+  *   games (
+  *     id int8 primary key,
+  *     home_team int8 not null references teams,
+  *     away_team int8 not null references teams,
+  *     name text
+  *   );
+  *
+  * insert into users (id, name)
+  * values
+  *   (1, 'Kiran'),
+  *   (2, 'Evan');
+  * insert into
+  *   teams (id, name)
+  * values
+  *   (1, 'Green'),
+  *   (2, 'Blue');
+  * insert into
+  *   users_teams (user_id, team_id)
+  * values
+  *   (1, 1),
+  *   (1, 2),
+  *   (2, 2);
+  * insert into
+  *   games (id, home_team, away_team, name)
+  * values
+  *   (1, 1, 2, 'Green vs Blue'),
+  *   (2, 2, 1, 'Blue vs Green');
+  * ```
+  *
+  * @exampleResponse Query nested foreign tables through a join table
+  * ```json
+  *   {
+  *     "data": [
+  *       {
+  *         "game_id": 1,
+  *         "away_team": {
+  *           "users": [
+  *             {
+  *               "id": 1,
+  *               "name": "Kiran"
+  *             },
+  *             {
+  *               "id": 2,
+  *               "name": "Evan"
+  *             }
+  *           ]
+  *         }
+  *       },
+  *       {
+  *         "game_id": 2,
+  *         "away_team": {
+  *           "users": [
+  *             {
+  *               "id": 1,
+  *               "name": "Kiran"
+  *             }
+  *           ]
+  *         }
+  *       }
+  *     ],
+  *     "status": 200,
+  *     "statusText": "OK"
+  *   }
+  *   
+  * ```
+  *
+  * @exampleDescription Filtering through referenced tables
+  * If the filter on a referenced table's column is not satisfied, the referenced
+  * table returns `[]` or `null` but the parent table is not filtered out.
+  * If you want to filter out the parent table rows, use the `!inner` hint
+  *
+  * @example Filtering through referenced tables
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('instruments')
+  *   .select('name, orchestral_sections(*)')
+  *   .eq('orchestral_sections.name', 'percussion')
+  * ```
+  *
+  * @exampleSql Filtering through referenced tables
+  * ```sql
+  * create table
+  *   orchestral_sections (id int8 primary key, name text);
+  * create table
+  *   instruments (
+  *     id int8 primary key,
+  *     section_id int8 not null references orchestral_sections,
+  *     name text
+  *   );
+  *
+  * insert into
+  *   orchestral_sections (id, name)
+  * values
+  *   (1, 'strings'),
+  *   (2, 'woodwinds');
+  * insert into
+  *   instruments (id, section_id, name)
+  * values
+  *   (1, 2, 'flute'),
+  *   (2, 1, 'violin');
+  * ```
+  *
+  * @exampleResponse Filtering through referenced tables
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "flute",
+  *       "orchestral_sections": null
+  *     },
+  *     {
+  *       "name": "violin",
+  *       "orchestral_sections": null
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Querying referenced table with count
+  * You can get the number of rows in a related table by using the
+  * **count** property.
+  *
+  * @example Querying referenced table with count
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('orchestral_sections')
+  *   .select(`*, instruments(count)`)
+  * ```
+  *
+  * @exampleSql Querying referenced table with count
+  * ```sql
+  * create table orchestral_sections (
+  *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
+  *   "name" text
+  * );
+  *
+  * create table characters (
+  *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
+  *   "name" text,
+  *   "section_id" "uuid" references public.orchestral_sections on delete cascade
+  * );
+  *
+  * with section as (
+  *   insert into orchestral_sections (name)
+  *   values ('strings') returning id
+  * )
+  * insert into instruments (name, section_id) values
+  * ('violin', (select id from section)),
+  * ('viola', (select id from section)),
+  * ('cello', (select id from section)),
+  * ('double bass', (select id from section));
+  * ```
+  *
+  * @exampleResponse Querying referenced table with count
+  * ```json
+  * [
+  *   {
+  *     "id": "693694e7-d993-4360-a6d7-6294e325d9b6",
+  *     "name": "strings",
+  *     "instruments": [
+  *       {
+  *         "count": 4
+  *       }
+  *     ]
+  *   }
+  * ]
+  * ```
+  *
+  * @exampleDescription Querying with count option
+  * You can get the number of rows by using the
+  * [count](/docs/reference/javascript/select#parameters) option.
+  *
+  * @example Querying with count option
+  * ```ts
+  * const { count, error } = await supabase
+  *   .from('characters')
+  *   .select('*', { count: 'exact', head: true })
+  * ```
+  *
+  * @exampleSql Querying with count option
+  * ```sql
+  * create table
+  *   characters (id int8 primary key, name text);
+  *
+  * insert into
+  *   characters (id, name)
+  * values
+  *   (1, 'Luke'),
+  *   (2, 'Leia'),
+  *   (3, 'Han');
+  * ```
+  *
+  * @exampleResponse Querying with count option
+  * ```json
+  * {
+  *   "count": 3,
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Querying JSON data
+  * You can select and filter data inside of
+  * [JSON](/docs/guides/database/json) columns. Postgres offers some
+  * [operators](/docs/guides/database/json#query-the-jsonb-data) for
+  * querying JSON data.
+  *
+  * @example Querying JSON data
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .select(`
+  *     id, name,
+  *     address->city
+  *   `)
+  * ```
+  *
+  * @exampleSql Querying JSON data
+  * ```sql
+  * create table
+  *   users (
+  *     id int8 primary key,
+  *     name text,
+  *     address jsonb
+  *   );
+  *
+  * insert into
+  *   users (id, name, address)
+  * values
+  *   (1, 'Frodo', '{"city":"Hobbiton"}');
+  * ```
+  *
+  * @exampleResponse Querying JSON data
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Frodo",
+  *       "city": "Hobbiton"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Querying referenced table with inner join
+  * If you don't want to return the referenced table contents, you can leave the parenthesis empty.
+  * Like `.select('name, orchestral_sections!inner()')`.
+  *
+  * @example Querying referenced table with inner join
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('instruments')
+  *   .select('name, orchestral_sections!inner(name)')
+  *   .eq('orchestral_sections.name', 'woodwinds')
+  *   .limit(1)
+  * ```
+  *
+  * @exampleSql Querying referenced table with inner join
+  * ```sql
+  * create table orchestral_sections (
+  *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
+  *   "name" text
+  * );
+  *
+  * create table instruments (
+  *   "id" "uuid" primary key default "extensions"."uuid_generate_v4"() not null,
+  *   "name" text,
+  *   "section_id" "uuid" references public.orchestral_sections on delete cascade
+  * );
+  *
+  * with section as (
+  *   insert into orchestral_sections (name)
+  *   values ('woodwinds') returning id
+  * )
+  * insert into instruments (name, section_id) values
+  * ('flute', (select id from section)),
+  * ('clarinet', (select id from section)),
+  * ('bassoon', (select id from section)),
+  * ('piccolo', (select id from section));
+  * ```
+  *
+  * @exampleResponse Querying referenced table with inner join
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "flute",
+  *       "orchestral_sections": {"name": "woodwinds"}
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Switching schemas per query
+  * In addition to setting the schema during initialization, you can also switch schemas on a per-query basis.
+  * Make sure you've set up your [database privileges and API settings](/docs/guides/api/using-custom-schemas).
+  *
+  * @example Switching schemas per query
+  * ```ts
+  * const { data, error } = await supabase
+  *   .schema('myschema')
+  *   .from('mytable')
+  *   .select()
+  * ```
+  *
+  * @exampleSql Switching schemas per query
+  * ```sql
+  * create schema myschema;
+  *
+  * create table myschema.mytable (
+  *   id uuid primary key default gen_random_uuid(),
+  *   data text
+  * );
+  *
+  * insert into myschema.mytable (data) values ('mydata');
+  * ```
+  *
+  * @exampleResponse Switching schemas per query
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": "4162e008-27b0-4c0f-82dc-ccaeee9a624d",
+  *       "data": "mydata"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  select(columns, options) {
+    const { head: head2 = false, count } = options !== null && options !== void 0 ? options : {};
+    const method = head2 ? "HEAD" : "GET";
+    let quoted = false;
+    const cleanedColumns = (columns !== null && columns !== void 0 ? columns : "*").split("").map((c) => {
+      if (/\s/.test(c) && !quoted) return "";
+      if (c === '"') quoted = !quoted;
+      return c;
+    }).join("");
+    const { url, headers } = this.cloneRequestState();
+    url.searchParams.set("select", cleanedColumns);
+    if (count) headers.append("Prefer", `count=${count}`);
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schema,
+      fetch: this.fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Perform an INSERT into the table or view.
+  *
+  * By default, inserted rows are not returned. To return it, chain the call
+  * with `.select()`.
+  *
+  * @param values - The values to insert. Pass an object to insert a single row
+  * or an array to insert multiple rows.
+  *
+  * @param options - Named parameters
+  *
+  * @param options.count - Count algorithm to use to count inserted rows.
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @param options.defaultToNull - Make missing fields default to `null`.
+  * Otherwise, use the default value for the column. Only applies for bulk
+  * inserts.
+  *
+  * @category Database
+  *
+  * @example Create a record
+  * ```ts
+  * const { error } = await supabase
+  *   .from('countries')
+  *   .insert({ id: 1, name: 'Mordor' })
+  * ```
+  *
+  * @exampleSql Create a record
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  * ```
+  *
+  * @exampleResponse Create a record
+  * ```json
+  * {
+  *   "status": 201,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Handling errors
+  * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
+  *
+  * @example Handling errors
+  * ```js
+  * const { error } = await supabase.from('countries').insert({ id: 1, name: 'Mordor' })
+  * if (error) console.error(error)
+  * ```
+  *
+  * @example Create a record and return it
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('countries')
+  *   .insert({ id: 1, name: 'Mordor' })
+  *   .select()
+  * ```
+  *
+  * @exampleSql Create a record and return it
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  * ```
+  *
+  * @exampleResponse Create a record and return it
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Mordor"
+  *     }
+  *   ],
+  *   "status": 201,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Bulk create
+  * A bulk create operation is handled in a single transaction.
+  * If any of the inserts fail, none of the rows are inserted.
+  *
+  * @example Bulk create
+  * ```ts
+  * const { error } = await supabase
+  *   .from('countries')
+  *   .insert([
+  *     { id: 1, name: 'Mordor' },
+  *     { id: 1, name: 'The Shire' },
+  *   ])
+  * ```
+  *
+  * @exampleSql Bulk create
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  * ```
+  *
+  * @exampleResponse Bulk create
+  * ```json
+  * {
+  *   "error": {
+  *     "code": "23505",
+  *     "details": "Key (id)=(1) already exists.",
+  *     "hint": null,
+  *     "message": "duplicate key value violates unique constraint \"countries_pkey\""
+  *   },
+  *   "status": 409,
+  *   "statusText": ""
+  * }
+  * ```
+  */
+  insert(values, { count, defaultToNull = true } = {}) {
+    var _this$fetch;
+    const method = "POST";
+    const { url, headers } = this.cloneRequestState();
+    if (count) headers.append("Prefer", `count=${count}`);
+    if (!defaultToNull) headers.append("Prefer", `missing=default`);
+    if (Array.isArray(values)) {
+      const columns = values.reduce((acc, x2) => acc.concat(Object.keys(x2)), []);
+      if (columns.length > 0) {
+        const uniqueColumns = [...new Set(columns)].map((column) => `"${column}"`);
+        url.searchParams.set("columns", uniqueColumns.join(","));
+      }
+    }
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schema,
+      body: values,
+      fetch: (_this$fetch = this.fetch) !== null && _this$fetch !== void 0 ? _this$fetch : fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Perform an UPSERT on the table or view. Depending on the column(s) passed
+  * to `onConflict`, `.upsert()` allows you to perform the equivalent of
+  * `.insert()` if a row with the corresponding `onConflict` columns doesn't
+  * exist, or if it does exist, perform an alternative action depending on
+  * `ignoreDuplicates`.
+  *
+  * By default, upserted rows are not returned. To return it, chain the call
+  * with `.select()`.
+  *
+  * @param values - The values to upsert with. Pass an object to upsert a
+  * single row or an array to upsert multiple rows.
+  *
+  * @param options - Named parameters
+  *
+  * @param options.onConflict - Comma-separated UNIQUE column(s) to specify how
+  * duplicate rows are determined. Two rows are duplicates if all the
+  * `onConflict` columns are equal.
+  *
+  * @param options.ignoreDuplicates - If `true`, duplicate rows are ignored. If
+  * `false`, duplicate rows are merged with existing rows.
+  *
+  * @param options.count - Count algorithm to use to count upserted rows.
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @param options.defaultToNull - Make missing fields default to `null`.
+  * Otherwise, use the default value for the column. This only applies when
+  * inserting new rows, not when merging with existing rows under
+  * `ignoreDuplicates: false`. This also only applies when doing bulk upserts.
+  *
+  * @example Upsert a single row using a unique key
+  * ```ts
+  * // Upserting a single row, overwriting based on the 'username' unique column
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .upsert({ username: 'supabot' }, { onConflict: 'username' })
+  *
+  * // Example response:
+  * // {
+  * //   data: [
+  * //     { id: 4, message: 'bar', username: 'supabot' }
+  * //   ],
+  * //   error: null
+  * // }
+  * ```
+  *
+  * @example Upsert with conflict resolution and exact row counting
+  * ```ts
+  * // Upserting and returning exact count
+  * const { data, error, count } = await supabase
+  *   .from('users')
+  *   .upsert(
+  *     {
+  *       id: 3,
+  *       message: 'foo',
+  *       username: 'supabot'
+  *     },
+  *     {
+  *       onConflict: 'username',
+  *       count: 'exact'
+  *     }
+  *   )
+  *
+  * // Example response:
+  * // {
+  * //   data: [
+  * //     {
+  * //       id: 42,
+  * //       handle: "saoirse",
+  * //       display_name: "Saoirse"
+  * //     }
+  * //   ],
+  * //   count: 1,
+  * //   error: null
+  * // }
+  * ```
+  *
+  * @category Database
+  *
+  * @remarks
+  * - Primary keys must be included in `values` to use upsert.
+  *
+  * @example Upsert your data
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('instruments')
+  *   .upsert({ id: 1, name: 'piano' })
+  *   .select()
+  * ```
+  *
+  * @exampleSql Upsert your data
+  * ```sql
+  * create table
+  *   instruments (id int8 primary key, name text);
+  *
+  * insert into
+  *   instruments (id, name)
+  * values
+  *   (1, 'harpsichord');
+  * ```
+  *
+  * @exampleResponse Upsert your data
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "piano"
+  *     }
+  *   ],
+  *   "status": 201,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Handling errors
+  * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT INSERT, UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
+  *
+  * @example Handling errors
+  * ```js
+  * const { data, error } = await supabase.from('instruments').upsert({ id: 1, name: 'piano' }).select()
+  * if (error) console.error(error)
+  * ```
+  *
+  * @example Bulk Upsert your data
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('instruments')
+  *   .upsert([
+  *     { id: 1, name: 'piano' },
+  *     { id: 2, name: 'harp' },
+  *   ])
+  *   .select()
+  * ```
+  *
+  * @exampleSql Bulk Upsert your data
+  * ```sql
+  * create table
+  *   instruments (id int8 primary key, name text);
+  *
+  * insert into
+  *   instruments (id, name)
+  * values
+  *   (1, 'harpsichord');
+  * ```
+  *
+  * @exampleResponse Bulk Upsert your data
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "piano"
+  *     },
+  *     {
+  *       "id": 2,
+  *       "name": "harp"
+  *     }
+  *   ],
+  *   "status": 201,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Upserting into tables with constraints
+  * In the following query, `upsert()` implicitly uses the `id`
+  * (primary key) column to determine conflicts. If there is no existing
+  * row with the same `id`, `upsert()` inserts a new row, which
+  * will fail in this case as there is already a row with `handle` `"saoirse"`.
+  * Using the `onConflict` option, you can instruct `upsert()` to use
+  * another column with a unique constraint to determine conflicts.
+  *
+  * @example Upserting into tables with constraints
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .upsert({ id: 42, handle: 'saoirse', display_name: 'Saoirse' })
+  *   .select()
+  * ```
+  *
+  * @exampleSql Upserting into tables with constraints
+  * ```sql
+  * create table
+  *   users (
+  *     id int8 generated by default as identity primary key,
+  *     handle text not null unique,
+  *     display_name text
+  *   );
+  *
+  * insert into
+  *   users (id, handle, display_name)
+  * values
+  *   (1, 'saoirse', null);
+  * ```
+  *
+  * @exampleResponse Upserting into tables with constraints
+  * ```json
+  * {
+  *   "error": {
+  *     "code": "23505",
+  *     "details": "Key (handle)=(saoirse) already exists.",
+  *     "hint": null,
+  *     "message": "duplicate key value violates unique constraint \"users_handle_key\""
+  *   },
+  *   "status": 409,
+  *   "statusText": ""
+  * }
+  * ```
+  */
+  upsert(values, { onConflict, ignoreDuplicates = false, count, defaultToNull = true } = {}) {
+    var _this$fetch2;
+    const method = "POST";
+    const { url, headers } = this.cloneRequestState();
+    headers.append("Prefer", `resolution=${ignoreDuplicates ? "ignore" : "merge"}-duplicates`);
+    if (onConflict !== void 0) url.searchParams.set("on_conflict", onConflict);
+    if (count) headers.append("Prefer", `count=${count}`);
+    if (!defaultToNull) headers.append("Prefer", "missing=default");
+    if (Array.isArray(values)) {
+      const columns = values.reduce((acc, x2) => acc.concat(Object.keys(x2)), []);
+      if (columns.length > 0) {
+        const uniqueColumns = [...new Set(columns)].map((column) => `"${column}"`);
+        url.searchParams.set("columns", uniqueColumns.join(","));
+      }
+    }
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schema,
+      body: values,
+      fetch: (_this$fetch2 = this.fetch) !== null && _this$fetch2 !== void 0 ? _this$fetch2 : fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Perform an UPDATE on the table or view.
+  *
+  * By default, updated rows are not returned. To return it, chain the call
+  * with `.select()` after filters.
+  *
+  * @param values - The values to update with
+  *
+  * @param options - Named parameters
+  *
+  * @param options.count - Count algorithm to use to count updated rows.
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @category Database
+  *
+  * @remarks
+  * - `update()` should always be combined with [Filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to update.
+  *
+  * @example Updating your data
+  * ```ts
+  * const { error } = await supabase
+  *   .from('instruments')
+  *   .update({ name: 'piano' })
+  *   .eq('id', 1)
+  * ```
+  *
+  * @exampleSql Updating your data
+  * ```sql
+  * create table
+  *   instruments (id int8 primary key, name text);
+  *
+  * insert into
+  *   instruments (id, name)
+  * values
+  *   (1, 'harpsichord');
+  * ```
+  *
+  * @exampleResponse Updating your data
+  * ```json
+  * {
+  *   "status": 204,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Handling errors
+  * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT UPDATE ON public.instruments TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
+  *
+  * @example Handling errors
+  * ```js
+  * const { error } = await supabase.from('instruments').update({ name: 'piano' }).eq('id', 1)
+  * if (error) console.error(error)
+  * ```
+  *
+  * @example Update a record and return it
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('instruments')
+  *   .update({ name: 'piano' })
+  *   .eq('id', 1)
+  *   .select()
+  * ```
+  *
+  * @exampleSql Update a record and return it
+  * ```sql
+  * create table
+  *   instruments (id int8 primary key, name text);
+  *
+  * insert into
+  *   instruments (id, name)
+  * values
+  *   (1, 'harpsichord');
+  * ```
+  *
+  * @exampleResponse Update a record and return it
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "piano"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Updating JSON data
+  * Postgres offers some
+  * [operators](/docs/guides/database/json#query-the-jsonb-data) for
+  * working with JSON data. Currently, it is only possible to update the entire JSON document.
+  *
+  * @example Updating JSON data
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('users')
+  *   .update({
+  *     address: {
+  *       street: 'Melrose Place',
+  *       postcode: 90210
+  *     }
+  *   })
+  *   .eq('address->postcode', 90210)
+  *   .select()
+  * ```
+  *
+  * @exampleSql Updating JSON data
+  * ```sql
+  * create table
+  *   users (
+  *     id int8 primary key,
+  *     name text,
+  *     address jsonb
+  *   );
+  *
+  * insert into
+  *   users (id, name, address)
+  * values
+  *   (1, 'Michael', '{ "postcode": 90210 }');
+  * ```
+  *
+  * @exampleResponse Updating JSON data
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Michael",
+  *       "address": {
+  *         "street": "Melrose Place",
+  *         "postcode": 90210
+  *       }
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  update(values, { count } = {}) {
+    var _this$fetch3;
+    const method = "PATCH";
+    const { url, headers } = this.cloneRequestState();
+    if (count) headers.append("Prefer", `count=${count}`);
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schema,
+      body: values,
+      fetch: (_this$fetch3 = this.fetch) !== null && _this$fetch3 !== void 0 ? _this$fetch3 : fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Perform a DELETE on the table or view.
+  *
+  * By default, deleted rows are not returned. To return it, chain the call
+  * with `.select()` after filters.
+  *
+  * @param options - Named parameters
+  *
+  * @param options.count - Count algorithm to use to count deleted rows.
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @category Database
+  *
+  * @remarks
+  * - `delete()` should always be combined with [filters](/docs/reference/javascript/using-filters) to target the item(s) you wish to delete.
+  * - If you use `delete()` with filters and you have
+  *   [RLS](/docs/learn/auth-deep-dive/auth-row-level-security) enabled, only
+  *   rows visible through `SELECT` policies are deleted. Note that by default
+  *   no rows are visible, so you need at least one `SELECT`/`ALL` policy that
+  *   makes the rows visible.
+  * - When using `delete().in()`, specify an array of values to target multiple rows with a single query. This is particularly useful for batch deleting entries that share common criteria, such as deleting users by their IDs. Ensure that the array you provide accurately represents all records you intend to delete to avoid unintended data removal.
+  *
+  * @example Delete a single record
+  * ```ts
+  * const response = await supabase
+  *   .from('countries')
+  *   .delete()
+  *   .eq('id', 1)
+  * ```
+  *
+  * @exampleSql Delete a single record
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  *
+  * insert into
+  *   countries (id, name)
+  * values
+  *   (1, 'Mordor');
+  * ```
+  *
+  * @exampleResponse Delete a single record
+  * ```json
+  * {
+  *   "status": 204,
+  *   "statusText": ""
+  * }
+  * ```
+  *
+  * @exampleDescription Handling errors
+  * `error.hint` from Postgres often contains the actionable fix (e.g. `"Grant the required privileges to the current role with: GRANT DELETE ON public.countries TO anon;"` for a `42501` permission-denied error). Log the full `error` object so it isn't hidden behind `error.message`.
+  *
+  * @example Handling errors
+  * ```js
+  * const { error } = await supabase.from('countries').delete().eq('id', 1)
+  * if (error) console.error(error)
+  * ```
+  *
+  * @example Delete a record and return it
+  * ```ts
+  * const { data, error } = await supabase
+  *   .from('countries')
+  *   .delete()
+  *   .eq('id', 1)
+  *   .select()
+  * ```
+  *
+  * @exampleSql Delete a record and return it
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  *
+  * insert into
+  *   countries (id, name)
+  * values
+  *   (1, 'Mordor');
+  * ```
+  *
+  * @exampleResponse Delete a record and return it
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "id": 1,
+  *       "name": "Mordor"
+  *     }
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example Delete multiple records
+  * ```ts
+  * const response = await supabase
+  *   .from('countries')
+  *   .delete()
+  *   .in('id', [1, 2, 3])
+  * ```
+  *
+  * @exampleSql Delete multiple records
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  *
+  * insert into
+  *   countries (id, name)
+  * values
+  *   (1, 'Rohan'), (2, 'The Shire'), (3, 'Mordor');
+  * ```
+  *
+  * @exampleResponse Delete multiple records
+  * ```json
+  * {
+  *   "status": 204,
+  *   "statusText": ""
+  * }
+  * ```
+  */
+  delete({ count } = {}) {
+    var _this$fetch4;
+    const method = "DELETE";
+    const { url, headers } = this.cloneRequestState();
+    if (count) headers.append("Prefer", `count=${count}`);
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schema,
+      fetch: (_this$fetch4 = this.fetch) !== null && _this$fetch4 !== void 0 ? _this$fetch4 : fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+};
+function toOpenApiError(body, statusText) {
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      var _parsed$message, _parsed$details, _parsed$hint, _parsed$code;
+      return new PostgrestError({
+        message: String((_parsed$message = parsed.message) !== null && _parsed$message !== void 0 ? _parsed$message : body),
+        details: (_parsed$details = parsed.details) !== null && _parsed$details !== void 0 ? _parsed$details : "",
+        hint: (_parsed$hint = parsed.hint) !== null && _parsed$hint !== void 0 ? _parsed$hint : "",
+        code: (_parsed$code = parsed.code) !== null && _parsed$code !== void 0 ? _parsed$code : ""
+      });
+    }
+  } catch (_unused) {
+  }
+  return new PostgrestError({
+    message: body || statusText,
+    details: "",
+    hint: "",
+    code: ""
+  });
+}
+function toTransportFailure(cause, status, statusText) {
+  var _err$name;
+  const err = cause;
+  return {
+    success: false,
+    error: new PostgrestError({
+      message: `${(_err$name = err === null || err === void 0 ? void 0 : err.name) !== null && _err$name !== void 0 ? _err$name : "FetchError"}: ${err === null || err === void 0 ? void 0 : err.message}`,
+      details: "",
+      hint: "",
+      code: ""
+    }),
+    data: null,
+    count: null,
+    status,
+    statusText
+  };
+}
+var PostgrestClient = class PostgrestClient2 {
+  /**
+  * Creates a PostgREST client.
+  *
+  * @param url - URL of the PostgREST endpoint
+  * @param options - Named parameters
+  * @param options.headers - Custom headers
+  * @param options.schema - Postgres schema to switch to
+  * @param options.fetch - Custom fetch
+  * @param options.timeout - Optional timeout in milliseconds for all requests. When set, requests will automatically abort after this duration to prevent indefinite hangs.
+  * @param options.urlLengthLimit - Maximum URL length in characters before warnings/errors are triggered. Defaults to 8000.
+  * @param options.retry - Enable or disable automatic retries for transient errors.
+  *   When enabled, idempotent requests (GET, HEAD, OPTIONS) that fail with network
+  *   errors or HTTP 503/520 responses will be automatically retried up to 3 times
+  *   with exponential backoff (1s, 2s, 4s). Defaults to `true`.
+  * @example Using supabase-js (recommended)
+  * ```ts
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const { data, error } = await supabase.from('profiles').select('*')
+  * ```
+  *
+  * @category Database
+  *
+  * @remarks
+  * - A `timeout` option (in milliseconds) can be set to automatically abort requests that take too long.
+  * - A `urlLengthLimit` option (default: 8000) can be set to control when URL length warnings are included in error messages for aborted requests.
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```ts
+  * import { PostgrestClient } from '@supabase/postgrest-js'
+  *
+  * const postgrest = new PostgrestClient('https://xyzcompany.supabase.co/rest/v1', {
+  *   headers: { apikey: 'your-publishable-key' },
+  *   schema: 'public',
+  *   timeout: 30000, // 30 second timeout
+  * })
+  * ```
+  */
+  constructor(url, { headers = {}, schema, fetch: fetch$1, timeout, urlLengthLimit = 8e3, retry } = {}) {
+    this.url = url;
+    this.headers = new Headers(headers);
+    this.schemaName = schema;
+    this.urlLengthLimit = urlLengthLimit;
+    const originalFetch = fetch$1 !== null && fetch$1 !== void 0 ? fetch$1 : globalThis.fetch;
+    if (timeout !== void 0 && timeout > 0) this.fetch = (input, init) => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const existingSignal = init === null || init === void 0 ? void 0 : init.signal;
+      if (existingSignal) {
+        if (existingSignal.aborted) {
+          clearTimeout(timeoutId);
+          return originalFetch(input, init);
+        }
+        const abortHandler = () => {
+          clearTimeout(timeoutId);
+          controller.abort();
+        };
+        existingSignal.addEventListener("abort", abortHandler, { once: true });
+        return originalFetch(input, _objectSpread2(_objectSpread2({}, init), {}, { signal: controller.signal })).finally(() => {
+          clearTimeout(timeoutId);
+          existingSignal.removeEventListener("abort", abortHandler);
+        });
+      }
+      return originalFetch(input, _objectSpread2(_objectSpread2({}, init), {}, { signal: controller.signal })).finally(() => clearTimeout(timeoutId));
+    };
+    else this.fetch = originalFetch;
+    this.retry = retry;
+  }
+  from(relation) {
+    if (!relation || typeof relation !== "string" || relation.trim() === "") throw new Error("Invalid relation name: relation must be a non-empty string.");
+    return new PostgrestQueryBuilder(new URL(`${this.url}/${relation}`), {
+      headers: new Headers(this.headers),
+      schema: this.schemaName,
+      fetch: this.fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Select a schema to query or perform an function (rpc) call.
+  *
+  * The schema needs to be on the list of exposed schemas inside Supabase.
+  *
+  * @param schema - The schema to query
+  *
+  * @category Database
+  */
+  schema(schema) {
+    return new PostgrestClient2(this.url, {
+      headers: this.headers,
+      schema,
+      fetch: this.fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+  /**
+  * Fetch the OpenAPI description PostgREST publishes for this client's schema.
+  *
+  * The document lists only the tables, views and functions the caller's role
+  * holds privileges on; PostgREST applies that filtering server-side. The
+  * schema is the one this client was created with, so call `.schema()` first
+  * to describe a different one. Transient failures are retried according to
+  * the client's `retry` option, like any other idempotent request.
+  *
+  * @example
+  * ```ts
+  * const { data, error } = await supabase.getOpenApiSpec()
+  * ```
+  *
+  * @example Describe a schema other than the client default
+  * ```ts
+  * const { data, error } = await supabase.schema('billing').getOpenApiSpec()
+  * ```
+  *
+  * @category Database
+  */
+  async getOpenApiSpec() {
+    var _this = this;
+    var _this$fetch;
+    const headers = new Headers(_this.headers);
+    headers.set("Accept", "application/openapi+json");
+    if (_this.schemaName) headers.set("Accept-Profile", _this.schemaName);
+    const requestHeaders = {};
+    headers.forEach((value, key) => {
+      requestHeaders[key] = value;
+    });
+    const fetchImpl = (_this$fetch = _this.fetch) !== null && _this$fetch !== void 0 ? _this$fetch : globalThis.fetch;
+    let res;
+    try {
+      var _this$retry;
+      res = await fetchWithRetry(fetchImpl, `${_this.url}/`, {
+        method: "GET",
+        headers: requestHeaders
+      }, (_this$retry = _this.retry) !== null && _this$retry !== void 0 ? _this$retry : true);
+    } catch (fetchError) {
+      return toTransportFailure(fetchError, 0, "");
+    }
+    let body;
+    try {
+      body = await res.text();
+    } catch (readError) {
+      return toTransportFailure(readError, res.status, res.statusText);
+    }
+    if (res.ok) try {
+      return {
+        success: true,
+        error: null,
+        data: JSON.parse(body),
+        count: null,
+        status: res.status,
+        statusText: res.statusText
+      };
+    } catch (_unused2) {
+    }
+    return {
+      success: false,
+      error: toOpenApiError(body, res.statusText),
+      data: null,
+      count: null,
+      status: res.status,
+      statusText: res.statusText
+    };
+  }
+  /**
+  * Perform a function call.
+  *
+  * @param fn - The function name to call
+  * @param args - The arguments to pass to the function call
+  * @param options - Named parameters
+  * @param options.head - When set to `true`, `data` will not be returned.
+  * Useful if you only need the count.
+  * @param options.get - When set to `true`, the function will be called with
+  * read-only access mode.
+  * @param options.count - Count algorithm to use to count rows returned by the
+  * function. Only applicable for [set-returning
+  * functions](https://www.postgresql.org/docs/current/functions-srf.html).
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  *
+  * @example
+  * ```ts
+  * // For cross-schema functions where type inference fails, use overrideTypes:
+  * const { data } = await supabase
+  *   .schema('schema_b')
+  *   .rpc('function_a', {})
+  *   .overrideTypes<{ id: string; user_id: string }[]>()
+  * ```
+  *
+  * @category Database
+  *
+  * @example Call a Postgres function without arguments
+  * ```ts
+  * const { data, error } = await supabase.rpc('hello_world')
+  * ```
+  *
+  * @exampleSql Call a Postgres function without arguments
+  * ```sql
+  * create function hello_world() returns text as $$
+  *   select 'Hello world';
+  * $$ language sql;
+  * ```
+  *
+  * @exampleResponse Call a Postgres function without arguments
+  * ```json
+  * {
+  *   "data": "Hello world",
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example Call a Postgres function with arguments
+  * ```ts
+  * const { data, error } = await supabase.rpc('echo', { say: '👋' })
+  * ```
+  *
+  * @exampleSql Call a Postgres function with arguments
+  * ```sql
+  * create function echo(say text) returns text as $$
+  *   select say;
+  * $$ language sql;
+  * ```
+  *
+  * @exampleResponse Call a Postgres function with arguments
+  * ```json
+  *   {
+  *     "data": "👋",
+  *     "status": 200,
+  *     "statusText": "OK"
+  *   }
+  *
+  * ```
+  *
+  * @exampleDescription Bulk processing
+  * You can process large payloads by passing in an array as an argument.
+  *
+  * @example Bulk processing
+  * ```ts
+  * const { data, error } = await supabase.rpc('add_one_each', { arr: [1, 2, 3] })
+  * ```
+  *
+  * @exampleSql Bulk processing
+  * ```sql
+  * create function add_one_each(arr int[]) returns int[] as $$
+  *   select array_agg(n + 1) from unnest(arr) as n;
+  * $$ language sql;
+  * ```
+  *
+  * @exampleResponse Bulk processing
+  * ```json
+  * {
+  *   "data": [
+  *     2,
+  *     3,
+  *     4
+  *   ],
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @exampleDescription Call a Postgres function with filters
+  * Postgres functions that return tables can also be combined with [Filters](/docs/reference/javascript/using-filters) and [Modifiers](/docs/reference/javascript/using-modifiers).
+  *
+  * @example Call a Postgres function with filters
+  * ```ts
+  * const { data, error } = await supabase
+  *   .rpc('list_stored_countries')
+  *   .eq('id', 1)
+  *   .single()
+  * ```
+  *
+  * @exampleSql Call a Postgres function with filters
+  * ```sql
+  * create table
+  *   countries (id int8 primary key, name text);
+  *
+  * insert into
+  *   countries (id, name)
+  * values
+  *   (1, 'Rohan'),
+  *   (2, 'The Shire');
+  *
+  * create function list_stored_countries() returns setof countries as $$
+  *   select * from countries;
+  * $$ language sql;
+  * ```
+  *
+  * @exampleResponse Call a Postgres function with filters
+  * ```json
+  * {
+  *   "data": {
+  *     "id": 1,
+  *     "name": "Rohan"
+  *   },
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  *
+  * @example Call a read-only Postgres function
+  * ```ts
+  * const { data, error } = await supabase.rpc('hello_world', undefined, { get: true })
+  * ```
+  *
+  * @exampleSql Call a read-only Postgres function
+  * ```sql
+  * create function hello_world() returns text as $$
+  *   select 'Hello world';
+  * $$ language sql;
+  * ```
+  *
+  * @exampleResponse Call a read-only Postgres function
+  * ```json
+  * {
+  *   "data": "Hello world",
+  *   "status": 200,
+  *   "statusText": "OK"
+  * }
+  * ```
+  */
+  rpc(fn, args = {}, { head: head2 = false, get: get2 = false, count } = {}) {
+    var _this$fetch2;
+    let method;
+    const url = new URL(`${this.url}/rpc/${fn}`);
+    let body;
+    const _isObject = (v) => v !== null && typeof v === "object" && (!Array.isArray(v) || v.some(_isObject));
+    const _hasObjectArg = head2 && Object.values(args).some(_isObject);
+    if (_hasObjectArg) {
+      method = "POST";
+      body = args;
+    } else if (head2 || get2) {
+      method = head2 ? "HEAD" : "GET";
+      Object.entries(args).filter(([_, value]) => value !== void 0).map(([name, value]) => [name, Array.isArray(value) ? `{${value.join(",")}}` : `${value}`]).forEach(([name, value]) => {
+        url.searchParams.append(name, value);
+      });
+    } else {
+      method = "POST";
+      body = args;
+    }
+    const headers = new Headers(this.headers);
+    if (_hasObjectArg) headers.set("Prefer", count ? `count=${count},return=minimal` : "return=minimal");
+    else if (count) headers.set("Prefer", `count=${count}`);
+    return new PostgrestFilterBuilder({
+      method,
+      url,
+      headers,
+      schema: this.schemaName,
+      body,
+      fetch: (_this$fetch2 = this.fetch) !== null && _this$fetch2 !== void 0 ? _this$fetch2 : fetch,
+      urlLengthLimit: this.urlLengthLimit,
+      retry: this.retry
+    });
+  }
+};
+
+// node_modules/@supabase/supabase-js/dist/index.mjs
+var import_realtime_js = __toESM(require_main2(), 1);
+
+// node_modules/iceberg-js/dist/index.mjs
+var IcebergError = class extends Error {
+  constructor(message2, opts) {
+    super(message2);
+    this.name = "IcebergError";
+    this.status = opts.status;
+    this.icebergType = opts.icebergType;
+    this.icebergCode = opts.icebergCode;
+    this.details = opts.details;
+    this.isCommitStateUnknown = opts.icebergType === "CommitStateUnknownException" || [500, 502, 504].includes(opts.status) && opts.icebergType?.includes("CommitState") === true;
+  }
+  /**
+   * Returns true if the error is a 404 Not Found error.
+   */
+  isNotFound() {
+    return this.status === 404;
+  }
+  /**
+   * Returns true if the error is a 409 Conflict error.
+   */
+  isConflict() {
+    return this.status === 409;
+  }
+  /**
+   * Returns true if the error is a 419 Authentication Timeout error.
+   */
+  isAuthenticationTimeout() {
+    return this.status === 419;
+  }
+};
+function buildUrl(baseUrl, path4, query) {
+  const url = new URL(path4, baseUrl);
+  if (query) {
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== void 0) {
+        url.searchParams.set(key, value);
+      }
+    }
+  }
+  return url.toString();
+}
+async function buildAuthHeaders(auth) {
+  if (!auth || auth.type === "none") {
+    return {};
+  }
+  if (auth.type === "bearer") {
+    return { Authorization: `Bearer ${auth.token}` };
+  }
+  if (auth.type === "header") {
+    return { [auth.name]: auth.value };
+  }
+  if (auth.type === "custom") {
+    return await auth.getHeaders();
+  }
+  return {};
+}
+function createFetchClient(options) {
+  const fetchFn = options.fetchImpl ?? globalThis.fetch;
+  return {
+    async request({
+      method,
+      path: path4,
+      query,
+      body,
+      headers
+    }) {
+      const url = buildUrl(options.baseUrl, path4, query);
+      const authHeaders = await buildAuthHeaders(options.auth);
+      const res = await fetchFn(url, {
+        method,
+        headers: {
+          ...body ? { "Content-Type": "application/json" } : {},
+          ...authHeaders,
+          ...headers
+        },
+        body: body ? JSON.stringify(body) : void 0
+      });
+      const text2 = await res.text();
+      const isJson = (res.headers.get("content-type") || "").includes("application/json");
+      const data = isJson && text2 ? JSON.parse(text2) : text2;
+      if (!res.ok) {
+        const errBody = isJson ? data : void 0;
+        const errorDetail = errBody?.error;
+        throw new IcebergError(
+          errorDetail?.message ?? `Request failed with status ${res.status}`,
+          {
+            status: res.status,
+            icebergType: errorDetail?.type,
+            icebergCode: errorDetail?.code,
+            details: errBody
+          }
+        );
+      }
+      return { status: res.status, headers: res.headers, data };
+    }
+  };
+}
+function namespaceToPath(namespace) {
+  return namespace.join("");
+}
+var NamespaceOperations = class {
+  constructor(client, prefix = "") {
+    this.client = client;
+    this.prefix = prefix;
+  }
+  async listNamespaces(parent) {
+    const query = parent ? { parent: namespaceToPath(parent.namespace) } : void 0;
+    const response = await this.client.request({
+      method: "GET",
+      path: `${this.prefix}/namespaces`,
+      query
+    });
+    return response.data.namespaces.map((ns) => ({ namespace: ns }));
+  }
+  async createNamespace(id, metadata) {
+    const request = {
+      namespace: id.namespace,
+      properties: metadata?.properties
+    };
+    const response = await this.client.request({
+      method: "POST",
+      path: `${this.prefix}/namespaces`,
+      body: request
+    });
+    return response.data;
+  }
+  async dropNamespace(id) {
+    await this.client.request({
+      method: "DELETE",
+      path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
+    });
+  }
+  async loadNamespaceMetadata(id) {
+    const response = await this.client.request({
+      method: "GET",
+      path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
+    });
+    return {
+      properties: response.data.properties
+    };
+  }
+  async namespaceExists(id) {
+    try {
+      await this.client.request({
+        method: "HEAD",
+        path: `${this.prefix}/namespaces/${namespaceToPath(id.namespace)}`
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof IcebergError && error.status === 404) {
+        return false;
+      }
+      throw error;
+    }
+  }
+  async createNamespaceIfNotExists(id, metadata) {
+    try {
+      return await this.createNamespace(id, metadata);
+    } catch (error) {
+      if (error instanceof IcebergError && error.status === 409) {
+        return;
+      }
+      throw error;
+    }
+  }
+};
+function namespaceToPath2(namespace) {
+  return namespace.join("");
+}
+var TableOperations = class {
+  constructor(client, prefix = "", accessDelegation) {
+    this.client = client;
+    this.prefix = prefix;
+    this.accessDelegation = accessDelegation;
+  }
+  async listTables(namespace) {
+    const response = await this.client.request({
+      method: "GET",
+      path: `${this.prefix}/namespaces/${namespaceToPath2(namespace.namespace)}/tables`
+    });
+    return response.data.identifiers;
+  }
+  async createTable(namespace, request) {
+    const headers = {};
+    if (this.accessDelegation) {
+      headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
+    }
+    const response = await this.client.request({
+      method: "POST",
+      path: `${this.prefix}/namespaces/${namespaceToPath2(namespace.namespace)}/tables`,
+      body: request,
+      headers
+    });
+    return response.data.metadata;
+  }
+  async updateTable(id, request) {
+    const response = await this.client.request({
+      method: "POST",
+      path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
+      body: request
+    });
+    return {
+      "metadata-location": response.data["metadata-location"],
+      metadata: response.data.metadata
+    };
+  }
+  async dropTable(id, options) {
+    await this.client.request({
+      method: "DELETE",
+      path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
+      query: { purgeRequested: String(options?.purge ?? false) }
+    });
+  }
+  async loadTable(id) {
+    const headers = {};
+    if (this.accessDelegation) {
+      headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
+    }
+    const response = await this.client.request({
+      method: "GET",
+      path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
+      headers
+    });
+    return response.data.metadata;
+  }
+  async tableExists(id) {
+    const headers = {};
+    if (this.accessDelegation) {
+      headers["X-Iceberg-Access-Delegation"] = this.accessDelegation;
+    }
+    try {
+      await this.client.request({
+        method: "HEAD",
+        path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
+        headers
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof IcebergError && error.status === 404) {
+        return false;
+      }
+      throw error;
+    }
+  }
+  async createTableIfNotExists(namespace, request) {
+    try {
+      return await this.createTable(namespace, request);
+    } catch (error) {
+      if (error instanceof IcebergError && error.status === 409) {
+        return await this.loadTable({ namespace: namespace.namespace, name: request.name });
+      }
+      throw error;
+    }
+  }
+};
+var IcebergRestCatalog = class {
+  /**
+   * Creates a new Iceberg REST Catalog client.
+   *
+   * @param options - Configuration options for the catalog client
+   */
+  constructor(options) {
+    let prefix = "v1";
+    if (options.catalogName) {
+      prefix += `/${options.catalogName}`;
+    }
+    const baseUrl = options.baseUrl.endsWith("/") ? options.baseUrl : `${options.baseUrl}/`;
+    this.client = createFetchClient({
+      baseUrl,
+      auth: options.auth,
+      fetchImpl: options.fetch
+    });
+    this.accessDelegation = options.accessDelegation?.join(",");
+    this.namespaceOps = new NamespaceOperations(this.client, prefix);
+    this.tableOps = new TableOperations(this.client, prefix, this.accessDelegation);
+  }
+  /**
+   * Lists all namespaces in the catalog.
+   *
+   * @param parent - Optional parent namespace to list children under
+   * @returns Array of namespace identifiers
+   *
+   * @example
+   * ```typescript
+   * // List all top-level namespaces
+   * const namespaces = await catalog.listNamespaces();
+   *
+   * // List namespaces under a parent
+   * const children = await catalog.listNamespaces({ namespace: ['analytics'] });
+   * ```
+   */
+  async listNamespaces(parent) {
+    return this.namespaceOps.listNamespaces(parent);
+  }
+  /**
+   * Creates a new namespace in the catalog.
+   *
+   * @param id - Namespace identifier to create
+   * @param metadata - Optional metadata properties for the namespace
+   * @returns Response containing the created namespace and its properties
+   *
+   * @example
+   * ```typescript
+   * const response = await catalog.createNamespace(
+   *   { namespace: ['analytics'] },
+   *   { properties: { owner: 'data-team' } }
+   * );
+   * console.log(response.namespace); // ['analytics']
+   * console.log(response.properties); // { owner: 'data-team', ... }
+   * ```
+   */
+  async createNamespace(id, metadata) {
+    return this.namespaceOps.createNamespace(id, metadata);
+  }
+  /**
+   * Drops a namespace from the catalog.
+   *
+   * The namespace must be empty (contain no tables) before it can be dropped.
+   *
+   * @param id - Namespace identifier to drop
+   *
+   * @example
+   * ```typescript
+   * await catalog.dropNamespace({ namespace: ['analytics'] });
+   * ```
+   */
+  async dropNamespace(id) {
+    await this.namespaceOps.dropNamespace(id);
+  }
+  /**
+   * Loads metadata for a namespace.
+   *
+   * @param id - Namespace identifier to load
+   * @returns Namespace metadata including properties
+   *
+   * @example
+   * ```typescript
+   * const metadata = await catalog.loadNamespaceMetadata({ namespace: ['analytics'] });
+   * console.log(metadata.properties);
+   * ```
+   */
+  async loadNamespaceMetadata(id) {
+    return this.namespaceOps.loadNamespaceMetadata(id);
+  }
+  /**
+   * Lists all tables in a namespace.
+   *
+   * @param namespace - Namespace identifier to list tables from
+   * @returns Array of table identifiers
+   *
+   * @example
+   * ```typescript
+   * const tables = await catalog.listTables({ namespace: ['analytics'] });
+   * console.log(tables); // [{ namespace: ['analytics'], name: 'events' }, ...]
+   * ```
+   */
+  async listTables(namespace) {
+    return this.tableOps.listTables(namespace);
+  }
+  /**
+   * Creates a new table in the catalog.
+   *
+   * @param namespace - Namespace to create the table in
+   * @param request - Table creation request including name, schema, partition spec, etc.
+   * @returns Table metadata for the created table
+   *
+   * @example
+   * ```typescript
+   * const metadata = await catalog.createTable(
+   *   { namespace: ['analytics'] },
+   *   {
+   *     name: 'events',
+   *     schema: {
+   *       type: 'struct',
+   *       fields: [
+   *         { id: 1, name: 'id', type: 'long', required: true },
+   *         { id: 2, name: 'timestamp', type: 'timestamp', required: true }
+   *       ],
+   *       'schema-id': 0
+   *     },
+   *     'partition-spec': {
+   *       'spec-id': 0,
+   *       fields: [
+   *         { source_id: 2, field_id: 1000, name: 'ts_day', transform: 'day' }
+   *       ]
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  async createTable(namespace, request) {
+    return this.tableOps.createTable(namespace, request);
+  }
+  /**
+   * Updates an existing table's metadata.
+   *
+   * Can update the schema, partition spec, or properties of a table.
+   *
+   * @param id - Table identifier to update
+   * @param request - Update request with fields to modify
+   * @returns Response containing the metadata location and updated table metadata
+   *
+   * @example
+   * ```typescript
+   * const response = await catalog.updateTable(
+   *   { namespace: ['analytics'], name: 'events' },
+   *   {
+   *     properties: { 'read.split.target-size': '134217728' }
+   *   }
+   * );
+   * console.log(response['metadata-location']); // s3://...
+   * console.log(response.metadata); // TableMetadata object
+   * ```
+   */
+  async updateTable(id, request) {
+    return this.tableOps.updateTable(id, request);
+  }
+  /**
+   * Drops a table from the catalog.
+   *
+   * @param id - Table identifier to drop
+   *
+   * @example
+   * ```typescript
+   * await catalog.dropTable({ namespace: ['analytics'], name: 'events' });
+   * ```
+   */
+  async dropTable(id, options) {
+    await this.tableOps.dropTable(id, options);
+  }
+  /**
+   * Loads metadata for a table.
+   *
+   * @param id - Table identifier to load
+   * @returns Table metadata including schema, partition spec, location, etc.
+   *
+   * @example
+   * ```typescript
+   * const metadata = await catalog.loadTable({ namespace: ['analytics'], name: 'events' });
+   * console.log(metadata.schema);
+   * console.log(metadata.location);
+   * ```
+   */
+  async loadTable(id) {
+    return this.tableOps.loadTable(id);
+  }
+  /**
+   * Checks if a namespace exists in the catalog.
+   *
+   * @param id - Namespace identifier to check
+   * @returns True if the namespace exists, false otherwise
+   *
+   * @example
+   * ```typescript
+   * const exists = await catalog.namespaceExists({ namespace: ['analytics'] });
+   * console.log(exists); // true or false
+   * ```
+   */
+  async namespaceExists(id) {
+    return this.namespaceOps.namespaceExists(id);
+  }
+  /**
+   * Checks if a table exists in the catalog.
+   *
+   * @param id - Table identifier to check
+   * @returns True if the table exists, false otherwise
+   *
+   * @example
+   * ```typescript
+   * const exists = await catalog.tableExists({ namespace: ['analytics'], name: 'events' });
+   * console.log(exists); // true or false
+   * ```
+   */
+  async tableExists(id) {
+    return this.tableOps.tableExists(id);
+  }
+  /**
+   * Creates a namespace if it does not exist.
+   *
+   * If the namespace already exists, returns void. If created, returns the response.
+   *
+   * @param id - Namespace identifier to create
+   * @param metadata - Optional metadata properties for the namespace
+   * @returns Response containing the created namespace and its properties, or void if it already exists
+   *
+   * @example
+   * ```typescript
+   * const response = await catalog.createNamespaceIfNotExists(
+   *   { namespace: ['analytics'] },
+   *   { properties: { owner: 'data-team' } }
+   * );
+   * if (response) {
+   *   console.log('Created:', response.namespace);
+   * } else {
+   *   console.log('Already exists');
+   * }
+   * ```
+   */
+  async createNamespaceIfNotExists(id, metadata) {
+    return this.namespaceOps.createNamespaceIfNotExists(id, metadata);
+  }
+  /**
+   * Creates a table if it does not exist.
+   *
+   * If the table already exists, returns its metadata instead.
+   *
+   * @param namespace - Namespace to create the table in
+   * @param request - Table creation request including name, schema, partition spec, etc.
+   * @returns Table metadata for the created or existing table
+   *
+   * @example
+   * ```typescript
+   * const metadata = await catalog.createTableIfNotExists(
+   *   { namespace: ['analytics'] },
+   *   {
+   *     name: 'events',
+   *     schema: {
+   *       type: 'struct',
+   *       fields: [
+   *         { id: 1, name: 'id', type: 'long', required: true },
+   *         { id: 2, name: 'timestamp', type: 'timestamp', required: true }
+   *       ],
+   *       'schema-id': 0
+   *     }
+   *   }
+   * );
+   * ```
+   */
+  async createTableIfNotExists(namespace, request) {
+    return this.tableOps.createTableIfNotExists(namespace, request);
+  }
+};
+
+// node_modules/@supabase/storage-js/dist/index.mjs
+function _typeof2(o) {
+  "@babel/helpers - typeof";
+  return _typeof2 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
+    return typeof o$1;
+  } : function(o$1) {
+    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
+  }, _typeof2(o);
+}
+function toPrimitive2(t2, r2) {
+  if ("object" != _typeof2(t2) || !t2) return t2;
+  var e2 = t2[Symbol.toPrimitive];
+  if (void 0 !== e2) {
+    var i2 = e2.call(t2, r2 || "default");
+    if ("object" != _typeof2(i2)) return i2;
+    throw new TypeError("@@toPrimitive must return a primitive value.");
+  }
+  return ("string" === r2 ? String : Number)(t2);
+}
+function toPropertyKey2(t2) {
+  var i2 = toPrimitive2(t2, "string");
+  return "symbol" == _typeof2(i2) ? i2 : i2 + "";
+}
+function _defineProperty2(e2, r2, t2) {
+  return (r2 = toPropertyKey2(r2)) in e2 ? Object.defineProperty(e2, r2, {
+    value: t2,
+    enumerable: true,
+    configurable: true,
+    writable: true
+  }) : e2[r2] = t2, e2;
+}
+function ownKeys3(e2, r2) {
+  var t2 = Object.keys(e2);
+  if (Object.getOwnPropertySymbols) {
+    var o = Object.getOwnPropertySymbols(e2);
+    r2 && (o = o.filter(function(r$1) {
+      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
+    })), t2.push.apply(t2, o);
+  }
+  return t2;
+}
+function _objectSpread22(e2) {
+  for (var r2 = 1; r2 < arguments.length; r2++) {
+    var t2 = null != arguments[r2] ? arguments[r2] : {};
+    r2 % 2 ? ownKeys3(Object(t2), true).forEach(function(r$1) {
+      _defineProperty2(e2, r$1, t2[r$1]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys3(Object(t2)).forEach(function(r$1) {
+      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
+    });
+  }
+  return e2;
+}
+var StorageError = class extends Error {
+  constructor(message2, namespace = "storage", status, statusCode) {
+    super(message2);
+    this.__isStorageError = true;
+    this.namespace = namespace;
+    this.name = namespace === "vectors" ? "StorageVectorsError" : "StorageError";
+    this.status = status;
+    this.statusCode = statusCode;
+  }
+  toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      status: this.status,
+      statusCode: this.statusCode
+    };
+  }
+};
+function isStorageError(error) {
+  return typeof error === "object" && error !== null && "__isStorageError" in error;
+}
+var StorageApiError = class extends StorageError {
+  constructor(message2, status, statusCode, namespace = "storage", code) {
+    super(message2, namespace, status, statusCode);
+    this.name = namespace === "vectors" ? "StorageVectorsApiError" : "StorageApiError";
+    this.status = status;
+    this.statusCode = statusCode;
+    this.code = code;
+  }
+  toJSON() {
+    return _objectSpread22(_objectSpread22({}, super.toJSON()), {}, { code: this.code });
+  }
+};
+var StorageUnknownError = class extends StorageError {
+  constructor(message2, originalError, namespace = "storage") {
+    super(message2, namespace);
+    this.name = namespace === "vectors" ? "StorageVectorsUnknownError" : "StorageUnknownError";
+    this.originalError = originalError;
+  }
+};
+function setHeader(headers, name, value) {
+  const result = _objectSpread22({}, headers);
+  const nameLower = name.toLowerCase();
+  for (const key of Object.keys(result)) if (key.toLowerCase() === nameLower) delete result[key];
+  result[nameLower] = value;
+  return result;
+}
+function normalizeHeaders(headers) {
+  const result = {};
+  for (const [key, value] of Object.entries(headers)) result[key.toLowerCase()] = value;
+  return result;
+}
+var resolveFetch = (customFetch2) => {
+  if (customFetch2) return (...args) => customFetch2(...args);
+  return (...args) => fetch(...args);
+};
+var isPlainObject = (value) => {
+  if (typeof value !== "object" || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return (prototype === null || prototype === Object.prototype || Object.getPrototypeOf(prototype) === null) && !(Symbol.toStringTag in value) && !(Symbol.iterator in value);
+};
+var recursiveToCamel = (item) => {
+  if (Array.isArray(item)) return item.map((el) => recursiveToCamel(el));
+  else if (typeof item === "function" || item !== Object(item)) return item;
+  const result = {};
+  Object.entries(item).forEach(([key, value]) => {
+    const newKey = key.replace(/([-_][a-z])/gi, (c) => c.toUpperCase().replace(/[-_]/g, ""));
+    result[newKey] = recursiveToCamel(value);
+  });
+  return result;
+};
+var isValidBucketName = (bucketName) => {
+  if (!bucketName || typeof bucketName !== "string") return false;
+  if (bucketName.length === 0 || bucketName.length > 100) return false;
+  if (bucketName.trim() !== bucketName) return false;
+  if (bucketName.includes("/") || bucketName.includes("\\")) return false;
+  return /^[\w!.\*'() &$@=;:+,?-]+$/.test(bucketName);
+};
+var encodeStoragePath = (path4) => path4.split("/").map(encodeURIComponent).join("/");
+var _getErrorMessage = (err) => {
+  if (typeof err === "object" && err !== null) {
+    const e2 = err;
+    if (typeof e2.msg === "string") return e2.msg;
+    if (typeof e2.message === "string") return e2.message;
+    if (typeof e2.error_description === "string") return e2.error_description;
+    if (typeof e2.error === "string") return e2.error;
+    if (typeof e2.error === "object" && e2.error !== null) {
+      const nested = e2.error;
+      if (typeof nested.message === "string") return nested.message;
+    }
+  }
+  return JSON.stringify(err);
+};
+var handleError = async (error, reject, options, namespace) => {
+  if (error !== null && typeof error === "object" && "json" in error && typeof error.json === "function") {
+    const responseError = error;
+    let status = parseInt(String(responseError.status), 10);
+    if (!Number.isFinite(status)) status = 500;
+    responseError.json().then((err) => {
+      const statusCode = (err === null || err === void 0 ? void 0 : err.statusCode) || (err === null || err === void 0 ? void 0 : err.code) || status + "";
+      reject(new StorageApiError(_getErrorMessage(err), status, statusCode, namespace, err === null || err === void 0 ? void 0 : err.code));
+    }).catch(() => {
+      const statusCode = status + "";
+      reject(new StorageApiError(responseError.statusText || `HTTP ${status} error`, status, statusCode, namespace));
+    });
+  } else reject(new StorageUnknownError(_getErrorMessage(error), error, namespace));
+};
+var _getRequestParams = (method, options, parameters, body) => {
+  const params = {
+    method,
+    headers: (options === null || options === void 0 ? void 0 : options.headers) || {}
+  };
+  if (method === "GET" || method === "HEAD" || !body) return _objectSpread22(_objectSpread22({}, params), parameters);
+  if (isPlainObject(body)) {
+    var _contentType;
+    const headers = (options === null || options === void 0 ? void 0 : options.headers) || {};
+    let contentType;
+    for (const [key, value] of Object.entries(headers)) if (key.toLowerCase() === "content-type") contentType = value;
+    params.headers = setHeader(headers, "Content-Type", (_contentType = contentType) !== null && _contentType !== void 0 ? _contentType : "application/json");
+    params.body = JSON.stringify(body);
+  } else params.body = body;
+  if (options === null || options === void 0 ? void 0 : options.duplex) params.duplex = options.duplex;
+  return _objectSpread22(_objectSpread22({}, params), parameters);
+};
+async function _handleRequest(fetcher, method, url, options, parameters, body, namespace) {
+  return new Promise((resolve, reject) => {
+    fetcher(url, _getRequestParams(method, options, parameters, body)).then((result) => {
+      if (!result.ok) throw result;
+      if (options === null || options === void 0 ? void 0 : options.noResolveJson) return result;
+      if (namespace === "vectors") {
+        const contentType = result.headers.get("content-type");
+        if (result.headers.get("content-length") === "0" || result.status === 204) return {};
+        if (!contentType || !contentType.includes("application/json")) return {};
+      }
+      return result.json();
+    }).then((data) => resolve(data)).catch((error) => handleError(error, reject, options, namespace));
+  });
+}
+function createFetchApi(namespace = "storage") {
+  return {
+    get: async (fetcher, url, options, parameters) => {
+      return _handleRequest(fetcher, "GET", url, options, parameters, void 0, namespace);
+    },
+    post: async (fetcher, url, body, options, parameters) => {
+      return _handleRequest(fetcher, "POST", url, options, parameters, body, namespace);
+    },
+    put: async (fetcher, url, body, options, parameters) => {
+      return _handleRequest(fetcher, "PUT", url, options, parameters, body, namespace);
+    },
+    head: async (fetcher, url, options, parameters) => {
+      return _handleRequest(fetcher, "HEAD", url, _objectSpread22(_objectSpread22({}, options), {}, { noResolveJson: true }), parameters, void 0, namespace);
+    },
+    remove: async (fetcher, url, body, options, parameters) => {
+      return _handleRequest(fetcher, "DELETE", url, options, parameters, body, namespace);
+    }
+  };
+}
+var defaultApi = createFetchApi("storage");
+var { get, post, put, head, remove } = defaultApi;
+var vectorsApi = createFetchApi("vectors");
+var BaseApiClient = class {
+  /**
+  * Creates a new BaseApiClient instance
+  * @param url - Base URL for API requests
+  * @param headers - Default headers for API requests
+  * @param fetch - Optional custom fetch implementation
+  * @param namespace - Error namespace ('storage' or 'vectors')
+  */
+  constructor(url, headers = {}, fetch$1, namespace = "storage") {
+    this.shouldThrowOnError = false;
+    this.url = url;
+    this.headers = normalizeHeaders(headers);
+    this.fetch = resolveFetch(fetch$1);
+    this.namespace = namespace;
+  }
+  /**
+  * Enable throwing errors instead of returning them.
+  * When enabled, errors are thrown instead of returned in { data, error } format.
+  *
+  * @returns this - For method chaining
+  */
+  throwOnError() {
+    this.shouldThrowOnError = true;
+    return this;
+  }
+  /**
+  * Set an HTTP header for the request.
+  * Creates a shallow copy of headers to avoid mutating shared state.
+  *
+  * @param name - Header name
+  * @param value - Header value
+  * @returns this - For method chaining
+  */
+  setHeader(name, value) {
+    this.headers = setHeader(this.headers, name, value);
+    return this;
+  }
+  /**
+  * Handles API operation with standardized error handling
+  * Eliminates repetitive try-catch blocks across all API methods
+  *
+  * This wrapper:
+  * 1. Executes the operation
+  * 2. Returns { data, error: null } on success
+  * 3. Returns { data: null, error } on failure (if shouldThrowOnError is false)
+  * 4. Throws error on failure (if shouldThrowOnError is true)
+  *
+  * @typeParam T - The expected data type from the operation
+  * @param operation - Async function that performs the API call
+  * @returns Promise with { data, error } tuple
+  *
+  * @example Handling an operation
+  * ```typescript
+  * async listBuckets() {
+  *   return this.handleOperation(async () => {
+  *     return await get(this.fetch, `${this.url}/bucket`, {
+  *       headers: this.headers,
+  *     })
+  *   })
+  * }
+  * ```
+  */
+  async handleOperation(operation) {
+    var _this = this;
+    try {
+      return {
+        data: await operation(),
+        error: null
+      };
+    } catch (error) {
+      if (_this.shouldThrowOnError) throw error;
+      if (isStorageError(error)) return {
+        data: null,
+        error
+      };
+      throw error;
+    }
+  }
+};
+var _Symbol$toStringTag$1;
+_Symbol$toStringTag$1 = Symbol.toStringTag;
+var StreamDownloadBuilder = class {
+  constructor(downloadFn, shouldThrowOnError) {
+    this.downloadFn = downloadFn;
+    this.shouldThrowOnError = shouldThrowOnError;
+    this[_Symbol$toStringTag$1] = "StreamDownloadBuilder";
+    this.promise = null;
+  }
+  then(onfulfilled, onrejected) {
+    return this.getPromise().then(onfulfilled, onrejected);
+  }
+  catch(onrejected) {
+    return this.getPromise().catch(onrejected);
+  }
+  finally(onfinally) {
+    return this.getPromise().finally(onfinally);
+  }
+  getPromise() {
+    if (!this.promise) this.promise = this.execute();
+    return this.promise;
+  }
+  async execute() {
+    var _this = this;
+    try {
+      return {
+        data: (await _this.downloadFn()).body,
+        error: null
+      };
+    } catch (error) {
+      if (_this.shouldThrowOnError) throw error;
+      if (isStorageError(error)) return {
+        data: null,
+        error
+      };
+      throw error;
+    }
+  }
+};
+var _Symbol$toStringTag;
+_Symbol$toStringTag = Symbol.toStringTag;
+var BlobDownloadBuilder = class {
+  constructor(downloadFn, shouldThrowOnError) {
+    this.downloadFn = downloadFn;
+    this.shouldThrowOnError = shouldThrowOnError;
+    this[_Symbol$toStringTag] = "BlobDownloadBuilder";
+    this.promise = null;
+  }
+  asStream() {
+    return new StreamDownloadBuilder(this.downloadFn, this.shouldThrowOnError);
+  }
+  then(onfulfilled, onrejected) {
+    return this.getPromise().then(onfulfilled, onrejected);
+  }
+  catch(onrejected) {
+    return this.getPromise().catch(onrejected);
+  }
+  finally(onfinally) {
+    return this.getPromise().finally(onfinally);
+  }
+  getPromise() {
+    if (!this.promise) this.promise = this.execute();
+    return this.promise;
+  }
+  async execute() {
+    var _this = this;
+    try {
+      return {
+        data: await (await _this.downloadFn()).blob(),
+        error: null
+      };
+    } catch (error) {
+      if (_this.shouldThrowOnError) throw error;
+      if (isStorageError(error)) return {
+        data: null,
+        error
+      };
+      throw error;
+    }
+  }
+};
+var DEFAULT_SEARCH_OPTIONS = {
+  limit: 100,
+  offset: 0,
+  sortBy: {
+    column: "name",
+    order: "asc"
+  }
+};
+var DEFAULT_FILE_OPTIONS = {
+  cacheControl: "3600",
+  contentType: "text/plain;charset=UTF-8",
+  upsert: false
+};
+var StorageFileApi = class extends BaseApiClient {
+  constructor(url, headers = {}, bucketId, fetch$1) {
+    super(url, headers, fetch$1, "storage");
+    this.bucketId = bucketId;
+  }
+  /**
+  * Uploads a file to an existing bucket or replaces an existing file at the specified path with a new one.
+  *
+  * @param method HTTP method.
+  * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+  * @param fileBody The body of the file to be stored in the bucket.
+  */
+  async uploadOrUpdate(method, path4, fileBody, fileOptions) {
+    var _this = this;
+    return _this.handleOperation(async () => {
+      let body;
+      const options = _objectSpread22(_objectSpread22({}, DEFAULT_FILE_OPTIONS), fileOptions);
+      let headers = _objectSpread22(_objectSpread22({}, _this.headers), method === "POST" && { "x-upsert": String(options.upsert) });
+      const metadata = options.metadata;
+      if (typeof Blob !== "undefined" && fileBody instanceof Blob) {
+        body = new FormData();
+        body.append("cacheControl", options.cacheControl);
+        if (metadata) body.append("metadata", _this.encodeMetadata(metadata));
+        body.append("", fileBody);
+      } else if (typeof FormData !== "undefined" && fileBody instanceof FormData) {
+        body = fileBody;
+        if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
+        if (metadata && !body.has("metadata")) body.append("metadata", _this.encodeMetadata(metadata));
+      } else {
+        body = fileBody;
+        headers["cache-control"] = `max-age=${options.cacheControl}`;
+        headers["content-type"] = options.contentType;
+        if (metadata) headers["x-metadata"] = _this.toBase64(_this.encodeMetadata(metadata));
+        if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
+      }
+      if (fileOptions === null || fileOptions === void 0 ? void 0 : fileOptions.headers) for (const [key, value] of Object.entries(fileOptions.headers)) headers = setHeader(headers, key, value);
+      const cleanPath = _this._removeEmptyFolders(path4);
+      const _path = _this._getFinalPath(cleanPath);
+      const data = await (method == "PUT" ? put : post)(_this.fetch, `${_this.url}/object/${_path}`, body, _objectSpread22({ headers }, (options === null || options === void 0 ? void 0 : options.duplex) ? { duplex: options.duplex } : {}));
+      return {
+        path: cleanPath,
+        id: data.Id,
+        fullPath: data.Key
+      };
+    });
+  }
+  /**
+  * Uploads a file to an existing bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+  * @param fileBody The body of the file to be stored in the bucket.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, upsert, and metadata.
+  * @returns Promise with response containing file path, id, and fullPath or error
+  *
+  * @example Upload file
+  * ```js
+  * const avatarFile = event.target.files[0]
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .upload('public/avatar1.png', avatarFile, {
+  *     cacheControl: '3600',
+  *     upsert: false
+  *   })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "path": "public/avatar1.png",
+  *     "fullPath": "avatars/public/avatar1.png"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Upload file using `ArrayBuffer` from base64 file data
+  * ```js
+  * import { decode } from 'base64-arraybuffer'
+  *
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .upload('public/avatar1.png', decode('base64FileData'), {
+  *     contentType: 'image/png'
+  *   })
+  * ```
+  *
+  * @example Handling errors
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .upload('public/avatar1.png', avatarFile)
+  *
+  * if (error) {
+  *   // Log the full error so fields like `statusCode` and `error` (the
+  *   // Storage error name, e.g. "Duplicate") aren't hidden behind `error.message`.
+  *   console.error(error)
+  *   return
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: only `insert` when you are uploading new files and `select`, `insert` and `update` when you are upserting files
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Upload file using `ArrayBuffer` from base64 file data instead, see example below.
+  */
+  async upload(path4, fileBody, fileOptions) {
+    return this.uploadOrUpdate("POST", path4, fileBody, fileOptions);
+  }
+  /**
+  * Upload a file with a token generated from `createSignedUploadUrl`.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the file name. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to upload.
+  * @param token The token generated from `createSignedUploadUrl`
+  * @param fileBody The body of the file to be stored in the bucket.
+  * @param fileOptions HTTP headers (cacheControl, contentType, etc.).
+  * **Note:** The `upsert` option has no effect here. To enable upsert behavior,
+  * pass `{ upsert: true }` when calling `createSignedUploadUrl()` instead.
+  * @returns Promise with response containing file path and fullPath or error
+  *
+  * @example Upload to a signed URL
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .uploadToSignedUrl('folder/cat.jpg', 'token-from-createSignedUploadUrl', file)
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "path": "folder/cat.jpg",
+  *     "fullPath": "avatars/folder/cat.jpg"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async uploadToSignedUrl(path4, token, fileBody, fileOptions) {
+    var _this3 = this;
+    const cleanPath = _this3._removeEmptyFolders(path4);
+    const _path = _this3._getFinalPath(cleanPath);
+    const url = new URL(_this3.url + `/object/upload/sign/${_path}`);
+    url.searchParams.set("token", token);
+    return _this3.handleOperation(async () => {
+      let body;
+      const options = _objectSpread22(_objectSpread22({}, DEFAULT_FILE_OPTIONS), fileOptions);
+      let headers = _objectSpread22(_objectSpread22({}, _this3.headers), { "x-upsert": String(options.upsert) });
+      const metadata = options.metadata;
+      if (typeof Blob !== "undefined" && fileBody instanceof Blob) {
+        body = new FormData();
+        body.append("cacheControl", options.cacheControl);
+        if (metadata) body.append("metadata", _this3.encodeMetadata(metadata));
+        body.append("", fileBody);
+      } else if (typeof FormData !== "undefined" && fileBody instanceof FormData) {
+        body = fileBody;
+        if (!body.has("cacheControl")) body.append("cacheControl", options.cacheControl);
+        if (metadata && !body.has("metadata")) body.append("metadata", _this3.encodeMetadata(metadata));
+      } else {
+        body = fileBody;
+        headers["cache-control"] = `max-age=${options.cacheControl}`;
+        headers["content-type"] = options.contentType;
+        if (metadata) headers["x-metadata"] = _this3.toBase64(_this3.encodeMetadata(metadata));
+        if ((typeof ReadableStream !== "undefined" && body instanceof ReadableStream || body && typeof body === "object" && "pipe" in body && typeof body.pipe === "function") && !options.duplex) options.duplex = "half";
+      }
+      if (fileOptions === null || fileOptions === void 0 ? void 0 : fileOptions.headers) for (const [key, value] of Object.entries(fileOptions.headers)) headers = setHeader(headers, key, value);
+      return {
+        path: cleanPath,
+        fullPath: (await put(_this3.fetch, url.toString(), body, _objectSpread22({ headers }, (options === null || options === void 0 ? void 0 : options.duplex) ? { duplex: options.duplex } : {}))).Key
+      };
+    });
+  }
+  /**
+  * Creates a signed upload URL.
+  * Signed upload URLs can be used to upload files to the bucket without further authentication.
+  * They are valid for 2 hours.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the current file name. For example `folder/image.png`.
+  * @param options.upsert If set to true, allows the file to be overwritten if it already exists.
+  * @returns Promise with response containing signed upload URL, token, and path or error
+  *
+  * @example Create Signed Upload URL
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .createSignedUploadUrl('folder/cat.jpg')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "signedUrl": "https://example.supabase.co/storage/v1/object/upload/sign/avatars/folder/cat.jpg?token=<TOKEN>",
+  *     "path": "folder/cat.jpg",
+  *     "token": "<TOKEN>"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `insert`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async createSignedUploadUrl(path4, options) {
+    var _this4 = this;
+    return _this4.handleOperation(async () => {
+      let _path = _this4._getFinalPath(path4);
+      const headers = _objectSpread22({}, _this4.headers);
+      if (options === null || options === void 0 ? void 0 : options.upsert) headers["x-upsert"] = "true";
+      const data = await post(_this4.fetch, `${_this4.url}/object/upload/sign/${_path}`, {}, { headers });
+      const url = new URL(_this4.url + data.url);
+      const token = url.searchParams.get("token");
+      if (!token) throw new StorageError("No token returned by API");
+      return {
+        signedUrl: url.toString(),
+        path: path4,
+        token
+      };
+    });
+  }
+  /**
+  * Replaces an existing file at the specified path with a new one.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The relative file path. Should be of the format `folder/subfolder/filename.png`. The bucket must already exist before attempting to update.
+  * @param fileBody The body of the file to be stored in the bucket.
+  * @param fileOptions Optional file upload options including cacheControl, contentType, and metadata.
+  * **Note:** The `upsert` option has no effect here. `update()` always replaces the
+  * file at the given path, so the `x-upsert` header is not sent. To control upsert
+  * behavior, use `upload()` instead.
+  * @returns Promise with response containing file path, id, and fullPath or error
+  *
+  * @example Update file
+  * ```js
+  * const avatarFile = event.target.files[0]
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .update('public/avatar1.png', avatarFile, {
+  *     cacheControl: '3600'
+  *   })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "path": "public/avatar1.png",
+  *     "fullPath": "avatars/public/avatar1.png"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Update file using `ArrayBuffer` from base64 file data
+  * ```js
+  * import {decode} from 'base64-arraybuffer'
+  *
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .update('public/avatar1.png', decode('base64FileData'), {
+  *     contentType: 'image/png'
+  *   })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `update` and `select`
+  * - `update()` always replaces the file at the given path regardless of the `upsert` option.
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  * - For React Native, using either `Blob`, `File` or `FormData` does not work as intended. Update file using `ArrayBuffer` from base64 file data instead, see example below.
+  */
+  async update(path4, fileBody, fileOptions) {
+    return this.uploadOrUpdate("PUT", path4, fileBody, fileOptions);
+  }
+  /**
+  * Moves an existing file to a new path in the same bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
+  * @param toPath The new file path, including the new file name. For example `folder/image-new.png`.
+  * @param options The destination options.
+  * @param options.sourceVersionId The version id of the source object to move.
+  * @returns Promise with response containing success message or error
+  *
+  * @example Move file
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .move('public/avatar1.png', 'private/avatar2.png')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully moved"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `update` and `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async move(fromPath, toPath, options) {
+    var _this6 = this;
+    return _this6.handleOperation(async () => {
+      return await post(_this6.fetch, `${_this6.url}/object/move`, {
+        bucketId: _this6.bucketId,
+        sourceKey: fromPath,
+        destinationKey: toPath,
+        destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
+        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
+      }, { headers: _this6.headers });
+    });
+  }
+  /**
+  * Copies an existing file to a new path in the same bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param fromPath The original file path, including the current file name. For example `folder/image.png`.
+  * @param toPath The new file path, including the new file name. For example `folder/image-copy.png`.
+  * @param options The destination options.
+  * @param options.sourceVersionId The version id of the source object to copy.
+  * @returns Promise with response containing copied file path or error
+  *
+  * @example Copy file
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .copy('public/avatar1.png', 'private/avatar2.png')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "path": "avatars/private/avatar2.png"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `insert` and `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async copy(fromPath, toPath, options) {
+    var _this7 = this;
+    return _this7.handleOperation(async () => {
+      return { path: (await post(_this7.fetch, `${_this7.url}/object/copy`, {
+        bucketId: _this7.bucketId,
+        sourceKey: fromPath,
+        destinationKey: toPath,
+        destinationBucket: options === null || options === void 0 ? void 0 : options.destinationBucket,
+        sourceVersionId: options === null || options === void 0 ? void 0 : options.sourceVersionId
+      }, { headers: _this7.headers })).Key };
+    });
+  }
+  /**
+  * Creates a signed URL. Use a signed URL to share a file for a fixed amount of time.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the current file name. For example `folder/image.png`.
+  * @param expiresIn The number of seconds until the signed URL expires. For example, `60` for a URL which is valid for one minute.
+  * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+  * @param options.transform Transform the asset before serving it to the client.
+  * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+  * @param options.versionId Create a signed URL for a specific object version rather than the current one.
+  * @returns Promise with response containing signed URL or error
+  *
+  * @example Create Signed URL
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .createSignedUrl('folder/avatar1.png', 60)
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Create a signed URL for an asset with transformations
+  * ```js
+  * const { data } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .createSignedUrl('folder/avatar1.png', 60, {
+  *     transform: {
+  *       width: 100,
+  *       height: 100,
+  *     }
+  *   })
+  * ```
+  *
+  * @example Create a signed URL which triggers the download of the asset
+  * ```js
+  * const { data } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .createSignedUrl('folder/avatar1.png', 60, {
+  *     download: true,
+  *   })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async createSignedUrl(path4, expiresIn, options) {
+    var _this8 = this;
+    return _this8.handleOperation(async () => {
+      let _path = _this8._getFinalPath(path4);
+      const hasTransform = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0;
+      let data = await post(_this8.fetch, `${_this8.url}/object/sign/${_path}`, _objectSpread22(_objectSpread22({ expiresIn }, hasTransform ? { transform: options.transform } : {}), (options === null || options === void 0 ? void 0 : options.versionId) != null ? { versionId: options.versionId } : {}), { headers: _this8.headers });
+      const query = new URLSearchParams();
+      if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
+      if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
+      const queryString = query.toString();
+      return { signedUrl: encodeURI(`${_this8.url}${data.signedURL}${queryString ? `&${queryString}` : ""}`) };
+    });
+  }
+  /**
+  * Creates multiple signed URLs. Use a signed URL to share a file for a fixed amount of time.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param paths The file paths to be downloaded, including the current file names. For example `['folder/image.png', 'folder2/image2.png']`.
+  * @param expiresIn The number of seconds until the signed URLs expire. For example, `60` for URLs which are valid for one minute.
+  * @param options.download triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+  * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+  * @returns Promise with response containing array of objects with signedUrl, path, and error or error
+  *
+  * @example Create Signed URLs
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .createSignedUrls(['folder/avatar1.png', 'folder/avatar2.png'], 60)
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "error": null,
+  *       "path": "folder/avatar1.png",
+  *       "signedURL": "/object/sign/avatars/folder/avatar1.png?token=<TOKEN>",
+  *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar1.png?token=<TOKEN>"
+  *     },
+  *     {
+  *       "error": null,
+  *       "path": "folder/avatar2.png",
+  *       "signedURL": "/object/sign/avatars/folder/avatar2.png?token=<TOKEN>",
+  *       "signedUrl": "https://example.supabase.co/storage/v1/object/sign/avatars/folder/avatar2.png?token=<TOKEN>"
+  *     }
+  *   ],
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async createSignedUrls(paths, expiresIn, options) {
+    var _this9 = this;
+    return _this9.handleOperation(async () => {
+      const data = await post(_this9.fetch, `${_this9.url}/object/sign/${_this9.bucketId}`, {
+        expiresIn,
+        paths
+      }, { headers: _this9.headers });
+      const query = new URLSearchParams();
+      if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
+      if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
+      const queryString = query.toString();
+      return data.map((datum) => _objectSpread22(_objectSpread22({}, datum), {}, { signedUrl: datum.signedURL ? encodeURI(`${_this9.url}${datum.signedURL}${queryString ? `&${queryString}` : ""}`) : null }));
+    });
+  }
+  /**
+  * Downloads a file from a private bucket. For public buckets, make a request to the URL returned from `getPublicUrl` instead.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The full path and file name of the file to be downloaded. For example `folder/image.png`.
+  * @param options Optional settings: `transform` to transform the asset before serving it to the client, `cacheNonce` to append a cache nonce parameter to the URL to invalidate the cache, and `versionId` to download a specific object version.
+  * @param parameters Additional fetch parameters like signal for cancellation. Supports standard fetch options including cache control.
+  * @returns BlobDownloadBuilder instance for downloading the file
+  *
+  * @example Download file
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .download('folder/avatar1.png')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": <BLOB>,
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Download file with transformations
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .download('folder/avatar1.png', {
+  *     transform: {
+  *       width: 100,
+  *       height: 100,
+  *       quality: 80
+  *     }
+  *   })
+  * ```
+  *
+  * @example Download with cache control (useful in Edge Functions)
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .download('folder/avatar1.png', {}, { cache: 'no-store' })
+  * ```
+  *
+  * @example Download with abort signal
+  * ```js
+  * const controller = new AbortController()
+  * setTimeout(() => controller.abort(), 5000)
+  *
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .download('folder/avatar1.png', {}, { signal: controller.signal })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  download(path4, options, parameters) {
+    const renderPath = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0 ? "render/image/authenticated" : "object";
+    const query = new URLSearchParams();
+    if (options === null || options === void 0 ? void 0 : options.transform) this.applyTransformOptsToQuery(query, options.transform);
+    if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
+    if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
+    const queryString = query.toString();
+    const _path = this._getFinalPath(path4);
+    const downloadFn = () => get(this.fetch, `${this.url}/${renderPath}/${_path}${queryString ? `?${queryString}` : ""}`, {
+      headers: this.headers,
+      noResolveJson: true
+    }, parameters);
+    return new BlobDownloadBuilder(downloadFn, this.shouldThrowOnError);
+  }
+  /**
+  * Retrieves the details of an existing file.
+  *
+  * Returns detailed file metadata including size, content type, and timestamps.
+  * Note: The API returns `last_modified` field, not `updated_at`.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the file name. For example `folder/image.png`.
+  * @param options Optional settings, including `versionId` to retrieve a specific object version.
+  * @returns Promise with response containing file metadata or error
+  *
+  * @example Get file info
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .info('folder/avatar1.png')
+  *
+  * if (data) {
+  *   console.log('Last modified:', data.lastModified)
+  *   console.log('Size:', data.size)
+  * }
+  * ```
+  */
+  async info(path4, options) {
+    var _this10 = this;
+    const _path = _this10._getFinalPath(path4);
+    const query = new URLSearchParams();
+    if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
+    const queryString = query.toString();
+    return _this10.handleOperation(async () => {
+      return recursiveToCamel(await get(_this10.fetch, `${_this10.url}/object/info/${_path}${queryString ? `?${queryString}` : ""}`, { headers: _this10.headers }));
+    });
+  }
+  /**
+  * Checks the existence of a file.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The file path, including the file name. For example `folder/image.png`.
+  * @returns Promise with response containing boolean indicating file existence or error
+  *
+  * @example Check file existence
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .exists('folder/avatar1.png')
+  * ```
+  */
+  async exists(path4) {
+    var _this11 = this;
+    const _path = _this11._getFinalPath(path4);
+    try {
+      await head(_this11.fetch, `${_this11.url}/object/${_path}`, { headers: _this11.headers });
+      return {
+        data: true,
+        error: null
+      };
+    } catch (error) {
+      if (_this11.shouldThrowOnError) throw error;
+      if (isStorageError(error)) {
+        var _error$originalError;
+        const status = error instanceof StorageApiError ? error.status : error instanceof StorageUnknownError ? (_error$originalError = error.originalError) === null || _error$originalError === void 0 ? void 0 : _error$originalError.status : void 0;
+        if (status !== void 0 && [400, 404].includes(status)) return {
+          data: false,
+          error
+        };
+      }
+      throw error;
+    }
+  }
+  /**
+  * A simple convenience function to get the URL for an asset in a public bucket. If you do not want to use this function, you can construct the public URL by concatenating the bucket URL with the path to the asset.
+  * This function does not verify if the bucket is public. If a public URL is created for a bucket which is not public, you will not be able to download the asset.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The path and name of the file to generate the public URL for. For example `folder/image.png`.
+  * @param options.download Triggers the file as a download if set to true. Set this parameter as the name of the file if you want to trigger the download with a different filename.
+  * @param options.transform Transform the asset before serving it to the client.
+  * @param options.cacheNonce Append a cache nonce parameter to the URL to invalidate the cache.
+  * @param options.versionId Return the URL for a specific object version rather than the current one.
+  * @returns Object with public URL
+  *
+  * @example Returns the URL for an asset in a public bucket
+  * ```js
+  * const { data } = supabase
+  *   .storage
+  *   .from('public-bucket')
+  *   .getPublicUrl('folder/avatar1.png')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "publicUrl": "https://example.supabase.co/storage/v1/object/public/public-bucket/folder/avatar1.png"
+  *   }
+  * }
+  * ```
+  *
+  * @example Returns the URL for an asset in a public bucket with transformations
+  * ```js
+  * const { data } = supabase
+  *   .storage
+  *   .from('public-bucket')
+  *   .getPublicUrl('folder/avatar1.png', {
+  *     transform: {
+  *       width: 100,
+  *       height: 100,
+  *     }
+  *   })
+  * ```
+  *
+  * @example Returns the URL which triggers the download of an asset in a public bucket
+  * ```js
+  * const { data } = supabase
+  *   .storage
+  *   .from('public-bucket')
+  *   .getPublicUrl('folder/avatar1.png', {
+  *     download: true,
+  *   })
+  * ```
+  *
+  * @remarks
+  * - The bucket needs to be set to public, either via [updateBucket()](/docs/reference/javascript/storage-updatebucket) or by going to Storage on [supabase.com/dashboard](https://supabase.com/dashboard), clicking the overflow menu on a bucket and choosing "Make public"
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  getPublicUrl(path4, options) {
+    const _path = this._getFinalPath(path4);
+    const query = new URLSearchParams();
+    if (options === null || options === void 0 ? void 0 : options.download) query.set("download", options.download === true ? "" : options.download);
+    if (options === null || options === void 0 ? void 0 : options.transform) this.applyTransformOptsToQuery(query, options.transform);
+    if ((options === null || options === void 0 ? void 0 : options.cacheNonce) != null) query.set("cacheNonce", String(options.cacheNonce));
+    if ((options === null || options === void 0 ? void 0 : options.versionId) != null) query.set("versionId", String(options.versionId));
+    const queryString = query.toString();
+    const renderPath = typeof (options === null || options === void 0 ? void 0 : options.transform) === "object" && options.transform !== null && Object.keys(options.transform).length > 0 ? "render/image" : "object";
+    return { data: { publicUrl: encodeURI(`${this.url}/${renderPath}/public/${_path}`) + (queryString ? `?${queryString}` : "") } };
+  }
+  /**
+  * Deletes files within the same bucket
+  *
+  * Returns an array of FileObject entries for the deleted files. Note that deprecated
+  * fields like `bucket_id` may or may not be present in the response - do not rely on them.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param paths An array of files to delete. Each entry is either a path (deletes whichever
+  * version is currently at that path, e.g. `'folder/image.png'`), or `{ path, versionId }` to
+  * delete an exact version current or archived (e.g. `{ path: 'folder/image.png', versionId: '...' }`).
+  * @returns Promise with response containing array of deleted file objects or error
+  *
+  * @example Delete file
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .remove(['folder/avatar1.png'])
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": [],
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Delete a specific object version
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .remove([{ path: 'folder/avatar1.png', versionId: 'noncurrent-version-id' }])
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `delete` and `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async remove(paths) {
+    var _this12 = this;
+    return _this12.handleOperation(async () => {
+      return await remove(_this12.fetch, `${_this12.url}/object/${_this12.bucketId}`, { prefixes: paths }, { headers: _this12.headers });
+    });
+  }
+  /**
+  * Purges the CDN cache for a single object in this bucket.
+  *
+  * Maps to `DELETE /cdn/{bucket}/{path}` on the Storage API. The server
+  * issues a CDN invalidation for the object and returns `{ message: 'success' }`.
+  *
+  * **Requires the `service_role` key.** The underlying endpoint enforces
+  * `service_role` JWT — calls made with the anon key or a user JWT will be
+  * rejected by the server.
+  *
+  * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
+  * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
+  * feature enabled, otherwise the server returns an error.
+  *
+  * Operates on a single object path. There is no wildcard or recursion: pass
+  * the exact path of the object you want invalidated.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The path (relative to the bucket) of the object to purge, e.g. `folder/avatar.png`.
+  * @param options Optional purge cache options.
+  * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving the original cached file intact.
+  * @param parameters Optional fetch parameters such as an `AbortController` signal.
+  * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
+  *
+  * @example Purge a single cached object
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .purgeCache('folder/avatar1.png')
+  * ```
+  *
+  * @example Purge only transformations for a single object
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .purgeCache('folder/avatar1.png', { transformations: true })
+  * ```
+  */
+  async purgeCache(path4, options, parameters) {
+    var _this13 = this;
+    return _this13.handleOperation(async () => {
+      const _path = encodeStoragePath(_this13._getFinalPath(path4));
+      const query = new URLSearchParams();
+      if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
+      const queryString = query.toString();
+      return await remove(_this13.fetch, `${_this13.url}/cdn/${_path}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this13.headers }, parameters);
+    });
+  }
+  /**
+  * Get file metadata
+  * @param id the file id to retrieve metadata
+  */
+  /**
+  * Update file metadata
+  * @param id the file id to update metadata
+  * @param meta the new file metadata
+  */
+  /**
+  * Lists all the files and folders within a path of the bucket.
+  *
+  * **Important:** For folder entries, fields like `id`, `updated_at`, `created_at`,
+  * `last_accessed_at`, and `metadata` will be `null`. Only files have these fields populated.
+  * Additionally, deprecated fields like `bucket_id`, `owner`, and `buckets` are NOT returned
+  * by this method.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param path The folder path.
+  * @param options Search options including limit (defaults to 100), offset, sortBy, and search
+  * @param parameters Optional fetch parameters including signal for cancellation
+  * @returns Promise with response containing array of files/folders or error
+  *
+  * @example List files in a bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .list('folder', {
+  *     limit: 100,
+  *     offset: 0,
+  *     sortBy: { column: 'name', order: 'asc' },
+  *   })
+  *
+  * // Handle files vs folders
+  * data?.forEach(item => {
+  *   if (item.id !== null) {
+  *     // It's a file
+  *     console.log('File:', item.name, 'Size:', item.metadata?.size)
+  *   } else {
+  *     // It's a folder
+  *     console.log('Folder:', item.name)
+  *   }
+  * })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "avatar1.png",
+  *       "id": "e668cf7f-821b-4a2f-9dce-7dfa5dd1cfd2",
+  *       "updated_at": "2024-05-22T23:06:05.580Z",
+  *       "created_at": "2024-05-22T23:04:34.443Z",
+  *       "last_accessed_at": "2024-05-22T23:04:34.443Z",
+  *       "metadata": {
+  *         "eTag": "\"c5e8c553235d9af30ef4f6e280790b92\"",
+  *         "size": 32175,
+  *         "mimetype": "image/png",
+  *         "cacheControl": "max-age=3600",
+  *         "lastModified": "2024-05-22T23:06:05.574Z",
+  *         "contentLength": 32175,
+  *         "httpStatusCode": 200
+  *       }
+  *     }
+  *   ],
+  *   "error": null
+  * }
+  * ```
+  *
+  * @example Search files in a bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .list('folder', {
+  *     limit: 100,
+  *     offset: 0,
+  *     sortBy: { column: 'name', order: 'asc' },
+  *     search: 'jon'
+  *   })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: none
+  *   - `objects` table permissions: `select`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async list(path4, options, parameters) {
+    var _this14 = this;
+    return _this14.handleOperation(async () => {
+      const sortBy = (options === null || options === void 0 ? void 0 : options.sortBy) ? _objectSpread22(_objectSpread22({}, DEFAULT_SEARCH_OPTIONS.sortBy), options.sortBy) : DEFAULT_SEARCH_OPTIONS.sortBy;
+      const body = _objectSpread22(_objectSpread22(_objectSpread22({}, DEFAULT_SEARCH_OPTIONS), options), {}, {
+        sortBy,
+        prefix: path4 || ""
+      });
+      return await post(_this14.fetch, `${_this14.url}/object/list/${_this14.bucketId}`, body, { headers: _this14.headers }, parameters);
+    });
+  }
+  /**
+  * Lists all the files and folders within a bucket using the V2 API with pagination support.
+  *
+  * **Important:** Folder entries in the `folders` array only contain `name` and optionally `key` —
+  * they have no `id`, timestamps, or `metadata` fields. Full file metadata is only available
+  * on entries in the `objects` array.
+  *
+  * @experimental this method signature might change in the future
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param options Search options including prefix, cursor for pagination, limit, with_delimiter
+  * @param parameters Optional fetch parameters including signal for cancellation
+  * @returns Promise with response containing folders/objects arrays with pagination info or error
+  *
+  * @example List files with pagination
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .from('avatars')
+  *   .listV2({
+  *     prefix: 'folder/',
+  *     limit: 100,
+  *   })
+  *
+  * // Handle pagination
+  * if (data?.hasNext) {
+  *   const nextPage = await supabase
+  *     .storage
+  *     .from('avatars')
+  *     .listV2({
+  *       prefix: 'folder/',
+  *       cursor: data.nextCursor,
+  *     })
+  * }
+  *
+  * // Handle files vs folders
+  * data?.objects.forEach(file => {
+  *   if (file.id !== null) {
+  *     console.log('File:', file.name, 'Size:', file.metadata?.size)
+  *   }
+  * })
+  * data?.folders.forEach(folder => {
+  *   console.log('Folder:', folder.name)
+  * })
+  * ```
+  */
+  async listV2(options, parameters) {
+    var _this15 = this;
+    return _this15.handleOperation(async () => {
+      const body = _objectSpread22({}, options);
+      return await post(_this15.fetch, `${_this15.url}/object/list-v2/${_this15.bucketId}`, body, { headers: _this15.headers }, parameters);
+    });
+  }
+  encodeMetadata(metadata) {
+    return JSON.stringify(metadata);
+  }
+  toBase64(data) {
+    if (typeof Buffer !== "undefined") return Buffer.from(data).toString("base64");
+    return btoa(data);
+  }
+  _getFinalPath(path4) {
+    return `${this.bucketId}/${path4.replace(/^\/+/, "")}`;
+  }
+  _removeEmptyFolders(path4) {
+    return path4.replace(/^\/|\/$/g, "").replace(/\/+/g, "/");
+  }
+  /** Modifies the `query`, appending values the from `transform` */
+  applyTransformOptsToQuery(query, transform2) {
+    if (transform2.width) query.set("width", transform2.width.toString());
+    if (transform2.height) query.set("height", transform2.height.toString());
+    if (transform2.resize) query.set("resize", transform2.resize);
+    if (transform2.format) query.set("format", transform2.format);
+    if (transform2.quality) query.set("quality", transform2.quality.toString());
+    return query;
+  }
+};
+var version2 = "2.117.2";
+var DEFAULT_HEADERS = { "X-Client-Info": `storage-js/${version2}` };
+var StorageBucketApi = class extends BaseApiClient {
+  constructor(url, headers = {}, fetch$1, opts) {
+    const baseUrl = new URL(url);
+    if (opts === null || opts === void 0 ? void 0 : opts.useNewHostname) {
+      if (/supabase\.(co|in|red)$/.test(baseUrl.hostname) && !baseUrl.hostname.includes("storage.supabase.")) baseUrl.hostname = baseUrl.hostname.replace("supabase.", "storage.supabase.");
+    }
+    const finalUrl = baseUrl.href.replace(/\/$/, "");
+    const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), headers);
+    super(finalUrl, finalHeaders, fetch$1, "storage");
+  }
+  /**
+  * Retrieves the details of all Storage buckets within an existing project.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param options Query parameters for listing buckets
+  * @param options.limit Maximum number of buckets to return
+  * @param options.offset Number of buckets to skip
+  * @param options.sortColumn Column to sort by ('id', 'name', 'created_at', 'updated_at')
+  * @param options.sortOrder Sort order ('asc' or 'desc')
+  * @param options.search Search term to filter bucket names
+  * @returns Promise with response containing array of buckets or error
+  *
+  * @example List buckets
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .listBuckets()
+  * ```
+  *
+  * @example List buckets with options
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .listBuckets({
+  *     limit: 10,
+  *     offset: 0,
+  *     sortColumn: 'created_at',
+  *     sortOrder: 'desc',
+  *     search: 'prod'
+  *   })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async listBuckets(options) {
+    var _this = this;
+    return _this.handleOperation(async () => {
+      const queryString = _this.listBucketOptionsToQueryString(options);
+      return await get(_this.fetch, `${_this.url}/bucket${queryString}`, { headers: _this.headers });
+    });
+  }
+  /**
+  * Retrieves the details of an existing Storage bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket you would like to retrieve.
+  * @returns Promise with response containing bucket details or error
+  *
+  * @example Get bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .getBucket('avatars')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "id": "avatars",
+  *     "name": "avatars",
+  *     "owner": "",
+  *     "public": false,
+  *     "file_size_limit": 1024,
+  *     "allowed_mime_types": [
+  *       "image/png"
+  *     ],
+  *     "created_at": "2024-05-22T22:26:05.100Z",
+  *     "updated_at": "2024-05-22T22:26:05.100Z"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async getBucket(id) {
+    var _this2 = this;
+    return _this2.handleOperation(async () => {
+      return await get(_this2.fetch, `${_this2.url}/bucket/${id}`, { headers: _this2.headers });
+    });
+  }
+  /**
+  * Creates a new Storage bucket
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id A unique identifier for the bucket you are creating.
+  * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations. By default, buckets are private.
+  * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
+  * The global file size limit takes precedence over this value.
+  * The default value is null, which doesn't set a per bucket file size limit.
+  * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
+  * The default value is null, which allows files with all mime types to be uploaded.
+  * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
+  * @param options.type (private-beta) specifies the bucket type. see `BucketType` for more details.
+  *   - default bucket type is `STANDARD`
+  * @param options.versioningStatus the bucket's initial object versioning status.
+  * The default value is `DISABLED`
+  * @returns Promise with response containing newly created bucket name or error
+  *
+  * @example Create bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .createBucket('avatars', {
+  *     public: false,
+  *     allowedMimeTypes: ['image/png'],
+  *     fileSizeLimit: 1024
+  *   })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "name": "avatars"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `insert`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async createBucket(id, options = { public: false }) {
+    var _this3 = this;
+    return _this3.handleOperation(async () => {
+      return await post(_this3.fetch, `${_this3.url}/bucket`, {
+        id,
+        name: id,
+        type: options.type,
+        public: options.public,
+        file_size_limit: options.fileSizeLimit,
+        allowed_mime_types: options.allowedMimeTypes,
+        versioning_status: options.versioningStatus
+      }, { headers: _this3.headers });
+    });
+  }
+  /**
+  * Updates a Storage bucket
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id A unique identifier for the bucket you are updating.
+  * @param options.public The visibility of the bucket. Public buckets don't require an authorization token to download objects, but still require a valid token for all other operations.
+  * @param options.fileSizeLimit specifies the max file size in bytes that can be uploaded to this bucket.
+  * The global file size limit takes precedence over this value.
+  * The default value is null, which doesn't set a per bucket file size limit.
+  * @param options.allowedMimeTypes specifies the allowed mime types that this bucket can accept during upload.
+  * The default value is null, which allows files with all mime types to be uploaded.
+  * Each mime type specified can be a wildcard, e.g. image/*, or a specific mime type, e.g. image/png.
+  * @param options.versioningStatus the bucket's new object versioning status. `DISABLED` is not
+  * valid here, there's no transition back to it once versioning has been touched.
+  * @returns Promise with response containing success message or error
+  *
+  * @example Update bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .updateBucket('avatars', {
+  *     public: false,
+  *     allowedMimeTypes: ['image/png'],
+  *     fileSizeLimit: 1024
+  *   })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully updated"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select` and `update`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async updateBucket(id, options) {
+    var _this4 = this;
+    return _this4.handleOperation(async () => {
+      return await put(_this4.fetch, `${_this4.url}/bucket/${id}`, {
+        id,
+        name: id,
+        public: options.public,
+        file_size_limit: options.fileSizeLimit,
+        allowed_mime_types: options.allowedMimeTypes,
+        versioning_status: options.versioningStatus
+      }, { headers: _this4.headers });
+    });
+  }
+  /**
+  * Removes all objects inside a single bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket you would like to empty.
+  * @returns Promise with success message or error
+  *
+  * @example Empty bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .emptyBucket('avatars')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully emptied"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select`
+  *   - `objects` table permissions: `select` and `delete`
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async emptyBucket(id) {
+    var _this5 = this;
+    return _this5.handleOperation(async () => {
+      return await post(_this5.fetch, `${_this5.url}/bucket/${id}/empty`, {}, { headers: _this5.headers });
+    });
+  }
+  /**
+  * Deletes an existing bucket. A bucket can't be deleted with existing objects inside it.
+  * You must first `empty()` the bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket you would like to delete.
+  * @returns Promise with success message or error
+  *
+  * @example Delete bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .deleteBucket('avatars')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully deleted"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select` and `delete`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async deleteBucket(id) {
+    var _this6 = this;
+    return _this6.handleOperation(async () => {
+      return await remove(_this6.fetch, `${_this6.url}/bucket/${id}`, {}, { headers: _this6.headers });
+    });
+  }
+  /**
+  * Returns the lifecycle policy stored on a bucket.
+  *
+  * Fails with `NoSuchLifecycleConfiguration` when the bucket has no policy.
+  *
+  * These rules expire previous versions of objects, not the current one.
+  * Turn versioning on or there is nothing for the policy to act on.
+  * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+  * for the project.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket.
+  * @returns Promise with the lifecycle configuration or error
+  *
+  * @example Get lifecycle configuration
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .getBucketLifecycle('avatars')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "rules": [
+  *       {
+  *         "id": "expire-history",
+  *         "status": "Enabled",
+  *         "filter": {},
+  *         "noncurrentVersionExpiration": {
+  *           "noncurrentDays": 30,
+  *           "newerNoncurrentVersions": 2
+  *         }
+  *       }
+  *     ]
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async getBucketLifecycle(id) {
+    var _this7 = this;
+    return _this7.handleOperation(async () => {
+      return await get(_this7.fetch, _this7.bucketLifecycleUrl(id), { headers: _this7.headers });
+    });
+  }
+  /**
+  * Replaces the lifecycle policy on a bucket.
+  *
+  * The `rules` array you send is the whole policy. Anything previously stored
+  * is overwritten. Send at least one rule. Call {@link deleteBucketLifecycle}
+  * to remove the policy.
+  *
+  * Each rule currently supports only `noncurrentVersionExpiration`. `filter`
+  * is required and must be `{}`. Prefix filters, tag filters, and current-object
+  * expiration are rejected. Rule IDs must be unique. Omit `id` and the
+  * server generates one.
+  *
+  * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+  * for the project.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket.
+  * @param configuration The full lifecycle configuration to store.
+  * @returns Promise with the stored configuration or error
+  *
+  * @example Replace lifecycle configuration
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .updateBucketLifecycle('avatars', {
+  *     rules: [
+  *       {
+  *         id: 'expire-history',
+  *         status: 'Enabled',
+  *         filter: {},
+  *         noncurrentVersionExpiration: {
+  *           noncurrentDays: 30,
+  *           newerNoncurrentVersions: 2,
+  *         },
+  *       },
+  *     ],
+  *   })
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select` and `update`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async updateBucketLifecycle(id, configuration) {
+    var _this8 = this;
+    return _this8.handleOperation(async () => {
+      return await put(_this8.fetch, _this8.bucketLifecycleUrl(id), configuration, { headers: _this8.headers });
+    });
+  }
+  /**
+  * Removes the lifecycle policy from a bucket.
+  *
+  * Safe to call when no policy is stored. The response is still success.
+  * Standard buckets only. Returns `FeatureNotEnabled` if lifecycle is off
+  * for the project.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket.
+  * @returns Promise with success message or error
+  *
+  * @example Delete lifecycle configuration
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .deleteBucketLifecycle('avatars')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully deleted"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - RLS policy permissions required:
+  *   - `buckets` table permissions: `select` and `update`
+  *   - `objects` table permissions: none
+  * - Refer to the [Storage guide](/docs/guides/storage/security/access-control) on how access control works
+  */
+  async deleteBucketLifecycle(id) {
+    var _this9 = this;
+    return _this9.handleOperation(async () => {
+      return await remove(_this9.fetch, _this9.bucketLifecycleUrl(id), {}, { headers: _this9.headers });
+    });
+  }
+  /**
+  * Purges the CDN cache for an entire bucket.
+  *
+  * Maps to `DELETE /cdn/{bucket}` on the Storage API. The server
+  * issues a CDN invalidation for the bucket and returns `{ message: 'success' }`.
+  *
+  * **Requires the `service_role` key.** The underlying endpoint enforces
+  * `service_role` JWT — calls made with the anon key or a user JWT will be
+  * rejected by the server.
+  *
+  * **Hosted CDN feature.** On self-hosted Supabase, the Storage service must
+  * have `CDN_PURGE_ENDPOINT_URL` configured and the `purgeCache` tenant
+  * feature enabled, otherwise the server returns an error.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  * @param id The unique identifier of the bucket you would like to purge from cache.
+  * @param options Optional purge cache options.
+  * @param options.transformations If true, purges only transformations (resized/formatted variants), leaving original cached files intact.
+  * @param parameters Optional fetch parameters such as an `AbortController` signal.
+  * @returns Promise with `{ data: { message }, error: null }` on success or `{ data: null, error }` on failure.
+  *
+  * @example Purge cache for an entire bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .purgeBucketCache('avatars')
+  * ```
+  *
+  * @example Purge only transformations for an entire bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .purgeBucketCache('avatars', { transformations: true })
+  * ```
+  */
+  async purgeBucketCache(id, options, parameters) {
+    var _this10 = this;
+    return _this10.handleOperation(async () => {
+      const query = new URLSearchParams();
+      if (options === null || options === void 0 ? void 0 : options.transformations) query.set("transformations", "true");
+      const queryString = query.toString();
+      return await remove(_this10.fetch, `${_this10.url}/cdn/${encodeStoragePath(id)}${queryString ? `?${queryString}` : ""}`, {}, { headers: _this10.headers }, parameters);
+    });
+  }
+  bucketLifecycleUrl(id) {
+    return `${this.url}/bucket/${encodeStoragePath(id)}/lifecycle`;
+  }
+  listBucketOptionsToQueryString(options) {
+    const params = {};
+    if (options) {
+      if ("limit" in options) params.limit = String(options.limit);
+      if ("offset" in options) params.offset = String(options.offset);
+      if (options.search) params.search = options.search;
+      if (options.sortColumn) params.sortColumn = options.sortColumn;
+      if (options.sortOrder) params.sortOrder = options.sortOrder;
+    }
+    return Object.keys(params).length > 0 ? "?" + new URLSearchParams(params).toString() : "";
+  }
+};
+var StorageAnalyticsClient = class extends BaseApiClient {
+  /**
+  * @alpha
+  *
+  * Creates a new StorageAnalyticsClient instance
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  * @param url - The base URL for the storage API
+  * @param headers - HTTP headers to include in requests
+  * @param fetch - Optional custom fetch implementation
+  *
+  * @example Using supabase-js (recommended)
+  * ```typescript
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const { data, error } = await supabase.storage.analytics.listBuckets()
+  * ```
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```typescript
+  * import { StorageAnalyticsClient } from '@supabase/storage-js'
+  *
+  * const client = new StorageAnalyticsClient(url, headers)
+  * ```
+  */
+  constructor(url, headers = {}, fetch$1) {
+    const finalUrl = url.replace(/\/$/, "");
+    const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), headers);
+    super(finalUrl, finalHeaders, fetch$1, "storage");
+  }
+  /**
+  * @alpha
+  *
+  * Creates a new analytics bucket using Iceberg tables
+  * Analytics buckets are optimized for analytical queries and data processing
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  * @param name A unique name for the bucket you are creating
+  * @returns Promise with response containing newly created analytics bucket or error
+  *
+  * @example Create analytics bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .analytics
+  *   .createBucket('analytics-data')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "name": "analytics-data",
+  *     "type": "ANALYTICS",
+  *     "format": "iceberg",
+  *     "created_at": "2024-05-22T22:26:05.100Z",
+  *     "updated_at": "2024-05-22T22:26:05.100Z"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - Creates a new analytics bucket using Iceberg tables
+  * - Analytics buckets are optimized for analytical queries and data processing
+  */
+  async createBucket(name) {
+    var _this = this;
+    return _this.handleOperation(async () => {
+      return await post(_this.fetch, `${_this.url}/bucket`, { name }, { headers: _this.headers });
+    });
+  }
+  /**
+  * @alpha
+  *
+  * Retrieves the details of all Analytics Storage buckets within an existing project
+  * Only returns buckets of type 'ANALYTICS'
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  * @param options Query parameters for listing buckets
+  * @param options.limit Maximum number of buckets to return
+  * @param options.offset Number of buckets to skip
+  * @param options.sortColumn Column to sort by ('name', 'created_at', 'updated_at')
+  * @param options.sortOrder Sort order ('asc' or 'desc')
+  * @param options.search Search term to filter bucket names
+  * @returns Promise with response containing array of analytics buckets or error
+  *
+  * @example List analytics buckets
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .analytics
+  *   .listBuckets({
+  *     limit: 10,
+  *     offset: 0,
+  *     sortColumn: 'created_at',
+  *     sortOrder: 'desc'
+  *   })
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": [
+  *     {
+  *       "name": "analytics-data",
+  *       "type": "ANALYTICS",
+  *       "format": "iceberg",
+  *       "created_at": "2024-05-22T22:26:05.100Z",
+  *       "updated_at": "2024-05-22T22:26:05.100Z"
+  *     }
+  *   ],
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - Retrieves the details of all Analytics Storage buckets within an existing project
+  * - Only returns buckets of type 'ANALYTICS'
+  */
+  async listBuckets(options) {
+    var _this2 = this;
+    return _this2.handleOperation(async () => {
+      const queryParams = new URLSearchParams();
+      if ((options === null || options === void 0 ? void 0 : options.limit) !== void 0) queryParams.set("limit", options.limit.toString());
+      if ((options === null || options === void 0 ? void 0 : options.offset) !== void 0) queryParams.set("offset", options.offset.toString());
+      if (options === null || options === void 0 ? void 0 : options.sortColumn) queryParams.set("sortColumn", options.sortColumn);
+      if (options === null || options === void 0 ? void 0 : options.sortOrder) queryParams.set("sortOrder", options.sortOrder);
+      if (options === null || options === void 0 ? void 0 : options.search) queryParams.set("search", options.search);
+      const queryString = queryParams.toString();
+      const url = queryString ? `${_this2.url}/bucket?${queryString}` : `${_this2.url}/bucket`;
+      return await get(_this2.fetch, url, { headers: _this2.headers });
+    });
+  }
+  /**
+  * @alpha
+  *
+  * Deletes an existing analytics bucket
+  * A bucket can't be deleted with existing objects inside it
+  * You must first empty the bucket before deletion
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  * @param bucketName The unique identifier of the bucket you would like to delete
+  * @returns Promise with response containing success message or error
+  *
+  * @example Delete analytics bucket
+  * ```js
+  * const { data, error } = await supabase
+  *   .storage
+  *   .analytics
+  *   .deleteBucket('analytics-data')
+  * ```
+  *
+  * Response:
+  * ```json
+  * {
+  *   "data": {
+  *     "message": "Successfully deleted"
+  *   },
+  *   "error": null
+  * }
+  * ```
+  *
+  * @remarks
+  * - Deletes an analytics bucket
+  */
+  async deleteBucket(bucketName) {
+    var _this3 = this;
+    return _this3.handleOperation(async () => {
+      return await remove(_this3.fetch, `${_this3.url}/bucket/${bucketName}`, {}, { headers: _this3.headers });
+    });
+  }
+  /**
+  * @alpha
+  *
+  * Get an Iceberg REST Catalog client configured for a specific analytics bucket
+  * Use this to perform advanced table and namespace operations within the bucket
+  * The returned client provides full access to the Apache Iceberg REST Catalog API
+  * with the Supabase `{ data, error }` pattern for consistent error handling on all operations.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  * @param bucketName - The name of the analytics bucket (warehouse) to connect to
+  * @returns The wrapped Iceberg catalog client
+  * @throws {StorageError} If the bucket name is invalid
+  *
+  * @example Get catalog and create table
+  * ```js
+  * // First, create an analytics bucket
+  * const { data: bucket, error: bucketError } = await supabase
+  *   .storage
+  *   .analytics
+  *   .createBucket('analytics-data')
+  *
+  * // Get the Iceberg catalog for that bucket
+  * const catalog = supabase.storage.analytics.from('analytics-data')
+  *
+  * // Create a namespace
+  * const { error: nsError } = await catalog.createNamespace({ namespace: ['default'] })
+  *
+  * // Create a table with schema
+  * const { data: tableMetadata, error: tableError } = await catalog.createTable(
+  *   { namespace: ['default'] },
+  *   {
+  *     name: 'events',
+  *     schema: {
+  *       type: 'struct',
+  *       fields: [
+  *         { id: 1, name: 'id', type: 'long', required: true },
+  *         { id: 2, name: 'timestamp', type: 'timestamp', required: true },
+  *         { id: 3, name: 'user_id', type: 'string', required: false }
+  *       ],
+  *       'schema-id': 0,
+  *       'identifier-field-ids': [1]
+  *     },
+  *     'partition-spec': {
+  *       'spec-id': 0,
+  *       fields: []
+  *     },
+  *     'write-order': {
+  *       'order-id': 0,
+  *       fields: []
+  *     },
+  *     properties: {
+  *       'write.format.default': 'parquet'
+  *     }
+  *   }
+  * )
+  * ```
+  *
+  * @example List tables in namespace
+  * ```js
+  * const catalog = supabase.storage.analytics.from('analytics-data')
+  *
+  * // List all tables in the default namespace
+  * const { data: tables, error: listError } = await catalog.listTables({ namespace: ['default'] })
+  * if (listError) {
+  *   if (listError.isNotFound()) {
+  *     console.log('Namespace not found')
+  *   }
+  *   return
+  * }
+  * console.log(tables) // [{ namespace: ['default'], name: 'events' }]
+  * ```
+  *
+  * @example Working with namespaces
+  * ```js
+  * const catalog = supabase.storage.analytics.from('analytics-data')
+  *
+  * // List all namespaces
+  * const { data: namespaces } = await catalog.listNamespaces()
+  *
+  * // Create namespace with properties
+  * await catalog.createNamespace(
+  *   { namespace: ['production'] },
+  *   { properties: { owner: 'data-team', env: 'prod' } }
+  * )
+  * ```
+  *
+  * @example Cleanup operations
+  * ```js
+  * const catalog = supabase.storage.analytics.from('analytics-data')
+  *
+  * // Drop table with purge option (removes all data)
+  * const { error: dropError } = await catalog.dropTable(
+  *   { namespace: ['default'], name: 'events' },
+  *   { purge: true }
+  * )
+  *
+  * if (dropError?.isNotFound()) {
+  *   console.log('Table does not exist')
+  * }
+  *
+  * // Drop namespace (must be empty)
+  * await catalog.dropNamespace({ namespace: ['default'] })
+  * ```
+  *
+  * @remarks
+  * This method provides a bridge between Supabase's bucket management and the standard
+  * Apache Iceberg REST Catalog API. The bucket name maps to the Iceberg warehouse parameter.
+  * All authentication and configuration is handled automatically using your Supabase credentials.
+  *
+  * **Error Handling**: Invalid bucket names throw immediately. All catalog
+  * operations return `{ data, error }` where errors are `IcebergError` instances from iceberg-js.
+  * Use helper methods like `error.isNotFound()` or check `error.status` for specific error handling.
+  * Use `.throwOnError()` on the analytics client if you prefer exceptions for catalog operations.
+  *
+  * **Cleanup Operations**: When using `dropTable`, the `purge: true` option permanently
+  * deletes all table data. Without it, the table is marked as deleted but data remains.
+  *
+  * **Library Dependency**: The returned catalog wraps `IcebergRestCatalog` from iceberg-js.
+  * For complete API documentation and advanced usage, refer to the
+  * [iceberg-js documentation](https://supabase.github.io/iceberg-js/).
+  */
+  from(bucketName) {
+    var _this4 = this;
+    if (!isValidBucketName(bucketName)) throw new StorageError("Invalid bucket name: File, folder, and bucket names must follow AWS object key naming guidelines and should avoid the use of any other characters.");
+    const catalog = new IcebergRestCatalog({
+      baseUrl: this.url,
+      catalogName: bucketName,
+      auth: {
+        type: "custom",
+        getHeaders: async () => _this4.headers
+      },
+      fetch: this.fetch
+    });
+    const shouldThrowOnError = this.shouldThrowOnError;
+    return new Proxy(catalog, { get(target, prop) {
+      const value = target[prop];
+      if (typeof value !== "function") return value;
+      return async (...args) => {
+        try {
+          return {
+            data: await value.apply(target, args),
+            error: null
+          };
+        } catch (error) {
+          if (shouldThrowOnError) throw error;
+          return {
+            data: null,
+            error
+          };
+        }
+      };
+    } });
+  }
+};
+var VectorIndexApi = class extends BaseApiClient {
+  /** Creates a new VectorIndexApi instance */
+  constructor(url, headers = {}, fetch$1) {
+    const finalUrl = url.replace(/\/$/, "");
+    const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
+    super(finalUrl, finalHeaders, fetch$1, "vectors");
+  }
+  /** Creates a new vector index within a bucket */
+  async createIndex(options) {
+    var _this = this;
+    return _this.handleOperation(async () => {
+      return await vectorsApi.post(_this.fetch, `${_this.url}/CreateIndex`, options, { headers: _this.headers }) || {};
+    });
+  }
+  /** Retrieves metadata for a specific vector index */
+  async getIndex(vectorBucketName, indexName) {
+    var _this2 = this;
+    return _this2.handleOperation(async () => {
+      return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetIndex`, {
+        vectorBucketName,
+        indexName
+      }, { headers: _this2.headers });
+    });
+  }
+  /** Lists vector indexes within a bucket with optional filtering and pagination */
+  async listIndexes(options) {
+    var _this3 = this;
+    return _this3.handleOperation(async () => {
+      return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListIndexes`, options, { headers: _this3.headers });
+    });
+  }
+  /** Deletes a vector index and all its data */
+  async deleteIndex(vectorBucketName, indexName) {
+    var _this4 = this;
+    return _this4.handleOperation(async () => {
+      return await vectorsApi.post(_this4.fetch, `${_this4.url}/DeleteIndex`, {
+        vectorBucketName,
+        indexName
+      }, { headers: _this4.headers }) || {};
+    });
+  }
+};
+var VectorDataApi = class extends BaseApiClient {
+  /** Creates a new VectorDataApi instance */
+  constructor(url, headers = {}, fetch$1) {
+    const finalUrl = url.replace(/\/$/, "");
+    const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
+    super(finalUrl, finalHeaders, fetch$1, "vectors");
+  }
+  /** Inserts or updates vectors in batch (1-500 per request) */
+  async putVectors(options) {
+    var _this = this;
+    if (options.vectors.length < 1 || options.vectors.length > 500) throw new Error("Vector batch size must be between 1 and 500 items");
+    return _this.handleOperation(async () => {
+      return await vectorsApi.post(_this.fetch, `${_this.url}/PutVectors`, options, { headers: _this.headers }) || {};
+    });
+  }
+  /** Retrieves vectors by their keys in batch */
+  async getVectors(options) {
+    var _this2 = this;
+    return _this2.handleOperation(async () => {
+      return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetVectors`, options, { headers: _this2.headers });
+    });
+  }
+  /** Lists vectors in an index with pagination */
+  async listVectors(options) {
+    var _this3 = this;
+    if (options.segmentCount !== void 0) {
+      if (options.segmentCount < 1 || options.segmentCount > 16) throw new Error("segmentCount must be between 1 and 16");
+      if (options.segmentIndex !== void 0) {
+        if (options.segmentIndex < 0 || options.segmentIndex >= options.segmentCount) throw new Error(`segmentIndex must be between 0 and ${options.segmentCount - 1}`);
+      }
+    }
+    return _this3.handleOperation(async () => {
+      return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListVectors`, options, { headers: _this3.headers });
+    });
+  }
+  /** Queries for similar vectors using approximate nearest neighbor search */
+  async queryVectors(options) {
+    var _this4 = this;
+    return _this4.handleOperation(async () => {
+      return await vectorsApi.post(_this4.fetch, `${_this4.url}/QueryVectors`, options, { headers: _this4.headers });
+    });
+  }
+  /** Deletes vectors by their keys in batch (1-500 per request) */
+  async deleteVectors(options) {
+    var _this5 = this;
+    if (options.keys.length < 1 || options.keys.length > 500) throw new Error("Keys batch size must be between 1 and 500 items");
+    return _this5.handleOperation(async () => {
+      return await vectorsApi.post(_this5.fetch, `${_this5.url}/DeleteVectors`, options, { headers: _this5.headers }) || {};
+    });
+  }
+};
+var VectorBucketApi = class extends BaseApiClient {
+  /** Creates a new VectorBucketApi instance */
+  constructor(url, headers = {}, fetch$1) {
+    const finalUrl = url.replace(/\/$/, "");
+    const finalHeaders = _objectSpread22(_objectSpread22({}, DEFAULT_HEADERS), {}, { "Content-Type": "application/json" }, headers);
+    super(finalUrl, finalHeaders, fetch$1, "vectors");
+  }
+  /** Creates a new vector bucket */
+  async createBucket(vectorBucketName) {
+    var _this = this;
+    return _this.handleOperation(async () => {
+      return await vectorsApi.post(_this.fetch, `${_this.url}/CreateVectorBucket`, { vectorBucketName }, { headers: _this.headers }) || {};
+    });
+  }
+  /** Retrieves metadata for a specific vector bucket */
+  async getBucket(vectorBucketName) {
+    var _this2 = this;
+    return _this2.handleOperation(async () => {
+      return await vectorsApi.post(_this2.fetch, `${_this2.url}/GetVectorBucket`, { vectorBucketName }, { headers: _this2.headers });
+    });
+  }
+  /** Lists vector buckets with optional filtering and pagination */
+  async listBuckets(options = {}) {
+    var _this3 = this;
+    return _this3.handleOperation(async () => {
+      return await vectorsApi.post(_this3.fetch, `${_this3.url}/ListVectorBuckets`, options, { headers: _this3.headers });
+    });
+  }
+  /** Deletes a vector bucket (must be empty first) */
+  async deleteBucket(vectorBucketName) {
+    var _this4 = this;
+    return _this4.handleOperation(async () => {
+      return await vectorsApi.post(_this4.fetch, `${_this4.url}/DeleteVectorBucket`, { vectorBucketName }, { headers: _this4.headers }) || {};
+    });
+  }
+};
+var StorageVectorsClient = class extends VectorBucketApi {
+  /**
+  * @alpha
+  *
+  * Creates a StorageVectorsClient that can manage buckets, indexes, and vectors.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param url - Base URL of the Storage Vectors REST API.
+  * @param options.headers - Optional headers (for example `Authorization`) applied to every request.
+  * @param options.fetch - Optional custom `fetch` implementation for non-browser runtimes.
+  *
+  * @example Using supabase-js (recommended)
+  * ```typescript
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * ```
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```typescript
+  * import { StorageVectorsClient } from '@supabase/storage-js'
+  *
+  * const client = new StorageVectorsClient(url, options)
+  * ```
+  */
+  constructor(url, options = {}) {
+    super(url, options.headers || {}, options.fetch);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Access operations for a specific vector bucket
+  * Returns a scoped client for index and vector operations within the bucket
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param vectorBucketName - Name of the vector bucket
+  * @returns Bucket-scoped client with index and vector operations
+  *
+  * @example Accessing a vector bucket
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * ```
+  */
+  from(vectorBucketName) {
+    return new VectorBucketScope(this.url, this.headers, vectorBucketName, this.fetch);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Creates a new vector bucket
+  * Vector buckets are containers for vector indexes and their data
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param vectorBucketName - Unique name for the vector bucket
+  * @returns Promise with empty response on success or error
+  *
+  * @example Creating a vector bucket
+  * ```typescript
+  * const { data, error } = await supabase
+  *   .storage
+  *   .vectors
+  *   .createBucket('embeddings-prod')
+  * ```
+  */
+  async createBucket(vectorBucketName) {
+    var _superprop_getCreateBucket = () => super.createBucket, _this = this;
+    return _superprop_getCreateBucket().call(_this, vectorBucketName);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Retrieves metadata for a specific vector bucket
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param vectorBucketName - Name of the vector bucket
+  * @returns Promise with bucket metadata or error
+  *
+  * @example Get bucket metadata
+  * ```typescript
+  * const { data, error } = await supabase
+  *   .storage
+  *   .vectors
+  *   .getBucket('embeddings-prod')
+  *
+  * console.log('Bucket created:', data?.vectorBucket.creationTime)
+  * ```
+  */
+  async getBucket(vectorBucketName) {
+    var _superprop_getGetBucket = () => super.getBucket, _this2 = this;
+    return _superprop_getGetBucket().call(_this2, vectorBucketName);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Lists all vector buckets with optional filtering and pagination
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Optional filters (prefix, maxResults, nextToken)
+  * @returns Promise with list of buckets or error
+  *
+  * @example List vector buckets
+  * ```typescript
+  * const { data, error } = await supabase
+  *   .storage
+  *   .vectors
+  *   .listBuckets({ prefix: 'embeddings-' })
+  *
+  * data?.vectorBuckets.forEach(bucket => {
+  *   console.log(bucket.vectorBucketName)
+  * })
+  * ```
+  */
+  async listBuckets(options = {}) {
+    var _superprop_getListBuckets = () => super.listBuckets, _this3 = this;
+    return _superprop_getListBuckets().call(_this3, options);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Deletes a vector bucket (bucket must be empty)
+  * All indexes must be deleted before deleting the bucket
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param vectorBucketName - Name of the vector bucket to delete
+  * @returns Promise with empty response on success or error
+  *
+  * @example Delete a vector bucket
+  * ```typescript
+  * const { data, error } = await supabase
+  *   .storage
+  *   .vectors
+  *   .deleteBucket('embeddings-old')
+  * ```
+  */
+  async deleteBucket(vectorBucketName) {
+    var _superprop_getDeleteBucket = () => super.deleteBucket, _this4 = this;
+    return _superprop_getDeleteBucket().call(_this4, vectorBucketName);
+  }
+};
+var VectorBucketScope = class extends VectorIndexApi {
+  /**
+  * @alpha
+  *
+  * Creates a helper that automatically scopes all index operations to the provided bucket.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @example Creating a vector bucket scope
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * ```
+  */
+  constructor(url, headers, vectorBucketName, fetch$1) {
+    super(url, headers, fetch$1);
+    this.vectorBucketName = vectorBucketName;
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Creates a new vector index in this bucket
+  * Convenience method that automatically includes the bucket name
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Index configuration (vectorBucketName is automatically set)
+  * @returns Promise with empty response on success or error
+  *
+  * @example Creating a vector index
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * await bucket.createIndex({
+  *   indexName: 'documents-openai',
+  *   dataType: 'float32',
+  *   dimension: 1536,
+  *   distanceMetric: 'cosine',
+  *   metadataConfiguration: {
+  *     nonFilterableMetadataKeys: ['raw_text']
+  *   }
+  * })
+  * ```
+  */
+  async createIndex(options) {
+    var _superprop_getCreateIndex = () => super.createIndex, _this5 = this;
+    return _superprop_getCreateIndex().call(_this5, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this5.vectorBucketName }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Lists indexes in this bucket
+  * Convenience method that automatically includes the bucket name
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Listing options (vectorBucketName is automatically set)
+  * @returns Promise with response containing indexes array and pagination token or error
+  *
+  * @example List indexes
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * const { data } = await bucket.listIndexes({ prefix: 'documents-' })
+  * ```
+  */
+  async listIndexes(options = {}) {
+    var _superprop_getListIndexes = () => super.listIndexes, _this6 = this;
+    return _superprop_getListIndexes().call(_this6, _objectSpread22(_objectSpread22({}, options), {}, { vectorBucketName: _this6.vectorBucketName }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Retrieves metadata for a specific index in this bucket
+  * Convenience method that automatically includes the bucket name
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param indexName - Name of the index to retrieve
+  * @returns Promise with index metadata or error
+  *
+  * @example Get index metadata
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * const { data } = await bucket.getIndex('documents-openai')
+  * console.log('Dimension:', data?.index.dimension)
+  * ```
+  */
+  async getIndex(indexName) {
+    var _superprop_getGetIndex = () => super.getIndex, _this7 = this;
+    return _superprop_getGetIndex().call(_this7, _this7.vectorBucketName, indexName);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Deletes an index from this bucket
+  * Convenience method that automatically includes the bucket name
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param indexName - Name of the index to delete
+  * @returns Promise with empty response on success or error
+  *
+  * @example Delete an index
+  * ```typescript
+  * const bucket = supabase.storage.vectors.from('embeddings-prod')
+  * await bucket.deleteIndex('old-index')
+  * ```
+  */
+  async deleteIndex(indexName) {
+    var _superprop_getDeleteIndex = () => super.deleteIndex, _this8 = this;
+    return _superprop_getDeleteIndex().call(_this8, _this8.vectorBucketName, indexName);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Access operations for a specific index within this bucket
+  * Returns a scoped client for vector data operations
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param indexName - Name of the index
+  * @returns Index-scoped client with vector data operations
+  *
+  * @example Accessing an index
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  *
+  * // Insert vectors
+  * await index.putVectors({
+  *   vectors: [
+  *     { key: 'doc-1', data: { float32: [...] }, metadata: { title: 'Intro' } }
+  *   ]
+  * })
+  *
+  * // Query similar vectors
+  * const { data } = await index.queryVectors({
+  *   queryVector: { float32: [...] },
+  *   topK: 5
+  * })
+  * ```
+  */
+  index(indexName) {
+    return new VectorIndexScope(this.url, this.headers, this.vectorBucketName, indexName, this.fetch);
+  }
+};
+var VectorIndexScope = class extends VectorDataApi {
+  /**
+  *
+  * @alpha
+  *
+  * Creates a helper that automatically scopes all vector operations to the provided bucket/index names.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @example Creating a vector index scope
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * ```
+  */
+  constructor(url, headers, vectorBucketName, indexName, fetch$1) {
+    super(url, headers, fetch$1);
+    this.vectorBucketName = vectorBucketName;
+    this.indexName = indexName;
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Inserts or updates vectors in this index
+  * Convenience method that automatically includes bucket and index names
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Vector insertion options (bucket and index names automatically set)
+  * @returns Promise with empty response on success or error
+  *
+  * @example Insert vectors into an index
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * await index.putVectors({
+  *   vectors: [
+  *     {
+  *       key: 'doc-1',
+  *       data: { float32: [0.1, 0.2, ...] },
+  *       metadata: { title: 'Introduction', page: 1 }
+  *     }
+  *   ]
+  * })
+  * ```
+  */
+  async putVectors(options) {
+    var _superprop_getPutVectors = () => super.putVectors, _this9 = this;
+    return _superprop_getPutVectors().call(_this9, _objectSpread22(_objectSpread22({}, options), {}, {
+      vectorBucketName: _this9.vectorBucketName,
+      indexName: _this9.indexName
+    }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Retrieves vectors by keys from this index
+  * Convenience method that automatically includes bucket and index names
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Vector retrieval options (bucket and index names automatically set)
+  * @returns Promise with response containing vectors array or error
+  *
+  * @example Get vectors by keys
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * const { data } = await index.getVectors({
+  *   keys: ['doc-1', 'doc-2'],
+  *   returnMetadata: true
+  * })
+  * ```
+  */
+  async getVectors(options) {
+    var _superprop_getGetVectors = () => super.getVectors, _this10 = this;
+    return _superprop_getGetVectors().call(_this10, _objectSpread22(_objectSpread22({}, options), {}, {
+      vectorBucketName: _this10.vectorBucketName,
+      indexName: _this10.indexName
+    }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Lists vectors in this index with pagination
+  * Convenience method that automatically includes bucket and index names
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Listing options (bucket and index names automatically set)
+  * @returns Promise with response containing vectors array and pagination token or error
+  *
+  * @example List vectors with pagination
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * const { data } = await index.listVectors({
+  *   maxResults: 500,
+  *   returnMetadata: true
+  * })
+  * ```
+  */
+  async listVectors(options = {}) {
+    var _superprop_getListVectors = () => super.listVectors, _this11 = this;
+    return _superprop_getListVectors().call(_this11, _objectSpread22(_objectSpread22({}, options), {}, {
+      vectorBucketName: _this11.vectorBucketName,
+      indexName: _this11.indexName
+    }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Queries for similar vectors in this index
+  * Convenience method that automatically includes bucket and index names
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Query options (bucket and index names automatically set)
+  * @returns Promise with response containing vectors ordered by distance, an optional pagination token, or an error
+  *
+  * @example Query similar vectors
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * const { data } = await index.queryVectors({
+  *   queryVector: { float32: [0.1, 0.2, ...] },
+  *   topK: 5,
+  *   filter: { category: 'technical' },
+  *   returnDistance: true,
+  *   returnMetadata: true
+  * })
+  * ```
+  */
+  async queryVectors(options) {
+    var _superprop_getQueryVectors = () => super.queryVectors, _this12 = this;
+    return _superprop_getQueryVectors().call(_this12, _objectSpread22(_objectSpread22({}, options), {}, {
+      vectorBucketName: _this12.vectorBucketName,
+      indexName: _this12.indexName
+    }));
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Deletes vectors by keys from this index
+  * Convenience method that automatically includes bucket and index names
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  * @param options - Deletion options (bucket and index names automatically set)
+  * @returns Promise with empty response on success or error
+  *
+  * @example Delete vectors by keys
+  * ```typescript
+  * const index = supabase.storage.vectors.from('embeddings-prod').index('documents-openai')
+  * await index.deleteVectors({
+  *   keys: ['doc-1', 'doc-2', 'doc-3']
+  * })
+  * ```
+  */
+  async deleteVectors(options) {
+    var _superprop_getDeleteVectors = () => super.deleteVectors, _this13 = this;
+    return _superprop_getDeleteVectors().call(_this13, _objectSpread22(_objectSpread22({}, options), {}, {
+      vectorBucketName: _this13.vectorBucketName,
+      indexName: _this13.indexName
+    }));
+  }
+};
+var StorageClient = class extends StorageBucketApi {
+  /**
+  * Creates a client for Storage buckets, files, analytics, and vectors.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  *
+  * @example Using supabase-js (recommended)
+  * ```ts
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * const avatars = supabase.storage.from('avatars')
+  * ```
+  *
+  * @example Standalone import for bundle-sensitive environments
+  * ```ts
+  * import { StorageClient } from '@supabase/storage-js'
+  *
+  * const storage = new StorageClient('https://xyzcompany.supabase.co/storage/v1', {
+  *   apikey: 'your-publishable-key',
+  * })
+  * const avatars = storage.from('avatars')
+  * ```
+  */
+  constructor(url, headers = {}, fetch$1, opts) {
+    super(url, headers, fetch$1, opts);
+  }
+  /**
+  * Perform file operation in a bucket.
+  *
+  * @category Storage
+  * @subcategory File Buckets
+  *
+  * @param id The bucket id to operate on.
+  *
+  * @example Accessing a bucket
+  * ```typescript
+  * const avatars = supabase.storage.from('avatars')
+  * ```
+  */
+  from(id) {
+    return new StorageFileApi(this.url, this.headers, id, this.fetch);
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Access vector storage operations.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Vector Buckets
+  *
+  * @returns A StorageVectorsClient instance configured with the current storage settings.
+  */
+  get vectors() {
+    return new StorageVectorsClient(this.url + "/vector", {
+      headers: this.headers,
+      fetch: this.fetch
+    });
+  }
+  /**
+  *
+  * @alpha
+  *
+  * Access analytics storage operations using Iceberg tables.
+  *
+  * **Public alpha:** This API is part of a public alpha release and may not be available to your account type.
+  *
+  * @category Storage
+  * @subcategory Analytics Buckets
+  *
+  * @returns A StorageAnalyticsClient instance configured with the current storage settings.
+  */
+  get analytics() {
+    return new StorageAnalyticsClient(this.url + "/iceberg", this.headers, this.fetch);
+  }
+};
+
+// node_modules/@supabase/supabase-js/dist/index.mjs
+var import_auth_js = __toESM(require_main3(), 1);
+__reExport(dist_exports, __toESM(require_main2(), 1));
+__reExport(dist_exports, __toESM(require_main3(), 1));
+var version3 = "2.117.2";
+var JS_ENV = "";
+var JS_RUNTIME_VERSION;
+if (typeof Deno !== "undefined") {
+  JS_ENV = "deno";
+  JS_RUNTIME_VERSION = (_Deno$version = Deno.version) === null || _Deno$version === void 0 ? void 0 : _Deno$version.deno;
+} else if (typeof document !== "undefined") JS_ENV = "web";
+else if (typeof navigator !== "undefined" && navigator.product === "ReactNative") JS_ENV = "react-native";
+else {
+  JS_ENV = "node";
+  const _process = globalThis["process"];
+  JS_RUNTIME_VERSION = _process === null || _process === void 0 || (_process$version = _process["version"]) === null || _process$version === void 0 ? void 0 : _process$version.replace(/^v/, "");
+}
+var _Deno$version;
+var _process$version;
+var _runtimeMeta = [`runtime=${JS_ENV}`];
+if (JS_RUNTIME_VERSION) _runtimeMeta.push(`runtime-version=${JS_RUNTIME_VERSION}`);
+var DEFAULT_HEADERS2 = { "X-Client-Info": `supabase-js/${version3}; ${_runtimeMeta.join("; ")}` };
+var DEFAULT_GLOBAL_OPTIONS = { headers: DEFAULT_HEADERS2 };
+var DEFAULT_DB_OPTIONS = { schema: "public" };
+var DEFAULT_AUTH_OPTIONS = {
+  autoRefreshToken: true,
+  persistSession: true,
+  detectSessionInUrl: true,
+  flowType: "implicit"
+};
+var DEFAULT_REALTIME_OPTIONS = {};
+var DEFAULT_TRACE_PROPAGATION_OPTIONS = {
+  enabled: false,
+  respectSamplingDecision: true
+};
+function parseTraceParent(traceparent) {
+  if (!traceparent || typeof traceparent !== "string") return null;
+  const parts = traceparent.split("-");
+  if (parts.length !== 4) return null;
+  const [version$1, traceId, parentId, traceFlags] = parts;
+  if (version$1.length !== 2 || traceId.length !== 32 || parentId.length !== 16 || traceFlags.length !== 2) return null;
+  const hexRegex = /^[0-9a-f]+$/i;
+  if (!hexRegex.test(version$1) || !hexRegex.test(traceId) || !hexRegex.test(parentId) || !hexRegex.test(traceFlags)) return null;
+  if (traceId === "00000000000000000000000000000000" || parentId === "0000000000000000") return null;
+  return {
+    version: version$1,
+    traceId,
+    parentId,
+    traceFlags,
+    isSampled: (parseInt(traceFlags, 16) & 1) === 1
+  };
+}
+function shouldPropagateToTarget(targetUrl, targets) {
+  if (!targetUrl || !targets || targets.length === 0) return false;
+  let url;
+  if (targetUrl instanceof URL) url = targetUrl;
+  else try {
+    url = new URL(targetUrl);
+  } catch (error) {
+    return false;
+  }
+  for (const target of targets) try {
+    if (typeof target === "string") {
+      if (matchStringTarget(url.hostname, target)) return true;
+    } else if (target instanceof RegExp) {
+      if (target.test(url.hostname)) return true;
+    } else if (typeof target === "function") {
+      if (target(url)) return true;
+    }
+  } catch (error) {
+    continue;
+  }
+  return false;
+}
+function matchStringTarget(hostname, target) {
+  if (target === hostname) return true;
+  if (target.startsWith("*.")) {
+    const domain = target.slice(2);
+    if (hostname.endsWith(domain)) {
+      if (hostname === domain || hostname.endsWith("." + domain)) return true;
+    }
+  }
+  return false;
+}
+function getDefaultPropagationTargets(supabaseUrl2) {
+  const targets = [];
+  try {
+    const url = new URL(supabaseUrl2);
+    targets.push(url.hostname);
+  } catch (error) {
+  }
+  targets.push("*.supabase.co", "*.supabase.in");
+  targets.push("localhost", "127.0.0.1", "[::1]");
+  return targets;
+}
+function _typeof3(o) {
+  "@babel/helpers - typeof";
+  return _typeof3 = "function" == typeof Symbol && "symbol" == typeof Symbol.iterator ? function(o$1) {
+    return typeof o$1;
+  } : function(o$1) {
+    return o$1 && "function" == typeof Symbol && o$1.constructor === Symbol && o$1 !== Symbol.prototype ? "symbol" : typeof o$1;
+  }, _typeof3(o);
+}
+function toPrimitive3(t2, r2) {
+  if ("object" != _typeof3(t2) || !t2) return t2;
+  var e2 = t2[Symbol.toPrimitive];
+  if (void 0 !== e2) {
+    var i2 = e2.call(t2, r2 || "default");
+    if ("object" != _typeof3(i2)) return i2;
+    throw new TypeError("@@toPrimitive must return a primitive value.");
+  }
+  return ("string" === r2 ? String : Number)(t2);
+}
+function toPropertyKey3(t2) {
+  var i2 = toPrimitive3(t2, "string");
+  return "symbol" == _typeof3(i2) ? i2 : i2 + "";
+}
+function _defineProperty3(e2, r2, t2) {
+  return (r2 = toPropertyKey3(r2)) in e2 ? Object.defineProperty(e2, r2, {
+    value: t2,
+    enumerable: true,
+    configurable: true,
+    writable: true
+  }) : e2[r2] = t2, e2;
+}
+function ownKeys4(e2, r2) {
+  var t2 = Object.keys(e2);
+  if (Object.getOwnPropertySymbols) {
+    var o = Object.getOwnPropertySymbols(e2);
+    r2 && (o = o.filter(function(r$1) {
+      return Object.getOwnPropertyDescriptor(e2, r$1).enumerable;
+    })), t2.push.apply(t2, o);
+  }
+  return t2;
+}
+function _objectSpread23(e2) {
+  for (var r2 = 1; r2 < arguments.length; r2++) {
+    var t2 = null != arguments[r2] ? arguments[r2] : {};
+    r2 % 2 ? ownKeys4(Object(t2), true).forEach(function(r$1) {
+      _defineProperty3(e2, r$1, t2[r$1]);
+    }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e2, Object.getOwnPropertyDescriptors(t2)) : ownKeys4(Object(t2)).forEach(function(r$1) {
+      Object.defineProperty(e2, r$1, Object.getOwnPropertyDescriptor(t2, r$1));
+    });
+  }
+  return e2;
+}
+var resolveFetch2 = (customFetch2) => {
+  if (customFetch2) return (...args) => customFetch2(...args);
+  return (...args) => fetch(...args);
+};
+var resolveHeadersConstructor = () => {
+  return Headers;
+};
+var isNewApiKey = (key) => key.startsWith("sb_publishable_") || key.startsWith("sb_secret_");
+var TEMP_KEY_PREFIX = "sb_temp_";
+var warnedKeySubtypes = /* @__PURE__ */ new Set();
+var checkApiKeyFormat = (key) => {
+  var _key$match$, _key$match;
+  if (!key.startsWith("sb_") || isNewApiKey(key) || key.startsWith(TEMP_KEY_PREFIX)) return;
+  const subtype = (_key$match$ = (_key$match = key.match(/^sb_[a-zA-Z0-9]+_/)) === null || _key$match === void 0 ? void 0 : _key$match[0]) !== null && _key$match$ !== void 0 ? _key$match$ : "unknown";
+  if (warnedKeySubtypes.has(subtype)) return;
+  warnedKeySubtypes.add(subtype);
+  console.warn("@supabase/supabase-js: Unrecognized Supabase API key format. The client will proceed and send this key as-is; if you see authentication errors you may need to upgrade @supabase/supabase-js to a version that recognizes this key type.");
+};
+var fetchWithAuth = (supabaseKey2, supabaseUrl2, getAccessToken, customFetch2, tracePropagationOptions, options) => {
+  const fetch$1 = resolveFetch2(customFetch2);
+  const HeadersConstructor = resolveHeadersConstructor();
+  const traceEnabled = (tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.enabled) === true;
+  const respectSampling = (tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.respectSamplingDecision) !== false;
+  const traceTargets = traceEnabled ? getDefaultPropagationTargets(supabaseUrl2) : null;
+  const allowKeyAsBearer = !((options === null || options === void 0 ? void 0 : options.omitApiKeyAsBearer) && isNewApiKey(supabaseKey2));
+  return async (input, init) => {
+    const realToken = await getAccessToken();
+    let headers = new HeadersConstructor(init === null || init === void 0 ? void 0 : init.headers);
+    if (!headers.has("apikey")) headers.set("apikey", supabaseKey2);
+    if (!headers.has("Authorization")) {
+      const bearer = realToken !== null && realToken !== void 0 ? realToken : allowKeyAsBearer ? supabaseKey2 : null;
+      if (bearer) headers.set("Authorization", `Bearer ${bearer}`);
+    }
+    if (traceTargets) {
+      const traceHeaders = getTraceHeaders(input, traceTargets, respectSampling);
+      if (traceHeaders) {
+        if (traceHeaders.traceparent && !headers.has("traceparent")) headers.set("traceparent", traceHeaders.traceparent);
+        if (traceHeaders.tracestate && !headers.has("tracestate")) headers.set("tracestate", traceHeaders.tracestate);
+        if (traceHeaders.baggage && !headers.has("baggage")) headers.set("baggage", traceHeaders.baggage);
+      }
+    }
+    return fetch$1(input, _objectSpread23(_objectSpread23({}, init), {}, { headers }));
+  };
+};
+var warnedMissingTracingRuntime = false;
+var warnedNonW3CPropagator = false;
+function getTraceHeaders(input, targets, respectSampling) {
+  const extractTraceContext = getTraceContextExtractor();
+  if (!extractTraceContext) {
+    if (!warnedMissingTracingRuntime) {
+      warnedMissingTracingRuntime = true;
+      console.warn("@supabase/supabase-js: tracePropagation is enabled but the tracing runtime is not loaded, so trace headers will not be attached. Add `import '@supabase/supabase-js/tracing'` at your application entry point (requires the OpenTelemetry API package to be installed). The CDN/UMD build does not support trace propagation.");
+    }
+    return null;
+  }
+  if (!shouldPropagateToTarget(typeof input === "string" ? input : input instanceof URL ? input : input.url, targets)) return null;
+  const traceContext = extractTraceContext();
+  if (!traceContext || !traceContext.traceparent) {
+    var _traceContext$carrier;
+    if ((traceContext === null || traceContext === void 0 || (_traceContext$carrier = traceContext.carrierKeys) === null || _traceContext$carrier === void 0 ? void 0 : _traceContext$carrier.length) && !warnedNonW3CPropagator) {
+      warnedNonW3CPropagator = true;
+      const sentryHint = traceContext.carrierKeys.includes("sentry-trace") ? " Sentry detected: set `propagateTraceparent: true` in Sentry.init() to emit it." : " Configure your tracing SDK to emit W3C trace context on outgoing requests.";
+      console.warn(`@supabase/supabase-js: tracePropagation is enabled and a tracing SDK is active, but its propagator wrote [${traceContext.carrierKeys.join(", ")}] and no W3C traceparent header, so trace headers will not be attached.` + sentryHint);
+    }
+    return null;
+  }
+  if (respectSampling) {
+    const parsed = parseTraceParent(traceContext.traceparent);
+    if (parsed && !parsed.isSampled) return { traceparent: traceContext.traceparent };
+  }
+  return traceContext;
+}
+function normalizeTracePropagation(value) {
+  return typeof value === "boolean" ? { enabled: value } : value;
+}
+function ensureTrailingSlash(url) {
+  return url.endsWith("/") ? url : url + "/";
+}
+var warnedTopLevelSchema = false;
+function checkTopLevelSchemaOption(options) {
+  if (warnedTopLevelSchema) return;
+  if (typeof options !== "object" || options === null || !("schema" in options) || options.schema === void 0) return;
+  warnedTopLevelSchema = true;
+  console.warn(`@supabase/supabase-js: The "schema" option must be nested under "db", e.g. createClient(url, key, { db: { schema: 'myschema' } }). A top-level "schema" is ignored and queries go to the default schema.`);
+}
+function applySettingDefaults(options, defaults2) {
+  var _DEFAULT_GLOBAL_OPTIO, _globalOptions$header, _ref, _tracePropagationOpti, _ref2, _tracePropagationOpti2;
+  const { db: dbOptions, auth: authOptions, realtime: realtimeOptions, global: globalOptions } = options;
+  const { db: DEFAULT_DB_OPTIONS$1, auth: DEFAULT_AUTH_OPTIONS$1, realtime: DEFAULT_REALTIME_OPTIONS$1, global: DEFAULT_GLOBAL_OPTIONS$1 } = defaults2;
+  const tracePropagationOptions = normalizeTracePropagation(options.tracePropagation);
+  const DEFAULT_TRACE_PROPAGATION_OPTIONS$1 = normalizeTracePropagation(defaults2.tracePropagation);
+  const result = {
+    db: _objectSpread23(_objectSpread23({}, DEFAULT_DB_OPTIONS$1), dbOptions),
+    auth: _objectSpread23(_objectSpread23({}, DEFAULT_AUTH_OPTIONS$1), authOptions),
+    realtime: _objectSpread23(_objectSpread23({}, DEFAULT_REALTIME_OPTIONS$1), realtimeOptions),
+    storage: {},
+    global: _objectSpread23(_objectSpread23(_objectSpread23({}, DEFAULT_GLOBAL_OPTIONS$1), globalOptions), {}, { headers: _objectSpread23(_objectSpread23({}, (_DEFAULT_GLOBAL_OPTIO = DEFAULT_GLOBAL_OPTIONS$1 === null || DEFAULT_GLOBAL_OPTIONS$1 === void 0 ? void 0 : DEFAULT_GLOBAL_OPTIONS$1.headers) !== null && _DEFAULT_GLOBAL_OPTIO !== void 0 ? _DEFAULT_GLOBAL_OPTIO : {}), (_globalOptions$header = globalOptions === null || globalOptions === void 0 ? void 0 : globalOptions.headers) !== null && _globalOptions$header !== void 0 ? _globalOptions$header : {}) }),
+    tracePropagation: {
+      enabled: (_ref = (_tracePropagationOpti = tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.enabled) !== null && _tracePropagationOpti !== void 0 ? _tracePropagationOpti : DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === null || DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === void 0 ? void 0 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1.enabled) !== null && _ref !== void 0 ? _ref : false,
+      respectSamplingDecision: (_ref2 = (_tracePropagationOpti2 = tracePropagationOptions === null || tracePropagationOptions === void 0 ? void 0 : tracePropagationOptions.respectSamplingDecision) !== null && _tracePropagationOpti2 !== void 0 ? _tracePropagationOpti2 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === null || DEFAULT_TRACE_PROPAGATION_OPTIONS$1 === void 0 ? void 0 : DEFAULT_TRACE_PROPAGATION_OPTIONS$1.respectSamplingDecision) !== null && _ref2 !== void 0 ? _ref2 : true
+    },
+    accessToken: async () => ""
+  };
+  if (options.accessToken) result.accessToken = options.accessToken;
+  else delete result.accessToken;
+  return result;
+}
+function validateSupabaseUrl(supabaseUrl2) {
+  const trimmedUrl = supabaseUrl2 === null || supabaseUrl2 === void 0 ? void 0 : supabaseUrl2.trim();
+  if (!trimmedUrl) throw new Error("supabaseUrl is required.");
+  if (!trimmedUrl.match(/^https?:\/\//i)) throw new Error("Invalid supabaseUrl: Must be a valid HTTP or HTTPS URL.");
+  try {
+    return new URL(ensureTrailingSlash(trimmedUrl));
+  } catch (_unused) {
+    throw Error("Invalid supabaseUrl: Provided URL is malformed.");
+  }
+}
+var SupabaseAuthClient = class extends import_auth_js.AuthClient {
+  constructor(options) {
+    super(options);
+  }
+};
+var SupabaseClient = class {
+  /**
+  * Create a new client for use in the browser.
+  *
+  * @category Initializing
+  *
+  * @param supabaseUrl The unique Supabase URL which is supplied when you create a new project in your project dashboard.
+  * @param supabaseKey The unique Supabase Key which is supplied when you create a new project in your project dashboard.
+  * @param options Optional configuration for the client:
+  * - `db.schema` — You can switch in between schemas. The schema needs to be on the list of exposed schemas inside Supabase.
+  * - `auth.autoRefreshToken` — Set to `true` if you want to automatically refresh the token before expiring.
+  * - `auth.persistSession` — Set to `true` if you want to automatically save the user session into local storage.
+  * - `auth.detectSessionInUrl` — Set to `true` if you want to automatically detect OAuth grants in the URL and sign in the user.
+  * - `realtime` — Options passed along to the realtime-js constructor.
+  * - `storage` — Options passed along to the storage-js constructor.
+  * - `global.fetch` — A custom fetch implementation.
+  * - `global.headers` — Any additional headers to send with each network request.
+  *
+  * @example Creating a client
+  * ```js
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * // Create a single supabase client for interacting with your database
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  * ```
+  *
+  * @example With a custom domain
+  * ```js
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * // Use a custom domain as the supabase URL
+  * const supabase = createClient('https://my-custom-domain.com', 'your-publishable-key')
+  * ```
+  *
+  * @example With additional parameters
+  * ```js
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const options = {
+  *   db: {
+  *     schema: 'public',
+  *   },
+  *   auth: {
+  *     autoRefreshToken: true,
+  *     persistSession: true,
+  *     detectSessionInUrl: true
+  *   },
+  *   global: {
+  *     headers: { 'x-my-custom-header': 'my-app-name' },
+  *   },
+  * }
+  * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", options)
+  * ```
+  *
+  * @exampleDescription With custom schemas
+  * By default the API server points to the `public` schema. You can enable other database schemas within the Dashboard.
+  * Go to [Settings > API > Exposed schemas](/dashboard/project/_/settings/api) and add the schema which you want to expose to the API.
+  *
+  * Note: each client connection can only access a single schema, so the code above can access the `other_schema` schema but cannot access the `public` schema.
+  *
+  * @example With custom schemas
+  * ```js
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
+  *   // Provide a custom schema. Defaults to "public".
+  *   db: { schema: 'other_schema' }
+  * })
+  * ```
+  *
+  * @exampleDescription Custom fetch implementation
+  * `supabase-js` uses the runtime's global `fetch` to make HTTP requests,
+  * but an alternative `fetch` implementation can be provided as an option.
+  * This is useful in environments where the global `fetch` is unavailable or where you want to customize request behavior.
+  *
+  * @example Custom fetch implementation
+  * ```js
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
+  *   global: { fetch: fetch.bind(globalThis) }
+  * })
+  * ```
+  *
+  * @exampleDescription React Native options with AsyncStorage
+  * For React Native we recommend using `AsyncStorage` as the storage implementation for Supabase Auth.
+  *
+  * @example React Native options with AsyncStorage
+  * ```js
+  * import 'react-native-url-polyfill/auto'
+  * import { createClient } from '@supabase/supabase-js'
+  * import AsyncStorage from "@react-native-async-storage/async-storage";
+  *
+  * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", {
+  *   auth: {
+  *     storage: AsyncStorage,
+  *     autoRefreshToken: true,
+  *     persistSession: true,
+  *     detectSessionInUrl: false,
+  *   },
+  * });
+  * ```
+  *
+  * @exampleDescription React Native options with Expo SecureStore
+  * If you wish to encrypt the user's session information, you can use `aes-js` and store the encryption key in Expo SecureStore.
+  * The `aes-js` library, a reputable JavaScript-only implementation of the AES encryption algorithm in CTR mode.
+  * A new 256-bit encryption key is generated using the `react-native-get-random-values` library.
+  * This key is stored inside Expo's SecureStore, while the value is encrypted and placed inside AsyncStorage.
+  *
+  * Please make sure that:
+  * - You keep the `expo-secure-store`, `aes-js` and `react-native-get-random-values` libraries up-to-date.
+  * - Choose the correct [`SecureStoreOptions`](https://docs.expo.dev/versions/latest/sdk/securestore/#securestoreoptions) for your app's needs.
+  *   E.g. [`SecureStore.WHEN_UNLOCKED`](https://docs.expo.dev/versions/latest/sdk/securestore/#securestorewhen_unlocked) regulates when the data can be accessed.
+  * - Carefully consider optimizations or other modifications to the above example, as those can lead to introducing subtle security vulnerabilities.
+  *
+  * @example React Native options with Expo SecureStore
+  * ```ts
+  * import 'react-native-url-polyfill/auto'
+  * import { createClient } from '@supabase/supabase-js'
+  * import AsyncStorage from '@react-native-async-storage/async-storage';
+  * import * as SecureStore from 'expo-secure-store';
+  * import * as aesjs from 'aes-js';
+  * import 'react-native-get-random-values';
+  *
+  * // As Expo's SecureStore does not support values larger than 2048
+  * // bytes, an AES-256 key is generated and stored in SecureStore, while
+  * // it is used to encrypt/decrypt values stored in AsyncStorage.
+  * class LargeSecureStore {
+  *   private async _encrypt(key: string, value: string) {
+  *     const encryptionKey = crypto.getRandomValues(new Uint8Array(256 / 8));
+  *
+  *     const cipher = new aesjs.ModeOfOperation.ctr(encryptionKey, new aesjs.Counter(1));
+  *     const encryptedBytes = cipher.encrypt(aesjs.utils.utf8.toBytes(value));
+  *
+  *     await SecureStore.setItemAsync(key, aesjs.utils.hex.fromBytes(encryptionKey));
+  *
+  *     return aesjs.utils.hex.fromBytes(encryptedBytes);
+  *   }
+  *
+  *   private async _decrypt(key: string, value: string) {
+  *     const encryptionKeyHex = await SecureStore.getItemAsync(key);
+  *     if (!encryptionKeyHex) {
+  *       return encryptionKeyHex;
+  *     }
+  *
+  *     const cipher = new aesjs.ModeOfOperation.ctr(aesjs.utils.hex.toBytes(encryptionKeyHex), new aesjs.Counter(1));
+  *     const decryptedBytes = cipher.decrypt(aesjs.utils.hex.toBytes(value));
+  *
+  *     return aesjs.utils.utf8.fromBytes(decryptedBytes);
+  *   }
+  *
+  *   async getItem(key: string) {
+  *     const encrypted = await AsyncStorage.getItem(key);
+  *     if (!encrypted) { return encrypted; }
+  *
+  *     return await this._decrypt(key, encrypted);
+  *   }
+  *
+  *   async removeItem(key: string) {
+  *     await AsyncStorage.removeItem(key);
+  *     await SecureStore.deleteItemAsync(key);
+  *   }
+  *
+  *   async setItem(key: string, value: string) {
+  *     const encrypted = await this._encrypt(key, value);
+  *
+  *     await AsyncStorage.setItem(key, encrypted);
+  *   }
+  * }
+  *
+  * const supabase = createClient("https://xyzcompany.supabase.co", "your-publishable-key", {
+  *   auth: {
+  *     storage: new LargeSecureStore(),
+  *     autoRefreshToken: true,
+  *     persistSession: true,
+  *     detectSessionInUrl: false,
+  *   },
+  * });
+  * ```
+  *
+  * @example With a database query
+  * ```ts
+  * import { createClient } from '@supabase/supabase-js'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key')
+  *
+  * const { data } = await supabase.from('profiles').select('*')
+  * ```
+  *
+  * @exampleDescription With OpenTelemetry tracing
+  * Opt in to W3C trace context propagation so the `trace_id` from your
+  * client-side spans is attached to Supabase requests and appears in API
+  * Gateway and Edge Function logs. Requires `@opentelemetry/api` to be
+  * installed in your application and the tracing runtime to be loaded via
+  * `import '@supabase/supabase-js/tracing'`. See [Tracing with the JS SDK](https://supabase.com/docs/guides/telemetry/client-side-tracing).
+  *
+  * @example With OpenTelemetry tracing
+  * ```ts
+  * import '@supabase/supabase-js/tracing'
+  * import { createClient } from '@supabase/supabase-js'
+  * import { trace } from '@opentelemetry/api'
+  *
+  * const supabase = createClient('https://xyzcompany.supabase.co', 'your-publishable-key', {
+  *   tracePropagation: true,
+  * })
+  *
+  * const tracer = trace.getTracer('my-app')
+  *
+  * await tracer.startActiveSpan('fetch-users', async (span) => {
+  *   // Outgoing request carries the active trace context.
+  *   const { data, error } = await supabase.from('users').select('*')
+  *   span.end()
+  * })
+  * ```
+  */
+  constructor(supabaseUrl2, supabaseKey2, options) {
+    var _settings$auth$storag, _settings$global$head;
+    this.supabaseUrl = supabaseUrl2;
+    this.supabaseKey = supabaseKey2;
+    const baseUrl = validateSupabaseUrl(supabaseUrl2);
+    if (!supabaseKey2) throw new Error("supabaseKey is required.");
+    checkApiKeyFormat(supabaseKey2);
+    checkTopLevelSchemaOption(options);
+    this.realtimeUrl = new URL("realtime/v1", baseUrl);
+    this.realtimeUrl.protocol = this.realtimeUrl.protocol.replace("http", "ws");
+    this.authUrl = new URL("auth/v1", baseUrl);
+    this.storageUrl = new URL("storage/v1", baseUrl);
+    this.functionsUrl = new URL("functions/v1", baseUrl);
+    const defaultStorageKey = `sb-${baseUrl.hostname.split(".")[0]}-auth-token`;
+    const DEFAULTS = {
+      db: DEFAULT_DB_OPTIONS,
+      realtime: DEFAULT_REALTIME_OPTIONS,
+      auth: _objectSpread23(_objectSpread23({}, DEFAULT_AUTH_OPTIONS), {}, { storageKey: defaultStorageKey }),
+      global: DEFAULT_GLOBAL_OPTIONS,
+      tracePropagation: DEFAULT_TRACE_PROPAGATION_OPTIONS
+    };
+    const settings = applySettingDefaults(options !== null && options !== void 0 ? options : {}, DEFAULTS);
+    this.settings = settings;
+    this.storageKey = (_settings$auth$storag = settings.auth.storageKey) !== null && _settings$auth$storag !== void 0 ? _settings$auth$storag : "";
+    this.headers = (_settings$global$head = settings.global.headers) !== null && _settings$global$head !== void 0 ? _settings$global$head : {};
+    if (!settings.accessToken) {
+      var _settings$auth;
+      this.auth = this._initSupabaseAuthClient((_settings$auth = settings.auth) !== null && _settings$auth !== void 0 ? _settings$auth : {}, this.headers, settings.global.fetch);
+    } else {
+      this.accessToken = settings.accessToken;
+      this.auth = new Proxy({}, { get: (_, prop) => {
+        throw new Error(`@supabase/supabase-js: Supabase Client is configured with the accessToken option, accessing supabase.auth.${String(prop)} is not possible`);
+      } });
+    }
+    this.fetch = fetchWithAuth(supabaseKey2, supabaseUrl2, this._getSessionToken.bind(this), settings.global.fetch, settings.tracePropagation);
+    this.functionsFetch = fetchWithAuth(supabaseKey2, supabaseUrl2, this._getSessionToken.bind(this), settings.global.fetch, settings.tracePropagation, { omitApiKeyAsBearer: true });
+    this.realtime = this._initRealtimeClient(_objectSpread23({
+      headers: this.headers,
+      accessToken: this._getAccessToken.bind(this),
+      fetch: this.fetch
+    }, settings.realtime));
+    if (this.accessToken) Promise.resolve(this.accessToken()).then((token) => this.realtime.setAuth(token)).catch((e2) => console.warn("Failed to set initial Realtime auth token:", e2));
+    this.rest = new PostgrestClient(new URL("rest/v1", baseUrl).href, {
+      headers: this.headers,
+      schema: settings.db.schema,
+      fetch: this.fetch,
+      timeout: settings.db.timeout,
+      urlLengthLimit: settings.db.urlLengthLimit,
+      retry: settings.db.retry
+    });
+    this.storage = new StorageClient(this.storageUrl.href, this.headers, this.fetch, options === null || options === void 0 ? void 0 : options.storage);
+    if (!settings.accessToken) this._listenForAuthEvents();
+  }
+  /**
+  * Supabase Functions allows you to deploy and invoke edge functions.
+  */
+  get functions() {
+    return new import_functions_js.FunctionsClient(this.functionsUrl.href, {
+      headers: this.headers,
+      customFetch: this.functionsFetch
+    });
+  }
+  /**
+  * Perform a query on a table or a view.
+  *
+  * @param relation - The table or view name to query
+  */
+  from(relation) {
+    return this.rest.from(relation);
+  }
+  /**
+  * Select a schema to query or perform an function (rpc) call.
+  *
+  * The schema needs to be on the list of exposed schemas inside Supabase.
+  *
+  * @param schema - The schema to query
+  */
+  schema(schema) {
+    return this.rest.schema(schema);
+  }
+  /**
+  * Fetch the OpenAPI description PostgREST publishes for this client's schema.
+  *
+  * The document lists only the tables, views and functions the caller's role
+  * holds privileges on. The request carries the same `apikey` and
+  * `Authorization` headers as every other query, so the description is scoped
+  * to the signed-in user. Call `.schema()` first to describe a schema other
+  * than the client default.
+  *
+  * @example
+  * ```ts
+  * const { data, error } = await supabase.getOpenApiSpec()
+  * ```
+  */
+  getOpenApiSpec() {
+    return this.rest.getOpenApiSpec();
+  }
+  /**
+  * Perform a function call.
+  *
+  * @param fn - The function name to call
+  * @param args - The arguments to pass to the function call
+  * @param options - Named parameters
+  * @param options.head - When set to `true`, `data` will not be returned.
+  * Useful if you only need the count.
+  * @param options.get - When set to `true`, the function will be called with
+  * read-only access mode.
+  * @param options.count - Count algorithm to use to count rows returned by the
+  * function. Only applicable for [set-returning
+  * functions](https://www.postgresql.org/docs/current/functions-srf.html).
+  *
+  * `"exact"`: Exact but slow count algorithm. Performs a `COUNT(*)` under the
+  * hood.
+  *
+  * `"planned"`: Approximated but fast count algorithm. Uses the Postgres
+  * statistics under the hood.
+  *
+  * `"estimated"`: Uses exact count for low numbers and planned count for high
+  * numbers.
+  */
+  rpc(fn, args = {}, options = {
+    head: false,
+    get: false,
+    count: void 0
+  }) {
+    return this.rest.rpc(fn, args, options);
+  }
+  /**
+  * Creates a Realtime channel with Broadcast, Presence, and Postgres Changes.
+  *
+  * @param {string} name - The name of the Realtime channel.
+  * @param {Object} opts - The options to pass to the Realtime channel.
+  *
+  * @category Realtime
+  */
+  channel(name, opts = { config: {} }) {
+    return this.realtime.channel(name, opts);
+  }
+  /**
+  * Returns all Realtime channels.
+  *
+  * @category Realtime
+  *
+  * @example Get all channels
+  * ```js
+  * const channels = supabase.getChannels()
+  * ```
+  */
+  getChannels() {
+    return this.realtime.getChannels();
+  }
+  /**
+  * Unsubscribes and removes Realtime channel from Realtime client.
+  *
+  * @param {RealtimeChannel} channel - The name of the Realtime channel.
+  *
+  *
+  * @category Realtime
+  *
+  * @remarks
+  * - Removing a channel is a great way to maintain the performance of your project's Realtime service as well as your database if you're listening to Postgres changes. Supabase will automatically handle cleanup 30 seconds after a client is disconnected, but unused channels may cause degradation as more clients are simultaneously subscribed.
+  *
+  * @example Removes a channel
+  * ```js
+  * supabase.removeChannel(myChannel)
+  * ```
+  */
+  removeChannel(channel) {
+    return this.realtime.removeChannel(channel);
+  }
+  /**
+  * Unsubscribes and removes all Realtime channels from Realtime client.
+  *
+  * @category Realtime
+  *
+  * @remarks
+  * - Removing channels is a great way to maintain the performance of your project's Realtime service as well as your database if you're listening to Postgres changes. Supabase will automatically handle cleanup 30 seconds after a client is disconnected, but unused channels may cause degradation as more clients are simultaneously subscribed.
+  *
+  * @example Remove all channels
+  * ```js
+  * supabase.removeAllChannels()
+  * ```
+  */
+  removeAllChannels() {
+    return this.realtime.removeAllChannels();
+  }
+  /**
+  * The raw session token — the custom `accessToken` result or the signed-in user's JWT —
+  * or `null` when there is no session. Unlike {@link _getAccessToken} it does not fall back
+  * to `supabaseKey`, so callers can distinguish "no session" from "has session".
+  */
+  async _getSessionToken() {
+    var _this = this;
+    var _data$session$access_, _data$session;
+    if (_this.accessToken) return await _this.accessToken();
+    const { data } = await _this.auth.getSession();
+    return (_data$session$access_ = (_data$session = data.session) === null || _data$session === void 0 ? void 0 : _data$session.access_token) !== null && _data$session$access_ !== void 0 ? _data$session$access_ : null;
+  }
+  async _getAccessToken() {
+    var _this2 = this;
+    var _await$this$_getSessi;
+    return (_await$this$_getSessi = await _this2._getSessionToken()) !== null && _await$this$_getSessi !== void 0 ? _await$this$_getSessi : _this2.supabaseKey;
+  }
+  _initSupabaseAuthClient({ autoRefreshToken, persistSession, detectSessionInUrl, storage, userStorage, storageKey, flowType, lock, debug, throwOnError, experimental, lockAcquireTimeout, skipAutoInitialize }, headers, fetch$1) {
+    const authHeaders = {
+      Authorization: `Bearer ${this.supabaseKey}`,
+      apikey: `${this.supabaseKey}`
+    };
+    return new SupabaseAuthClient({
+      url: this.authUrl.href,
+      headers: _objectSpread23(_objectSpread23({}, authHeaders), headers),
+      storageKey,
+      autoRefreshToken,
+      persistSession,
+      detectSessionInUrl,
+      storage,
+      userStorage,
+      flowType,
+      lock,
+      debug,
+      throwOnError,
+      experimental,
+      fetch: fetch$1,
+      lockAcquireTimeout,
+      skipAutoInitialize,
+      hasCustomAuthorizationHeader: Object.keys(this.headers).some((key) => key.toLowerCase() === "authorization")
+    });
+  }
+  _initRealtimeClient(options) {
+    return new import_realtime_js.RealtimeClient(this.realtimeUrl.href, _objectSpread23(_objectSpread23({}, options), {}, { params: _objectSpread23(_objectSpread23({}, { apikey: this.supabaseKey }), options === null || options === void 0 ? void 0 : options.params) }));
+  }
+  _listenForAuthEvents() {
+    return this.auth.onAuthStateChange((event, session) => {
+      this._handleTokenChanged(event, "CLIENT", session === null || session === void 0 ? void 0 : session.access_token);
+    });
+  }
+  _handleTokenChanged(event, source, token) {
+    if ((event === "TOKEN_REFRESHED" || event === "SIGNED_IN" || event === "INITIAL_SESSION") && this.changedAccessToken !== token) {
+      this.changedAccessToken = token;
+      this.realtime.setAuth(token);
+    } else if (event === "SIGNED_OUT") {
+      this.realtime.setAuth();
+      if (source == "STORAGE") this.auth.signOut();
+      this.changedAccessToken = void 0;
+    }
+  }
+};
+var createClient = (supabaseUrl2, supabaseKey2, options) => {
+  return new SupabaseClient(supabaseUrl2, supabaseKey2, options);
+};
+function shouldShowDeprecationWarning() {
+  if (typeof window !== "undefined" || globalThis["Deno"] !== void 0) return false;
+  const _process = globalThis["process"];
+  if (!_process) return false;
+  const processVersion = _process["version"];
+  if (processVersion === void 0 || processVersion === null) return false;
+  const versionMatch = processVersion.match(/^v(\d+)\./);
+  if (!versionMatch) return false;
+  return parseInt(versionMatch[1], 10) <= 20;
+}
+if (shouldShowDeprecationWarning()) console.warn("\u26A0\uFE0F  Node.js 20 and below are deprecated and will no longer be supported in future versions of @supabase/supabase-js. Please upgrade to Node.js 22 or later. For more information, visit: https://github.com/orgs/supabase/discussions/45715");
+
+// src/lib/supabaseClient.ts
+function getEnvVar(key) {
+  if (typeof process !== "undefined" && process.env && process.env[key]) {
+    return process.env[key];
+  }
+  try {
+    const metaEnv = import.meta.env;
+    if (metaEnv && metaEnv[key]) {
+      return metaEnv[key];
+    }
+  } catch {
+  }
+  return void 0;
+}
+var fallbackUrl = "https://tctaqmtvypibxsaehawf.supabase.co";
+var fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg";
+var dynamicUrl = "";
+var dynamicKey = "";
+var supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || fallbackUrl;
+var supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || fallbackKey;
+var isSupabaseConfigured = Boolean(
+  supabaseUrl && supabaseKey && supabaseUrl.startsWith("https://") && !supabaseUrl.includes("placeholder") && !supabaseUrl.includes("your-project")
+);
+var cachedClient = null;
+function getSupabaseClient() {
+  if (!isSupabaseConfigured) {
+    return null;
+  }
+  if (!cachedClient) {
+    cachedClient = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: typeof window !== "undefined",
+        autoRefreshToken: true
+      }
+    });
+  }
+  return cachedClient;
+}
+
+// src/server/memoryStore.ts
+import fs3 from "fs";
+import path2 from "path";
+var seedData = {
+  mosques: [],
+  imams: [],
+  mosqueImamRules: [],
+  monthlySchedules: [],
+  fridays: [],
+  assignments: [],
+  conflicts: [],
+  overrides: [],
+  fixedAssignmentPatterns: [],
+  fixedAssignmentPatternItems: [],
+  users: []
+};
+try {
+  const seedPath = path2.resolve("src/db/initialSeed.json");
+  if (fs3.existsSync(seedPath)) {
+    const raw = fs3.readFileSync(seedPath, "utf8");
+    seedData = JSON.parse(raw);
+  }
+} catch (err) {
+  console.warn("Could not load initialSeed.json for memoryStore:", err);
+}
+var memoryMosques = [...seedData.mosques || []];
+var memoryImams = [...seedData.imams || []];
+var memoryRules = [...seedData.mosqueImamRules || []];
+var memorySchedules = [...seedData.monthlySchedules || []];
+var memoryFridays = [...seedData.fridays || []];
+var memoryAssignments = [...seedData.assignments || []];
+var memoryConflicts = [...seedData.conflicts || []];
+var memoryOverrides = [...seedData.overrides || []];
+var memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
+var memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+var memoryStore = {
+  reset() {
+    memoryMosques = [...seedData.mosques || []];
+    memoryImams = [...seedData.imams || []];
+    memoryRules = [...seedData.mosqueImamRules || []];
+    memorySchedules = [...seedData.monthlySchedules || []];
+    memoryFridays = [...seedData.fridays || []];
+    memoryAssignments = [...seedData.assignments || []];
+    memoryConflicts = [...seedData.conflicts || []];
+    memoryOverrides = [...seedData.overrides || []];
+    memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
+    memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+  },
+  getMosques(search = "", region = "") {
+    const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2.name]));
+    let list = [...memoryMosques];
+    if (search) {
+      const s2 = search.toLowerCase();
+      list = list.filter(
+        (m2) => m2.name?.includes(search) || m2.code?.toLowerCase().includes(s2) || m2.region && m2.region.includes(search)
+      );
+    }
+    if (region && region !== "ALL") {
+      list = list.filter((m2) => m2.region === region);
+    }
+    return list.map((m2) => {
+      const rulesForMosque = memoryRules.filter((r2) => r2.mosqueId === m2.id);
+      return {
+        ...m2,
+        fixedImamName: m2.fixedImamId ? imamMap.get(m2.fixedImamId) || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F" : null,
+        preferencesCount: rulesForMosque.filter((r2) => r2.relationshipType === "PREFERRED").length,
+        forbiddenCount: rulesForMosque.filter((r2) => r2.relationshipType === "FORBIDDEN").length
+      };
+    });
+  },
+  getMosqueDetails(id) {
+    const mosque = memoryMosques.find((m2) => m2.id === id);
+    if (!mosque) return null;
+    const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2.name]));
+    const rules = memoryRules.filter((r2) => r2.mosqueId === id).map((r2) => ({
+      ...r2,
+      imam: imamMap.get(r2.imamId)
+    }));
+    return {
+      ...mosque,
+      rules
+    };
+  },
+  getImams(search = "", type = "") {
+    let list = [...memoryImams];
+    if (search) {
+      list = list.filter(
+        (i2) => i2.name?.includes(search) || i2.phone?.includes(search) || i2.region && i2.region.includes(search)
+      );
+    }
+    if (type && type !== "ALL") {
+      list = list.filter((i2) => i2.type === type);
+    }
+    return list.map((i2) => {
+      const rulesForImam = memoryRules.filter((r2) => r2.imamId === i2.id);
+      const assignedCount = memoryAssignments.filter((a) => a.imamId === i2.id).length;
+      return {
+        ...i2,
+        assignedFridaysCount: assignedCount,
+        preferredMosquesCount: rulesForImam.filter((r2) => r2.relationshipType === "PREFERRED").length,
+        forbiddenMosquesCount: rulesForImam.filter((r2) => r2.relationshipType === "FORBIDDEN").length
+      };
+    });
+  },
+  getImamDetails(id) {
+    const imam = memoryImams.find((i2) => i2.id === id);
+    if (!imam) return null;
+    const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2.name]));
+    const rules = memoryRules.filter((r2) => r2.imamId === id).map((r2) => ({
+      ...r2,
+      mosque: mosqueMap.get(r2.mosqueId)
+    }));
+    return {
+      ...imam,
+      rules
+    };
+  },
+  getRules() {
+    return [...memoryRules];
+  },
+  getSchedules() {
+    return memorySchedules.map((s2) => {
+      const monthDetails = CalendarService.getHijriMonthDetails(s2.hijriYear, s2.hijriMonth, {
+        provider: s2.calendarProvider || "UMM_AL_QURA",
+        timezone: s2.timezone || "Africa/Cairo"
+      });
+      return {
+        ...s2,
+        periodStatus: monthDetails.periodStatus,
+        statusLabelArabic: monthDetails.statusLabelArabic,
+        isPast: monthDetails.isPast,
+        isCurrent: monthDetails.isCurrent,
+        isFuture: monthDetails.isFuture,
+        isCreatable: monthDetails.isCreatable,
+        isEditable: monthDetails.isEditable,
+        pastFridaysCount: monthDetails.pastFridaysCount,
+        futureFridaysCount: monthDetails.futureFridaysCount
+      };
+    });
+  },
+  getScheduleDetails(id) {
+    const schedule = memorySchedules.find((s2) => s2.id === id) || memorySchedules[0];
+    if (!schedule) return null;
+    const fridays2 = memoryFridays.filter((f3) => f3.scheduleId === schedule.id);
+    const assigns = memoryAssignments.filter((a) => a.scheduleId === schedule.id);
+    const confs = memoryConflicts.filter((c) => c.scheduleId === schedule.id);
+    const overs = memoryOverrides.filter((o) => o.scheduleId === schedule.id);
+    return {
+      schedule,
+      fridays: fridays2,
+      assignments: assigns,
+      conflicts: confs,
+      overrides: overs
+    };
+  },
+  getDashboard(hijriYear, hijriMonth) {
+    const currentDT = CalendarService.getCurrentDateTime();
+    const hYear = hijriYear || currentDT.hijri.year;
+    const hMonth = hijriMonth || currentDT.hijri.month;
+    const monthDetails = CalendarService.getHijriMonthDetails(hYear, hMonth);
+    const activeMosques = memoryMosques.filter((m2) => m2.isActive);
+    const activeImams = memoryImams.filter((i2) => i2.isActive);
+    const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2]));
+    const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
+    const schedule = memorySchedules.find((s2) => s2.hijriYear === hYear && s2.hijriMonth === hMonth) || memorySchedules[0] || null;
+    let scheduleAssignments = [];
+    let scheduleConflicts = [];
+    if (schedule) {
+      scheduleAssignments = memoryAssignments.filter((a) => a.scheduleId === schedule.id);
+      scheduleConflicts = memoryConflicts.filter((c) => c.scheduleId === schedule.id);
+    }
+    const totalRequiredAssignments = activeMosques.length * monthDetails.fridaysCount;
+    const completedAssignments = scheduleAssignments.filter((a) => a.imamId !== null).length;
+    const completionPercentage = totalRequiredAssignments > 0 ? Math.min(100, Math.round(completedAssignments / totalRequiredAssignments * 100)) : 0;
+    const fridaysWithStats = monthDetails.fridays.map((f3) => {
+      const fridayAssigns = scheduleAssignments.filter((a) => a.fridayIndex === f3.fridayIndex);
+      const assignedCount = fridayAssigns.filter((a) => a.imamId !== null).length;
+      const vacantCount = Math.max(0, activeMosques.length - assignedCount);
+      const fridayConflictsCount = scheduleConflicts.filter((c) => c.fridayIndex === f3.fridayIndex).length;
+      let status = "PENDING";
+      if (f3.isPast) {
+        status = "PAST";
+      } else if (fridayConflictsCount > 0) {
+        status = "CONFLICTS";
+      } else if (assignedCount === activeMosques.length && activeMosques.length > 0) {
+        status = "COMPLETED";
+      } else if (assignedCount > 0) {
+        status = "REVIEW";
+      }
+      return {
+        id: f3.fridayIndex,
+        fridayIndex: f3.fridayIndex,
+        ordinalName: f3.ordinalName,
+        hijriDate: f3.hijriDate,
+        gregorianDate: f3.gregorianDate,
+        isPast: f3.isPast,
+        isCurrent: f3.periodStatus === "CURRENT",
+        isFuture: f3.periodStatus === "FUTURE",
+        assignedCount,
+        requiredCount: activeMosques.length,
+        vacantCount,
+        conflictsCount: fridayConflictsCount,
+        status
+      };
+    });
+    let targetFriday = monthDetails.fridays.find((f3) => !f3.isPast) || monthDetails.fridays[0];
+    let nextFridayData = null;
+    let nextFridayAssignments = [];
+    if (targetFriday) {
+      const targetFridayAssigns = scheduleAssignments.filter(
+        (a) => a.fridayIndex === targetFriday.fridayIndex
+      );
+      nextFridayAssignments = targetFridayAssigns.map((a) => {
+        const m2 = mosqueMap.get(a.mosqueId);
+        const i2 = a.imamId ? imamMap.get(a.imamId) : null;
+        return {
+          id: a.id,
+          fridayIndex: a.fridayIndex,
+          mosqueId: a.mosqueId,
+          mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
+          mosqueCode: m2?.code || "",
+          mosqueRegion: m2?.region || "",
+          managerPhone: m2?.phone || "",
+          imamId: a.imamId,
+          imamName: i2?.name || "\u0634\u0627\u063A\u0631 (\u0644\u0645 \u064A\u0639\u064A\u0646)",
+          imamPhone: i2?.phone || "",
+          isLocked: a.isLocked,
+          assignmentSource: a.source
+        };
+      });
+      const vacantCount = Math.max(
+        0,
+        activeMosques.length - nextFridayAssignments.filter((a) => a.imamId).length
+      );
+      const targetDate = new Date(targetFriday.gregorianIso);
+      const now = /* @__PURE__ */ new Date();
+      const diffMs = targetDate.getTime() - now.getTime();
+      const daysRemaining = Math.max(0, Math.ceil(diffMs / (1e3 * 60 * 60 * 24)));
+      nextFridayData = {
+        fridayIndex: targetFriday.fridayIndex,
+        ordinalName: targetFriday.ordinalName,
+        hijriDate: targetFriday.hijriDate,
+        gregorianDate: targetFriday.gregorianDate,
+        monthName: monthDetails.monthName,
+        hijriYear: hYear,
+        daysRemaining,
+        totalRequired: activeMosques.length,
+        totalAssigned: nextFridayAssignments.filter((a) => a.imamId).length,
+        vacantCount,
+        isAllMonthFridaysPast: false
+      };
+    }
+    return {
+      period: {
+        hijriYear: hYear,
+        hijriMonth: hMonth,
+        monthNameAr: monthDetails.monthName,
+        status: monthDetails.periodStatus,
+        statusLabelArabic: monthDetails.statusLabelArabic,
+        isPast: monthDetails.isPast,
+        isCurrent: monthDetails.isCurrent,
+        isFuture: monthDetails.isFuture,
+        startDateHijri: `1 ${monthDetails.monthName} ${hYear} \u0647\u0640`,
+        endDateHijri: `${monthDetails.daysCount} ${monthDetails.monthName} ${hYear} \u0647\u0640`,
+        startDateGregorian: monthDetails.startDateGregorian,
+        endDateGregorian: monthDetails.endDateGregorian,
+        fridaysCount: monthDetails.fridaysCount,
+        pastFridaysCount: monthDetails.pastFridaysCount,
+        futureFridaysCount: monthDetails.futureFridaysCount
+      },
+      stats: {
+        totalMosques: memoryMosques.length,
+        activeMosques: activeMosques.length,
+        totalImams: memoryImams.length,
+        activeImams: activeImams.length,
+        totalAssignments: completedAssignments,
+        totalRequiredAssignments,
+        completedAssignments,
+        completionPercentage,
+        totalConflicts: scheduleConflicts.length
+      },
+      schedule: schedule ? {
+        id: schedule.id,
+        monthName: schedule.monthName,
+        hijriYear: schedule.hijriYear,
+        hijriMonth: schedule.hijriMonth,
+        status: schedule.status,
+        currentVersion: schedule.currentVersion,
+        updatedAt: schedule.updatedAt,
+        publishedAt: schedule.publishedAt
+      } : null,
+      fridays: fridaysWithStats,
+      nextFriday: nextFridayData,
+      nextFridayAssignments,
+      alerts: [],
+      liveDateTime: currentDT
+    };
+  },
+  getImamProfile(id, scheduleId) {
+    const imam = memoryImams.find((i2) => i2.id === id);
+    if (!imam) return null;
+    const allAssignments = memoryAssignments.filter((a) => a.imamId === id);
+    const fridayMap = new Map(memoryFridays.map((f3) => [f3.id, f3]));
+    const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
+    const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2]));
+    const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
+    const profileAssignments = allAssignments.map((a) => {
+      const f3 = fridayMap.get(a.fridayId);
+      const s2 = scheduleMap.get(a.scheduleId);
+      const m2 = mosqueMap.get(a.mosqueId);
+      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      return {
+        id: a.id,
+        scheduleId: a.scheduleId,
+        fridayId: a.fridayId,
+        fridayIndex: a.fridayIndex,
+        hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
+        gregorianDate: f3?.gregorianDate || void 0,
+        monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
+        hijriYear: s2?.hijriYear || 1448,
+        scheduleStatus: s2?.status || "APPROVED",
+        mosqueId: a.mosqueId,
+        mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
+        mosqueCode: m2?.code || "",
+        mosqueRegion: m2?.region || "",
+        imamId: imam.id,
+        imamName: imam.name,
+        imamType: imam.type,
+        imamPhone: imam.phone || void 0,
+        isLocked: a.isLocked,
+        source: a.source,
+        isUpcoming
+      };
+    }).sort((x2, y) => {
+      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      return x2.fridayIndex - y.fridayIndex;
+    });
+    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const rules = memoryRules.filter((r2) => r2.imamId === id).map((r2) => {
+      const m2 = mosqueMap.get(r2.mosqueId);
+      return {
+        ...r2,
+        mosqueName: m2?.name,
+        mosqueRegion: m2?.region
+      };
+    });
+    const mosqueCounts = /* @__PURE__ */ new Map();
+    for (const a of profileAssignments) {
+      const curr = mosqueCounts.get(a.mosqueId) || { count: 0 };
+      curr.count += 1;
+      if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
+      if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
+      mosqueCounts.set(a.mosqueId, curr);
+    }
+    const linkedMosques = Array.from(mosqueCounts.entries()).map(([mId, data]) => {
+      const m2 = mosqueMap.get(mId);
+      const rule = rules.find((r2) => r2.mosqueId === mId);
+      return {
+        mosqueId: mId,
+        mosqueName: m2?.name || `\u0645\u0633\u062C\u062F #${mId}`,
+        mosqueCode: m2?.code || "",
+        mosqueRegion: m2?.region || "",
+        relationshipType: rule?.relationshipType,
+        assignedCount: data.count,
+        lastDate: data.lastDate,
+        nextDate: data.nextDate
+      };
+    }).sort((x2, y) => y.assignedCount - x2.assignedCount);
+    const stats = {
+      currentMonthCount: upcomingAssignments.length,
+      currentMonthName: activeSchedule?.monthName || "",
+      currentHijriYear: activeSchedule?.hijriYear || 1448,
+      currentScheduleStatus: activeSchedule?.status || "APPROVED",
+      lifetimeTotalAssigned: profileAssignments.length,
+      mosquesCount: linkedMosques.length,
+      upcomingCount: upcomingAssignments.length,
+      pastCount: profileAssignments.length - upcomingAssignments.length,
+      availabilitiesCount: 0,
+      minFridays: imam.minFridays,
+      targetFridays: imam.targetFridays,
+      maxFridays: imam.maxFridays
+    };
+    return {
+      imam,
+      activeSchedule,
+      availableSchedules: memorySchedules.map((s2) => ({
+        id: s2.id,
+        monthName: s2.monthName,
+        hijriYear: s2.hijriYear,
+        fridaysCount: s2.fridaysCount,
+        status: s2.status
+      })),
+      stats,
+      assignments: profileAssignments,
+      upcomingAssignments,
+      linkedMosques,
+      rules,
+      availabilities: [],
+      auditLogs: []
+    };
+  },
+  getMosqueProfile(id, scheduleId) {
+    const mosque = memoryMosques.find((m2) => m2.id === id);
+    if (!mosque) return null;
+    const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
+    const fridayMap = new Map(memoryFridays.map((f3) => [f3.id, f3]));
+    const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
+    const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
+    const allAssignments = memoryAssignments.filter((a) => a.mosqueId === id);
+    const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
+    const profileAssignments = allAssignments.map((a) => {
+      const f3 = fridayMap.get(a.fridayId);
+      const s2 = scheduleMap.get(a.scheduleId);
+      const i2 = a.imamId ? imamMap.get(a.imamId) : null;
+      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      return {
+        id: a.id,
+        scheduleId: a.scheduleId,
+        fridayId: a.fridayId,
+        fridayIndex: a.fridayIndex,
+        hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
+        gregorianDate: f3?.gregorianDate || void 0,
+        monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
+        hijriYear: s2?.hijriYear || 1448,
+        scheduleStatus: s2?.status || "APPROVED",
+        mosqueId: mosque.id,
+        mosqueName: mosque.name,
+        mosqueCode: mosque.code,
+        mosqueRegion: mosque.region,
+        imamId: a.imamId,
+        imamName: i2?.name || "\u0634\u0627\u063A\u0631 (\u0644\u0645 \u064A\u0639\u064A\u0646)",
+        imamType: i2?.type || "FLEXIBLE",
+        imamPhone: i2?.phone || void 0,
+        isLocked: a.isLocked,
+        source: a.source,
+        isUpcoming
+      };
+    }).sort((x2, y) => {
+      if (x2.scheduleId !== y.scheduleId) return y.scheduleId - x2.scheduleId;
+      return x2.fridayIndex - y.fridayIndex;
+    });
+    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const allRules = memoryRules.filter((r2) => r2.mosqueId === id);
+    const rulesGrouped = {
+      preferred: allRules.filter((r2) => r2.relationshipType === "PREFERRED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
+      allowed: allRules.filter((r2) => r2.relationshipType === "ALLOWED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
+      discouraged: allRules.filter((r2) => r2.relationshipType === "DISCOURAGED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
+      forbidden: allRules.filter((r2) => r2.relationshipType === "FORBIDDEN").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
+      fixed: allRules.filter((r2) => r2.relationshipType === "FIXED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name }))
+    };
+    const imamCounts = /* @__PURE__ */ new Map();
+    for (const a of profileAssignments) {
+      if (a.imamId) {
+        const curr = imamCounts.get(a.imamId) || { count: 0 };
+        curr.count += 1;
+        if (a.isUpcoming && !curr.nextDate) curr.nextDate = a.hijriDate;
+        if (!a.isUpcoming && !curr.lastDate) curr.lastDate = a.hijriDate;
+        imamCounts.set(a.imamId, curr);
+      }
+    }
+    const linkedImams = Array.from(imamCounts.entries()).map(([imId, data]) => {
+      const im = imamMap.get(imId);
+      const rule = allRules.find((r2) => r2.imamId === imId);
+      return {
+        imamId: imId,
+        imamName: im?.name || `\u062E\u0637\u064A\u0628 #${imId}`,
+        imamType: im?.type || "FLEXIBLE",
+        imamPhone: im?.phone || void 0,
+        relationshipType: rule?.relationshipType || (mosque.fixedImamId === imId ? "FIXED" : void 0),
+        assignedCount: data.count,
+        lastDate: data.lastDate,
+        nextDate: data.nextDate
+      };
+    }).sort((x2, y) => y.assignedCount - x2.assignedCount);
+    const stats = {
+      totalAssigned: profileAssignments.length,
+      currentMonthCount: upcomingAssignments.length,
+      imamsCount: linkedImams.length,
+      upcomingCount: upcomingAssignments.length,
+      currentScheduleFridaysTotal: activeSchedule?.fridaysCount || 4,
+      currentMonthName: activeSchedule?.monthName || "",
+      currentHijriYear: activeSchedule?.hijriYear || 1448
+    };
+    return {
+      mosque,
+      fixedImam,
+      activeSchedule,
+      availableSchedules: memorySchedules.map((s2) => ({
+        id: s2.id,
+        monthName: s2.monthName,
+        hijriYear: s2.hijriYear,
+        fridaysCount: s2.fridaysCount,
+        status: s2.status
+      })),
+      stats,
+      assignments: profileAssignments,
+      upcomingAssignments,
+      linkedImams,
+      rules: rulesGrouped,
+      auditLogs: []
+    };
+  },
+  getFixedPatterns(mosqueId, year, month) {
+    const pattern = memoryPatterns.find(
+      (p) => p.mosqueId === mosqueId && p.hijriYear === year && p.hijriMonth === month
+    );
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
+    const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2]));
+    if (!pattern) {
+      return {
+        exists: false,
+        fridaysCount: monthDetails.fridaysCount,
+        pattern: {
+          patternType: "NONE",
+          items: monthDetails.fridays.map((f3) => ({
+            fridayIndex: f3.fridayIndex,
+            imamId: null,
+            imamName: null
+          }))
+        }
+      };
+    }
+    const items = memoryPatternItems.filter((pi) => pi.patternId === pattern.id).map((pi) => {
+      const im = pi.imamId ? imamMap.get(pi.imamId) : null;
+      return {
+        ...pi,
+        imamName: im?.name || null
+      };
+    });
+    return {
+      exists: true,
+      pattern: {
+        ...pattern,
+        items
+      },
+      fridaysCount: pattern.fridaysCount
+    };
+  },
+  getReportsSummary() {
+    const imamLoads = memoryImams.map((i2) => {
+      const assigned = memoryAssignments.filter((a) => a.imamId === i2.id).length;
+      return {
+        id: i2.id,
+        name: i2.name,
+        type: i2.type,
+        min: i2.minFridays,
+        target: i2.targetFridays,
+        max: i2.maxFridays,
+        assigned,
+        status: assigned < i2.minFridays ? "UNDER" : assigned > i2.maxFridays ? "OVER" : "BALANCED"
+      };
+    });
+    const mosqueLoads = memoryMosques.map((m2) => {
+      const assignedCount = memoryAssignments.filter((a) => a.mosqueId === m2.id).length;
+      return {
+        id: m2.id,
+        name: m2.name,
+        code: m2.code,
+        region: m2.region,
+        assignedCount
+      };
+    });
+    return {
+      imamLoads,
+      mosqueLoads,
+      totalConflicts: memoryConflicts.length,
+      criticalConflicts: 0,
+      warningConflicts: 0,
+      overridesCount: memoryOverrides.length,
+      manualChangesCount: 0
+    };
+  },
+  getAuditLogs() {
+    return [
+      {
+        id: 1,
+        userEmail: "admin@aljameya.org",
+        action: "INITIAL_SEED",
+        entityType: "SYSTEM",
+        entityId: 1,
+        detailsJson: JSON.stringify({ message: "\u062A\u0647\u064A\u0626\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0645\u0646\u0638\u0651\u0645 \u0627\u0644\u062C\u0645\u0639\u0629" }),
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    ];
+  },
+  updateAssignment(scheduleId, assignmentId, imamId, reason) {
+    const assign = memoryAssignments.find((a) => a.id === assignmentId && a.scheduleId === scheduleId);
+    if (!assign) return null;
+    assign.imamId = imamId;
+    assign.source = "MANUAL";
+    assign.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return assign;
+  },
+  swapAssignments(scheduleId, sourceAssignmentId, targetAssignmentId, reason) {
+    const a1 = memoryAssignments.find((a) => a.id === sourceAssignmentId && a.scheduleId === scheduleId);
+    const a2 = memoryAssignments.find((a) => a.id === targetAssignmentId && a.scheduleId === scheduleId);
+    if (!a1 || !a2) return null;
+    const tempImamId = a1.imamId;
+    a1.imamId = a2.imamId;
+    a2.imamId = tempImamId;
+    a1.source = "MANUAL";
+    a2.source = "MANUAL";
+    a1.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    a2.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return { assignment1: a1, assignment2: a2 };
+  },
+  toggleLock(scheduleId, assignmentId) {
+    const assign = memoryAssignments.find((a) => a.id === assignmentId && a.scheduleId === scheduleId);
+    if (!assign) return null;
+    assign.isLocked = !assign.isLocked;
+    assign.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return assign;
+  },
+  approveSchedule(scheduleId) {
+    const sched = memorySchedules.find((s2) => s2.id === scheduleId);
+    if (!sched) return null;
+    sched.status = "APPROVED";
+    sched.approvedAt = (/* @__PURE__ */ new Date()).toISOString();
+    sched.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return sched;
+  },
+  publishSchedule(scheduleId) {
+    const sched = memorySchedules.find((s2) => s2.id === scheduleId);
+    if (!sched) return null;
+    sched.status = "PUBLISHED";
+    sched.publishedAt = (/* @__PURE__ */ new Date()).toISOString();
+    sched.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return sched;
+  },
+  createSchedule(hijriYear, hijriMonth, calendarProvider, timezone, createdBy) {
+    const periodValidation = CalendarService.validateSchedulePeriod(hijriYear, hijriMonth, {
+      provider: calendarProvider || "UMM_AL_QURA",
+      timezone: timezone || "Asia/Riyadh"
+    });
+    const existing = memorySchedules.find(
+      (s2) => s2.hijriYear === hijriYear && s2.hijriMonth === hijriMonth
+    );
+    if (existing) {
+      return {
+        isDuplicate: true,
+        schedule: existing,
+        error: `\u064A\u0648\u062C\u062F \u0628\u0627\u0644\u0641\u0639\u0644 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 ${existing.monthName} ${hijriYear} \u0647\u0640 (\u0627\u0644\u062C\u062F\u0648\u0644 #${existing.id})`
+      };
+    }
+    const monthDetails = periodValidation.monthDetails;
+    const nextId = memorySchedules.reduce((max, s2) => Math.max(max, s2.id || 0), 0) + 1;
+    const newSchedule = {
+      id: nextId,
+      hijriYear,
+      hijriMonth,
+      monthName: monthDetails.monthName,
+      fridaysCount: monthDetails.fridaysCount,
+      daysCount: monthDetails.daysCount,
+      calendarProvider: monthDetails.calendarProvider,
+      timezone: monthDetails.timezone,
+      startDateGregorian: monthDetails.startDateGregorian,
+      endDateGregorian: monthDetails.endDateGregorian,
+      status: "DRAFT",
+      currentVersion: 1,
+      createdBy: createdBy || "admin@aljameya.org",
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    memorySchedules.unshift(newSchedule);
+    let nextFridayId = memoryFridays.reduce((max, f3) => Math.max(max, f3.id || 0), 0) + 1;
+    const fridaysToInsert = monthDetails.fridays.map((f3) => ({
+      id: nextFridayId++,
+      scheduleId: newSchedule.id,
+      fridayIndex: f3.fridayIndex,
+      hijriYear: f3.hijriYear,
+      hijriMonth: f3.hijriMonth,
+      hijriDay: f3.hijriDay,
+      hijriDate: f3.hijriDate,
+      gregorianDate: f3.gregorianDate,
+      dayOfWeek: f3.dayOfWeek
+    }));
+    memoryFridays.push(...fridaysToInsert);
+    this.persistToDisk();
+    return {
+      ...newSchedule,
+      periodStatus: monthDetails.periodStatus,
+      statusLabelArabic: monthDetails.statusLabelArabic,
+      monthDetails
+    };
+  },
+  generateSchedule(scheduleId, distributionMethod, seed) {
+    const schedule = memorySchedules.find((s2) => s2.id === scheduleId);
+    if (!schedule) {
+      throw new Error("\u0627\u0644\u062C\u062F\u0648\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F");
+    }
+    const activeMosques = memoryMosques.filter((m2) => m2.isActive);
+    const activeImams = memoryImams.filter((i2) => i2.isActive);
+    const rules = memoryRules;
+    const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
+      provider: schedule.calendarProvider || "UMM_AL_QURA",
+      timezone: schedule.timezone || "Asia/Riyadh"
+    });
+    const pastFridayIndices = new Set(
+      monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
+    );
+    const existingAssignments = memoryAssignments.filter((a) => a.scheduleId === scheduleId);
+    const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
+      fridayIndex: a.fridayIndex,
+      mosqueId: a.mosqueId,
+      imamId: a.imamId,
+      source: a.source,
+      notes: a.notes
+    }));
+    const patternRecords = memoryPatterns.filter(
+      (p) => p.hijriYear === schedule.hijriYear && p.hijriMonth === schedule.hijriMonth && p.isActive !== false
+    );
+    const patternIds = patternRecords.map((p) => p.id);
+    const patternItemsRecords = memoryPatternItems.filter((item) => patternIds.includes(item.patternId));
+    const fixedPatternsInput = patternRecords.map((p) => ({
+      mosqueId: p.mosqueId,
+      patternType: p.patternType,
+      fridaysCount: p.fridaysCount,
+      items: patternItemsRecords.filter((item) => item.patternId === p.id).map((item) => ({
+        fridayIndex: item.fridayIndex,
+        imamId: item.imamId,
+        sequence: item.sequence,
+        notes: item.notes
+      }))
+    }));
+    const result = SchedulingEngine.generate({
+      monthName: schedule.monthName,
+      hijriYear: schedule.hijriYear,
+      hijriMonth: schedule.hijriMonth,
+      fridaysCount: schedule.fridaysCount,
+      mosques: activeMosques.map((m2) => ({
+        id: m2.id,
+        name: m2.name,
+        code: m2.code,
+        region: m2.region,
+        isActive: m2.isActive,
+        fixedImamId: m2.fixedImamId,
+        fixedPattern: m2.fixedPattern,
+        fixedCount: m2.fixedCount
+      })),
+      imams: activeImams.map((i2) => ({
+        id: i2.id,
+        name: i2.name,
+        type: i2.type,
+        minFridays: i2.minFridays,
+        targetFridays: i2.targetFridays,
+        maxFridays: i2.maxFridays,
+        isActive: i2.isActive,
+        region: i2.region
+      })),
+      rules: rules.map((r2) => ({
+        mosqueId: r2.mosqueId,
+        imamId: r2.imamId,
+        relationshipType: r2.relationshipType,
+        priority: r2.priority || 1
+      })),
+      availabilities: [],
+      lockedAssignments,
+      fixedPatterns: fixedPatternsInput,
+      distributionMethod: distributionMethod || "Balanced Random",
+      seed: seed || `${schedule.monthName}-${schedule.hijriYear}`
+    });
+    const lockedIds = new Set(existingAssignments.filter((a) => a.isLocked).map((a) => a.id));
+    memoryAssignments = memoryAssignments.filter((a) => a.scheduleId !== scheduleId || lockedIds.has(a.id));
+    let nextAssignId = memoryAssignments.reduce((max, a) => Math.max(max, a.id || 0), 0) + 1;
+    const scheduleFridays = memoryFridays.filter((f3) => f3.scheduleId === scheduleId);
+    const fridayMap = new Map(scheduleFridays.map((f3) => [f3.fridayIndex, f3.id]));
+    const newAssignmentsToInsert = result.assignments.map((ea) => ({
+      id: nextAssignId++,
+      scheduleId,
+      fridayId: fridayMap.get(ea.fridayIndex) || 0,
+      fridayIndex: ea.fridayIndex,
+      mosqueId: ea.mosqueId,
+      imamId: ea.imamId,
+      isLocked: ea.isLocked || false,
+      source: ea.source,
+      notes: ea.notes || null,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    }));
+    memoryAssignments.push(...newAssignmentsToInsert);
+    if (result.conflicts && result.conflicts.length > 0) {
+      let nextConflictId = memoryConflicts.reduce((max, c) => Math.max(max, c.id || 0), 0) + 1;
+      const newConflicts = result.conflicts.map((c) => ({
+        id: nextConflictId++,
+        scheduleId,
+        fridayIndex: c.fridayIndex || null,
+        mosqueId: c.mosqueId || null,
+        imamId: c.imamId || null,
+        ruleCode: c.ruleCode,
+        severity: c.severity,
+        message: c.message,
+        possibleResolutions: JSON.stringify(c.possibleResolutions || []),
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      }));
+      memoryConflicts = memoryConflicts.filter((c) => c.scheduleId !== scheduleId);
+      memoryConflicts.push(...newConflicts);
+    }
+    schedule.status = "REVIEW";
+    schedule.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+    this.persistToDisk();
+    return { success: true, result };
+  },
+  createMosque(data) {
+    const nextId = memoryMosques.reduce((max, m2) => Math.max(max, m2.id || 0), 0) + 1;
+    const newMosque = {
+      id: nextId,
+      isActive: true,
+      ...data,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    memoryMosques.push(newMosque);
+    this.persistToDisk();
+    return newMosque;
+  },
+  updateMosque(id, data) {
+    const index = memoryMosques.findIndex((m2) => m2.id === id);
+    if (index === -1) return null;
+    memoryMosques[index] = {
+      ...memoryMosques[index],
+      ...data,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.persistToDisk();
+    return memoryMosques[index];
+  },
+  deleteMosque(id) {
+    memoryMosques = memoryMosques.filter((m2) => m2.id !== id);
+    this.persistToDisk();
+    return true;
+  },
+  createImam(data) {
+    const nextId = memoryImams.reduce((max, i2) => Math.max(max, i2.id || 0), 0) + 1;
+    const newImam = {
+      id: nextId,
+      isActive: true,
+      minFridays: data.minFridays ?? 1,
+      targetFridays: data.targetFridays ?? 4,
+      maxFridays: data.maxFridays ?? 5,
+      ...data,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    memoryImams.push(newImam);
+    this.persistToDisk();
+    return newImam;
+  },
+  updateImam(id, data) {
+    const index = memoryImams.findIndex((i2) => i2.id === id);
+    if (index === -1) return null;
+    memoryImams[index] = {
+      ...memoryImams[index],
+      ...data,
+      updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    this.persistToDisk();
+    return memoryImams[index];
+  },
+  deleteImam(id) {
+    memoryImams = memoryImams.filter((i2) => i2.id !== id);
+    this.persistToDisk();
+    return true;
+  },
+  createRule(data) {
+    return this.upsertRule(data);
+  },
+  upsertRule(data) {
+    const mosqueId = Number(data.mosqueId);
+    const imamId = Number(data.imamId);
+    const existingIndex = memoryRules.findIndex(
+      (r2) => Number(r2.mosqueId) === mosqueId && Number(r2.imamId) === imamId
+    );
+    if (existingIndex >= 0) {
+      memoryRules[existingIndex] = {
+        ...memoryRules[existingIndex],
+        relationshipType: data.relationshipType,
+        priority: data.priority ? Number(data.priority) : 1,
+        notes: data.notes || null,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+      };
+      this.persistToDisk();
+      return memoryRules[existingIndex];
+    }
+    const nextId = memoryRules.reduce((max, r2) => Math.max(max, r2.id || 0), 0) + 1;
+    const newRule = {
+      id: nextId,
+      mosqueId,
+      imamId,
+      relationshipType: data.relationshipType,
+      priority: data.priority ? Number(data.priority) : 1,
+      notes: data.notes || null,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    memoryRules.push(newRule);
+    this.persistToDisk();
+    return newRule;
+  },
+  deleteRule(id) {
+    memoryRules = memoryRules.filter((r2) => Number(r2.id) !== Number(id));
+    this.persistToDisk();
+    return true;
+  },
+  saveFixedPattern(mosqueId, body) {
+    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
+    const hYear = Number(hijriYear);
+    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+    let lastPatternId = 0;
+    for (const hMonth of targetMonths) {
+      let mFridaysCount = Number(fridaysCount) || 5;
+      try {
+        const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
+        if (details && details.fridaysCount) {
+          mFridaysCount = details.fridaysCount;
+        }
+      } catch {
+      }
+      const existingIndex = memoryPatterns.findIndex(
+        (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === hYear && Number(p.hijriMonth) === hMonth
+      );
+      let patternId;
+      if (existingIndex >= 0) {
+        patternId = memoryPatterns[existingIndex].id;
+        memoryPatterns[existingIndex] = {
+          ...memoryPatterns[existingIndex],
+          patternType,
+          fridaysCount: mFridaysCount,
+          notes: notes || null,
+          updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+        };
+        memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== patternId);
+      } else {
+        patternId = memoryPatterns.reduce((max, p) => Math.max(max, p.id || 0), 0) + 1;
+        memoryPatterns.push({
+          id: patternId,
+          mosqueId,
+          hijriYear: hYear,
+          hijriMonth: hMonth,
+          patternType,
+          fridaysCount: mFridaysCount,
+          isActive: true,
+          notes: notes || null,
+          createdAt: (/* @__PURE__ */ new Date()).toISOString()
+        });
+      }
+      lastPatternId = patternId;
+      const itemsToInsert = items.filter((it) => Number(it.fridayIndex) <= mFridaysCount).map((item, idx) => ({
+        id: memoryPatternItems.reduce((max, pi) => Math.max(max, pi.id || 0), 0) + idx + 1,
+        patternId,
+        fridayIndex: Number(item.fridayIndex),
+        imamId: Number(item.imamId),
+        sequence: idx + 1,
+        notes: item.notes || null
+      }));
+      memoryPatternItems.push(...itemsToInsert);
+    }
+    if (patternType === "SAME_ALL" && items[0]?.imamId) {
+      this.updateMosque(mosqueId, {
+        fixedImamId: Number(items[0].imamId),
+        fixedPattern: "ALL",
+        fixedCount: Number(fridaysCount) || 5
+      });
+    }
+    this.persistToDisk();
+    return {
+      success: true,
+      message: applyToFullYear ? `\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0646\u0645\u0637 \u0627\u0644\u0645\u0639\u062A\u0645\u062F \u0644\u0644\u0645\u0633\u062C\u062F \u0644\u062C\u0645\u064A\u0639 \u0623\u0634\u0647\u0631 \u0627\u0644\u0639\u0627\u0645 \u0627\u0644\u0647\u062C\u0631\u064A ${hYear} \u0647\u0640 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 (12 \u0634\u0647\u0631\u0627\u064B)` : "\u062A\u0645 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0644\u0644\u0645\u0633\u062C\u062F \u0628\u0646\u062C\u0627\u062D",
+      patternId: lastPatternId
+    };
+  },
+  copyFixedPattern(mosqueId, sourceYear, sourceMonth, targetYear, targetMonth) {
+    const sYear = Number(sourceYear);
+    const sMonth = Number(sourceMonth);
+    const tYear = Number(targetYear);
+    const tMonth = Number(targetMonth);
+    const sourcePattern = memoryPatterns.find(
+      (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === sYear && Number(p.hijriMonth) === sMonth
+    );
+    if (!sourcePattern) {
+      throw new Error("\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0646\u0645\u0637 \u0645\u062D\u0641\u0648\u0638 \u0641\u064A \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0645\u0635\u062F\u0631");
+    }
+    const sourceItems = memoryPatternItems.filter((pi) => Number(pi.patternId) === sourcePattern.id);
+    const targetDetails = CalendarService.getHijriMonthDetails(tYear, tMonth);
+    const targetFridaysCount = targetDetails.fridaysCount;
+    return this.saveFixedPattern(mosqueId, {
+      hijriYear: tYear,
+      hijriMonth: tMonth,
+      patternType: sourcePattern.patternType,
+      fridaysCount: targetFridaysCount,
+      items: sourceItems.map((si) => ({
+        fridayIndex: si.fridayIndex,
+        imamId: si.imamId,
+        notes: si.notes
+      }))
+    });
+  },
+  deleteFixedPattern(patternId) {
+    const pId = Number(patternId);
+    memoryPatterns = memoryPatterns.filter((p) => Number(p.id) !== pId);
+    memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== pId);
+    this.persistToDisk();
+    return true;
+  },
+  bulkDeleteMosques(ids) {
+    const idSet = new Set(ids.map(Number));
+    memoryMosques = memoryMosques.filter((m2) => !idSet.has(Number(m2.id)));
+    this.persistToDisk();
+    return ids.length;
+  },
+  bulkDeleteImams(ids) {
+    const idSet = new Set(ids.map(Number));
+    memoryImams = memoryImams.filter((i2) => !idSet.has(Number(i2.id)));
+    this.persistToDisk();
+    return ids.length;
+  },
+  persistToDisk() {
+    try {
+      const seedPath = path2.resolve("src/db/initialSeed.json");
+      const payload = {
+        ...seedData,
+        mosques: memoryMosques,
+        imams: memoryImams,
+        mosqueImamRules: memoryRules,
+        monthlySchedules: memorySchedules,
+        fridays: memoryFridays,
+        assignments: memoryAssignments,
+        conflicts: memoryConflicts,
+        overrides: memoryOverrides,
+        fixedAssignmentPatterns: memoryPatterns,
+        fixedAssignmentPatternItems: memoryPatternItems
+      };
+      fs3.writeFileSync(seedPath, JSON.stringify(payload, null, 2), "utf8");
+    } catch (e2) {
+      console.warn("Could not persist memoryStore to initialSeed.json:", e2);
+    }
+  }
+};
+
+// src/services/supabaseSyncService.ts
+var SupabaseSyncService = {
+  /**
+   * Health-check the Supabase connection
+   */
+  async checkConnection() {
+    if (!isSupabaseConfigured) {
+      return {
+        configured: false,
+        connected: false,
+        message: "\u0625\u0639\u062F\u0627\u062F\u0627\u062A Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629 \u0628\u0639\u062F. \u064A\u0639\u0645\u0644 \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0622\u0646 \u0628\u0643\u0641\u0627\u0621\u0629 \u0643\u0627\u0645\u0644\u0629 \u0639\u0644\u0649 \u0627\u0644\u0645\u062D\u0631\u0643 \u0627\u0644\u0645\u062D\u0644\u064A \u0648\u0642\u0631\u0635 \u0627\u0644\u062A\u062E\u0632\u064A\u0646."
+      };
+    }
+    const client = getSupabaseClient();
+    if (!client) {
+      return {
+        configured: false,
+        connected: false,
+        message: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0639\u0645\u064A\u0644 Supabase."
+      };
+    }
+    const startTime = Date.now();
+    try {
+      const { data, error } = await Promise.race([
+        client.from("mosques").select("id", { count: "exact", head: true }),
+        new Promise(
+          (_, reject) => setTimeout(() => reject(new Error("\u0627\u0646\u062A\u0647\u062A \u0645\u0647\u0644\u0629 \u0627\u0646\u062A\u0638\u0627\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase (5s)")), 5e3)
+        )
+      ]);
+      if (error) {
+        if (error.code === "PGRST205" || error.message?.includes("schema cache") || error.message?.includes("not find")) {
+          const latencyMs2 = Date.now() - startTime;
+          return {
+            configured: true,
+            connected: true,
+            latencyMs: latencyMs2,
+            message: `\u062A\u0645 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase \u0628\u0646\u062C\u0627\u062D (${latencyMs2} ms). \u064A\u0631\u062C\u0649 \u0627\u0644\u0622\u0646 \u062A\u0634\u063A\u064A\u0644 \u0645\u0644\u0641 supabase_schema.sql \u0641\u064A SQL Editor \u0644\u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0627\u0648\u0644.`,
+            error: "TABLES_NOT_CREATED_YET"
+          };
+        }
+        return {
+          configured: true,
+          connected: false,
+          error: error.message,
+          message: `\u062E\u0637\u0623 \u0641\u064A \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase: ${error.message}`
+        };
+      }
+      const latencyMs = Date.now() - startTime;
+      let counts = void 0;
+      try {
+        const [mRes, iRes, sRes, aRes] = await Promise.all([
+          client.from("mosques").select("*", { count: "exact", head: true }),
+          client.from("imams").select("*", { count: "exact", head: true }),
+          client.from("monthly_schedules").select("*", { count: "exact", head: true }),
+          client.from("assignments").select("*", { count: "exact", head: true })
+        ]);
+        counts = {
+          mosques: mRes.count ?? 0,
+          imams: iRes.count ?? 0,
+          schedules: sRes.count ?? 0,
+          assignments: aRes.count ?? 0
+        };
+      } catch {
+      }
+      return {
+        configured: true,
+        connected: true,
+        latencyMs,
+        counts,
+        url: "https://tctaqmtvypibxsaehawf.supabase.co",
+        message: `\u0645\u062A\u0635\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase \u0628\u0646\u062C\u0627\u062D (\u0632\u0645\u0646 \u0627\u0644\u0627\u0633\u062A\u062C\u0627\u0628\u0629: ${latencyMs} \u0645\u0644\u064A \u062B\u0627\u0646\u064A\u0629)`
+      };
+    } catch (err) {
+      return {
+        configured: true,
+        connected: false,
+        error: err.message,
+        message: `\u062A\u0639\u0630\u0631 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase: ${err.message}`
+      };
+    }
+  },
+  /**
+   * Push all current local data (Mosques, Imams, Rules, Schedules, Assignments) to Supabase
+   */
+  async pushLocalToSupabase() {
+    const client = getSupabaseClient();
+    if (!client) {
+      throw new Error("Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623. \u064A\u0631\u062C\u0649 \u0625\u0636\u0627\u0641\u0629 SUPABASE_URL \u0648 SUPABASE_ANON_KEY \u0641\u064A \u0645\u0644\u0641 \u0627\u0644\u0628\u064A\u0626\u0629 .env \u0623\u0648\u0644\u0627\u064B.");
+    }
+    const mosques2 = memoryStore.getMosques();
+    const imams2 = memoryStore.getImams();
+    const schedules = memoryStore.getSchedules();
+    if (mosques2.length > 0) {
+      const dbMosques = mosques2.map((m2) => ({
+        id: m2.id,
+        name: m2.name,
+        code: m2.code,
+        region: m2.region || "\u0627\u0644\u0648\u0633\u0637",
+        address: m2.address || null,
+        manager_name: m2.managerName || null,
+        phone: m2.phone || null,
+        whatsapp: m2.whatsapp || null,
+        fixed_imam_id: m2.fixedImamId || null,
+        is_active: m2.isActive ?? true,
+        notes: m2.notes || null,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }));
+      const { error: mosqueErr } = await client.from("mosques").upsert(dbMosques, { onConflict: "id" });
+      if (mosqueErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0625\u0644\u0649 \u0627\u0644\u0633\u062D\u0627\u0628\u0629: ${mosqueErr.message}`);
+    }
+    if (imams2.length > 0) {
+      const dbImams = imams2.map((i2) => ({
+        id: i2.id,
+        name: i2.name,
+        phone: i2.phone || null,
+        whatsapp: i2.whatsapp || null,
+        type: i2.type || "FLEXIBLE",
+        region: i2.region || "\u0627\u0644\u0648\u0633\u0637",
+        min_fridays: i2.minFridays || 1,
+        max_fridays: i2.maxFridays || 4,
+        target_fridays: i2.targetFridays || 2,
+        is_active: i2.isActive ?? true,
+        notes: i2.notes || null,
+        updated_at: (/* @__PURE__ */ new Date()).toISOString()
+      }));
+      const { error: imamErr } = await client.from("imams").upsert(dbImams, { onConflict: "id" });
+      if (imamErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0625\u0644\u0649 \u0627\u0644\u0633\u062D\u0627\u0628\u0629: ${imamErr.message}`);
+    }
+    const rules = memoryStore.getRules ? memoryStore.getRules() : [];
+    if (rules.length > 0) {
+      const dbRules = rules.map((r2) => ({
+        id: r2.id,
+        mosque_id: r2.mosqueId,
+        imam_id: r2.imamId,
+        relationship_type: r2.relationshipType,
+        priority: r2.priority || 1,
+        notes: r2.notes || null
+      }));
+      const { error: ruleErr } = await client.from("mosque_imam_rules").upsert(dbRules, { onConflict: "id" });
+      if (ruleErr) console.warn("Supabase rules sync warning:", ruleErr.message);
+    }
+    let totalAssignmentsSynced = 0;
+    if (schedules.length > 0) {
+      for (const s2 of schedules) {
+        const { error: schedErr } = await client.from("monthly_schedules").upsert(
+          {
+            id: s2.id,
+            hijri_year: s2.hijriYear,
+            hijri_month: s2.hijriMonth,
+            month_name: s2.monthName,
+            calendar_provider: s2.calendarProvider || "UMM_AL_QURA",
+            timezone: s2.timezone || "Asia/Riyadh",
+            fridays_count: s2.fridaysCount,
+            status: s2.status,
+            current_version: s2.currentVersion || 1,
+            approved_by: s2.approvedBy || null,
+            approved_at: s2.approvedAt || null,
+            published_at: s2.publishedAt || null,
+            updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          },
+          { onConflict: "id" }
+        );
+        if (schedErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062C\u062F\u0648\u0644 ${s2.id}: ${schedErr.message}`);
+        const details = memoryStore.getScheduleDetails(s2.id);
+        if (details?.fridays && details.fridays.length > 0) {
+          const dbFridays = details.fridays.map((f3) => ({
+            id: f3.id,
+            schedule_id: s2.id,
+            friday_index: f3.fridayIndex,
+            hijri_date: f3.hijriDate || "",
+            gregorian_date: f3.gregorianDate || "",
+            gregorian_iso: f3.gregorianIso || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+            period_status: f3.periodStatus || "CURRENT",
+            is_past: Boolean(f3.isPast)
+          }));
+          const { error: friErr } = await client.from("fridays").upsert(dbFridays, { onConflict: "id" });
+          if (friErr) console.warn("Supabase fridays sync warning:", friErr.message);
+        }
+        if (details?.assignments && details.assignments.length > 0) {
+          const validImamIds = new Set(imams2.map((i2) => Number(i2.id)));
+          const dbAssignments = details.assignments.map((a) => ({
+            id: a.id,
+            schedule_id: a.scheduleId,
+            mosque_id: a.mosqueId,
+            friday_index: a.fridayIndex,
+            imam_id: a.imamId && validImamIds.has(Number(a.imamId)) ? Number(a.imamId) : null,
+            is_locked: a.isLocked || false,
+            source: a.source || "BALANCED",
+            notes: a.notes || null,
+            updated_at: (/* @__PURE__ */ new Date()).toISOString()
+          }));
+          const { error: assignErr } = await client.from("assignments").upsert(dbAssignments, { onConflict: "id" });
+          if (assignErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062A\u0643\u0644\u064A\u0641\u0627\u062A \u0644\u0644\u062C\u062F\u0648\u0644 ${s2.id}: ${assignErr.message}`);
+          totalAssignmentsSynced += dbAssignments.length;
+        }
+      }
+    }
+    return {
+      success: true,
+      message: "\u062A\u0645\u062A \u0645\u0632\u0627\u0645\u0646\u0629 \u0648\u0631\u0641\u0639 \u0643\u0627\u0641\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0628\u0646\u062C\u0627\u062D \u0625\u0644\u0649 \u0633\u062D\u0627\u0628\u0629 Supabase \u2601\uFE0F",
+      syncedAt: (/* @__PURE__ */ new Date()).toISOString(),
+      mosquesCount: mosques2.length,
+      imamsCount: imams2.length,
+      schedulesCount: schedules.length,
+      assignmentsCount: totalAssignmentsSynced
+    };
+  }
+};
+
 // src/server/api.ts
-init_memoryStore();
 var api = import_express.default.Router({ mergeParams: true });
 api.use(import_express.default.json({ limit: "50mb" }));
 api.use(import_express.default.urlencoded({ limit: "50mb", extended: true }));
@@ -135028,7 +134965,7 @@ async function logAudit(req, action, entityType, entityId, details) {
   }
 }
 api.get("/health", async (_req, res) => {
-  res.json({ status: "ok", serverTime: (/* @__PURE__ */ new Date()).toISOString() });
+  res.json({ status: "ok", version: "supabase-v1", serverTime: (/* @__PURE__ */ new Date()).toISOString() });
 });
 api.get("/calendar/current", async (_req, res) => {
   try {
@@ -138655,8 +138592,7 @@ api.post("/system/export-seed", async (req, res) => {
 });
 api.get("/supabase/status", async (_req, res) => {
   try {
-    const { SupabaseSyncService: SupabaseSyncService2 } = await Promise.resolve().then(() => (init_supabaseSyncService(), supabaseSyncService_exports));
-    const status = await SupabaseSyncService2.checkConnection();
+    const status = await SupabaseSyncService.checkConnection();
     res.json(status);
   } catch (err) {
     res.status(500).json({ configured: false, connected: false, error: err.message, message: "\u0641\u0634\u0644 \u0641\u062D\u0635 \u0627\u062A\u0635\u0627\u0644 Supabase" });
@@ -138664,8 +138600,7 @@ api.get("/supabase/status", async (_req, res) => {
 });
 api.post("/supabase/test", async (_req, res) => {
   try {
-    const { SupabaseSyncService: SupabaseSyncService2 } = await Promise.resolve().then(() => (init_supabaseSyncService(), supabaseSyncService_exports));
-    const result = await SupabaseSyncService2.checkConnection();
+    const result = await SupabaseSyncService.checkConnection();
     res.json(result);
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -138673,8 +138608,7 @@ api.post("/supabase/test", async (_req, res) => {
 });
 api.post("/supabase/sync", async (req, res) => {
   try {
-    const { SupabaseSyncService: SupabaseSyncService2 } = await Promise.resolve().then(() => (init_supabaseSyncService(), supabaseSyncService_exports));
-    const result = await SupabaseSyncService2.pushLocalToSupabase();
+    const result = await SupabaseSyncService.pushLocalToSupabase();
     await logAudit(req, "SUPABASE_SYNC", "SYSTEM", 1, result);
     res.json(result);
   } catch (err) {

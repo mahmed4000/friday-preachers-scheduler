@@ -43,6 +43,7 @@ import {
 } from '../services/importExportService.ts';
 import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
+import { SupabaseSyncService } from '../services/supabaseSyncService.ts';
 import { memoryStore } from './memoryStore.ts';
 
 const api = express.Router({ mergeParams: true });
@@ -80,7 +81,7 @@ async function logAudit(req: AuthRequest, action: string, entityType: string, en
 // 1. Health & Dashboard & Calendar
 // -------------------------------------------------------------
 api.get('/health', async (_req: Request, res: Response) => {
-  res.json({ status: 'ok', serverTime: new Date().toISOString() });
+  res.json({ status: 'ok', version: 'supabase-v1', serverTime: new Date().toISOString() });
 });
 
 api.get('/calendar/current', async (_req: Request, res: Response) => {
@@ -4356,7 +4357,6 @@ api.post('/system/export-seed', async (req: AuthRequest, res: Response) => {
 // -------------------------------------------------------------
 api.get('/supabase/status', async (_req: Request, res: Response) => {
   try {
-    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
     const status = await SupabaseSyncService.checkConnection();
     res.json(status);
   } catch (err: any) {
@@ -4366,7 +4366,6 @@ api.get('/supabase/status', async (_req: Request, res: Response) => {
 
 api.post('/supabase/test', async (_req: Request, res: Response) => {
   try {
-    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
     const result = await SupabaseSyncService.checkConnection();
     res.json(result);
   } catch (err: any) {
@@ -4376,7 +4375,6 @@ api.post('/supabase/test', async (_req: Request, res: Response) => {
 
 api.post('/supabase/sync', async (req: AuthRequest, res: Response) => {
   try {
-    const { SupabaseSyncService } = await import('../services/supabaseSyncService.ts');
     const result = await SupabaseSyncService.pushLocalToSupabase();
     await logAudit(req, 'SUPABASE_SYNC', 'SYSTEM', 1, result);
     res.json(result);
