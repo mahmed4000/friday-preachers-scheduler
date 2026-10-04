@@ -11,6 +11,7 @@ import {
   Check,
   Moon,
   Sun,
+  Menu,
 } from 'lucide-react';
 import { Button } from '../ui/Button.tsx';
 import { useTheme } from '../../context/ThemeContext.tsx';
@@ -22,6 +23,7 @@ interface HeaderProps {
   onResetDemo?: () => void;
   onOpenSettings?: () => void;
   onOpenCloud?: () => void;
+  onToggleMobileMenu?: () => void;
   alertCount?: number;
 }
 
@@ -32,6 +34,7 @@ export function Header({
   onResetDemo,
   onOpenSettings,
   onOpenCloud,
+  onToggleMobileMenu,
   alertCount = 0,
 }: HeaderProps) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
@@ -57,7 +60,7 @@ export function Header({
 
   return (
     <header
-      className="h-16 border-b border-emerald-900/80 bg-gradient-to-l from-[#043328] via-[#032b21] to-[#021f18] text-slate-100 px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 select-none shadow-lg relative overflow-hidden backdrop-blur-md"
+      className="h-16 border-b border-emerald-900/80 bg-gradient-to-l from-[#043328] via-[#032b21] to-[#021f18] text-slate-100 px-3 sm:px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 select-none shadow-lg relative overflow-hidden backdrop-blur-md"
       dir="rtl"
     >
       {/* Decorative Islamic Geometric Pattern Watermark */}
@@ -66,18 +69,29 @@ export function Header({
       {/* Golden Separator Accent at Bottom */}
       <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/30 to-transparent"></div>
 
-      {/* Right Zone: Page Title & Breadcrumb */}
-      <div className="relative flex items-center gap-3">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-medium text-emerald-300/80">الرئيسية</span>
-            <span className="text-amber-400/50 text-xs">/</span>
-            <h2 className="text-sm sm:text-base font-bold text-white font-heading leading-tight drop-shadow-xs">
+      {/* Right Zone: Hamburger + Page Title & Breadcrumb */}
+      <div className="relative flex items-center gap-2 sm:gap-3 min-w-0">
+        {onToggleMobileMenu && (
+          <button
+            onClick={onToggleMobileMenu}
+            className="lg:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 text-amber-300 transition-colors cursor-pointer flex items-center justify-center shrink-0 border border-white/15"
+            title="القائمة الرئيسية"
+            aria-label="القائمة"
+          >
+            <Menu className="w-4.5 h-4.5" />
+          </button>
+        )}
+
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="hidden sm:inline text-[11px] font-medium text-emerald-300/80">الرئيسية</span>
+            <span className="hidden sm:inline text-amber-400/50 text-xs">/</span>
+            <h2 className="text-xs sm:text-base font-bold text-white font-heading leading-tight truncate drop-shadow-xs">
               {activeTitle}
             </h2>
           </div>
           {activeSubtitle && (
-            <p className="text-[11px] text-emerald-200/70 font-normal leading-none mt-0.5">
+            <p className="hidden md:block text-[11px] text-emerald-200/70 font-normal leading-none mt-0.5 truncate">
               {activeSubtitle}
             </p>
           )}
@@ -85,7 +99,7 @@ export function Header({
       </div>
 
       {/* Left Zone: Actions, Notifications, User Menu */}
-      <div className="relative flex items-center gap-2.5 sm:gap-3">
+      <div className="relative flex items-center gap-1.5 sm:gap-3 shrink-0">
         {onResetDemo && (
           <button
             onClick={onResetDemo}
@@ -99,7 +113,7 @@ export function Header({
 
         <button
           onClick={onOpenWizard}
-          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-emerald-950 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-200 rounded-lg shadow-md shadow-emerald-950/40 border border-amber-200/60 transition-all cursor-pointer hover:scale-102"
+          className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3.5 py-1.5 text-xs font-bold text-emerald-950 bg-gradient-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-200 rounded-lg shadow-md shadow-emerald-950/40 border border-amber-200/60 transition-all cursor-pointer hover:scale-102 shrink-0"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>جدول جديد</span>
@@ -108,11 +122,11 @@ export function Header({
         {onOpenCloud && (
           <button
             onClick={onOpenCloud}
-            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-200 bg-emerald-950/70 hover:bg-emerald-900/90 rounded-lg transition-colors border border-emerald-700/60 cursor-pointer shadow-2xs"
+            className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-emerald-200 bg-emerald-950/70 hover:bg-emerald-900/90 rounded-lg transition-colors border border-emerald-700/60 cursor-pointer shadow-2xs shrink-0"
             title="سحابة Supabase ومزامنة البيانات"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            <span className="hidden sm:inline">سحابة Supabase ☁️</span>
+            <span>سحابة Supabase ☁️</span>
           </button>
         )}
 

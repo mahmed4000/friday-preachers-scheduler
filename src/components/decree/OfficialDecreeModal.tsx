@@ -50,10 +50,10 @@ export function OfficialDecreeModal({
   const activeMosques = mosques.filter((m) => m.isActive);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-xs overflow-y-auto">
-      <div className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-300 overflow-hidden my-6 flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/80 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-5xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-300 overflow-hidden my-2 sm:my-6 flex flex-col max-h-[92vh]">
         {/* Modal Top Bar (Screen Only) */}
-        <div className="p-4 bg-slate-900 text-white flex items-center justify-between no-print shrink-0">
+        <div className="p-3 sm:p-4 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 no-print shrink-0">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-amber-400" />
             <div>

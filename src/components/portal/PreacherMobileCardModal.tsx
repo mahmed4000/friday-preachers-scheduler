@@ -241,9 +241,9 @@ export function PreacherMobileCardModal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto"
     >
-      <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-amber-300/60 overflow-hidden my-6 animate-in fade-in zoom-in-95 duration-150">
+      <div className="relative w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-amber-300/60 overflow-hidden my-3 sm:my-6 animate-in fade-in zoom-in-95 duration-150">
         {/* Header Ribbon & Close */}
         <div className="bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-950 p-5 text-white relative border-b-2 border-amber-400">
           <button

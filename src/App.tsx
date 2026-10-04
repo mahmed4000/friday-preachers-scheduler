@@ -6,6 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar, NavItem } from './components/layout/Sidebar.tsx';
 import { Header } from './components/layout/Header.tsx';
+import { MobileBottomNav } from './components/layout/MobileBottomNav.tsx';
 import { DashboardView } from './components/dashboard/DashboardView.tsx';
 import { MosquesView } from './components/mosques/MosquesView.tsx';
 import { MosqueProfileModal } from './components/mosques/MosqueProfileModal.tsx';
@@ -45,6 +46,7 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -342,6 +344,7 @@ export default function App() {
 
   // Handle Tab Switch
   const handleTabChange = (tab: NavItem) => {
+    setIsMobileMenuOpen(false);
     setCurrentTab(tab);
     // If switching to review or publishing, ensure active schedule is loaded
     if ((tab === 'schedules' || tab === 'publishing') && !activeScheduleData && schedules.length > 0) {
@@ -456,7 +459,7 @@ export default function App() {
       }}
     >
       <div className="flex h-screen overflow-hidden bg-[#FCFBF8] dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 print:h-auto print:overflow-visible print:bg-white selection:bg-emerald-200 selection:text-emerald-900" dir="rtl" lang="ar">
-        {/* Sidebar */}
+        {/* Sidebar (Desktop sticky + Mobile Drawer) */}
         <div className="no-print">
           <Sidebar
             currentTab={currentTab}
@@ -464,11 +467,13 @@ export default function App() {
             logoUrl={organizationSettings.logoUrl}
             associationName={organizationSettings.associationName}
             branchName={organizationSettings.branchName}
+            isOpenMobile={isMobileMenuOpen}
+            onCloseMobile={() => setIsMobileMenuOpen(false)}
           />
         </div>
 
         {/* Main View Area */}
-        <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible relative">
           {/* Top Header */}
           <div className="no-print">
             <Header
@@ -478,6 +483,7 @@ export default function App() {
               onResetDemo={handleResetDemo}
               onOpenSettings={() => setCurrentTab('settings')}
               onOpenCloud={() => setCurrentTab('cloud')}
+              onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
             />
           </div>
 
@@ -497,7 +503,7 @@ export default function App() {
         )}
 
         {/* Page Content Viewport */}
-        <main className="flex-1 overflow-y-auto p-6 print:p-0 print:overflow-visible">
+        <main className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 pb-24 lg:pb-6 print:p-0 print:overflow-visible">
           {error ? (
             <div className="p-8 text-center bg-white rounded-xl border border-rose-200 shadow-sm max-w-lg mx-auto my-12 space-y-3">
               <AlertCircle className="w-10 h-10 text-rose-600 mx-auto" />
@@ -660,6 +666,13 @@ export default function App() {
             </>
           )}
         </main>
+
+        {/* Mobile Bottom Navigation Bar (Visible only on screens < lg) */}
+        <MobileBottomNav
+          currentTab={currentTab}
+          onTabChange={handleTabChange}
+          onOpenMenu={() => setIsMobileMenuOpen(true)}
+        />
       </div>
 
       {/* Modals & Dialogs */}

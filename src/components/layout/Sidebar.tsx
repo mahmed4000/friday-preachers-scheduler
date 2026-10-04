@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DEFAULT_SHARIA_LOGO } from '../../lib/defaultLogo.ts';
 import {
   LayoutDashboard,
@@ -12,6 +12,7 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Database,
+  X,
 } from 'lucide-react';
 
 export type NavItem =
@@ -34,6 +35,8 @@ interface SidebarProps {
   logoUrl?: string;
   associationName?: string;
   branchName?: string;
+  isOpenMobile?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export function Sidebar({
@@ -42,6 +45,8 @@ export function Sidebar({
   logoUrl,
   associationName,
   branchName,
+  isOpenMobile = false,
+  onCloseMobile,
 }: SidebarProps) {
   const mainNavItems: {
     id: NavItem;
@@ -61,50 +66,69 @@ export function Sidebar({
 
   const effectiveLogo = logoUrl || DEFAULT_SHARIA_LOGO;
 
-  return (
-    <aside
-      className="w-72 bg-gradient-to-b from-[#03261e] via-[#053d30] to-[#021c15] text-slate-100 border-l border-emerald-900/70 flex flex-col h-screen shrink-0 sticky top-0 select-none shadow-2xl z-40 relative overflow-hidden"
-      dir="rtl"
-    >
+  // Close mobile drawer on Escape key
+  useEffect(() => {
+    if (!isOpenMobile) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCloseMobile?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpenMobile, onCloseMobile]);
+
+  const renderContent = (isMobileView = false) => (
+    <div className="flex flex-col h-full select-none relative overflow-hidden" dir="rtl">
       {/* Decorative Islamic Geometric Pattern Watermark */}
       <div className="absolute inset-0 pointer-events-none islamic-pattern opacity-20"></div>
 
-      {/* Brand Zone - Centered Hierarchy: Emblem -> الجمعية الشرعية - فرع منشأة البكاري -> برنامج منظم الجمعة -> v2 */}
+      {/* Brand Zone */}
       <div className="relative p-5 pb-4 border-b border-emerald-900/80 bg-black/30 backdrop-blur-md flex flex-col items-center text-center">
+        {/* Mobile Close Button (X) */}
+        {isMobileView && onCloseMobile && (
+          <button
+            onClick={onCloseMobile}
+            className="absolute top-3.5 left-3.5 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer z-20"
+            title="إغلاق القائمة"
+          >
+            <X className="w-4 h-4 text-amber-300" />
+          </button>
+        )}
+
         {/* Emblem / Logo Centered on Top */}
         <div
           className="relative mb-3 group cursor-pointer"
-          onClick={() => onTabChange('dashboard')}
+          onClick={() => {
+            onTabChange('dashboard');
+            if (isMobileView) onCloseMobile?.();
+          }}
           title="الرئيسية - منظّم الجمعة"
         >
-          <div className="w-20 h-20 rounded-full bg-white p-1.5 flex items-center justify-center overflow-hidden shadow-2xl border-2 border-amber-400/80 ring-4 ring-emerald-500/30 group-hover:scale-105 group-hover:border-amber-300 transition-all duration-300">
+          <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-full bg-white p-1.5 flex items-center justify-center overflow-hidden shadow-2xl border-2 border-amber-400/80 ring-4 ring-emerald-500/30 group-hover:scale-105 group-hover:border-amber-300 transition-all duration-300">
             <img
               src={effectiveLogo}
               alt="شعار الجمعية الشرعية"
               className="w-full h-full object-contain rounded-full"
             />
           </div>
-          {/* Subtle Golden Glow behind logo */}
           <div className="absolute inset-0 rounded-full bg-amber-400/20 filter blur-md -z-10 group-hover:bg-amber-400/35 transition-all"></div>
         </div>
 
         {/* Text Stack Centered */}
         <div className="flex flex-col items-center w-full px-1">
-          {/* الجمعية الشرعية - فرع منشأة البكاري */}
-          <h1 className="font-heading font-extrabold text-white text-[14px] sm:text-[15px] leading-tight tracking-tight drop-shadow-sm">
+          <h1 className="font-heading font-extrabold text-white text-[13px] sm:text-[15px] leading-tight tracking-tight drop-shadow-sm">
             {associationName && branchName
               ? `${associationName.replace(/لـ?مدينة\s*/g, '')} - ${branchName.split('—')[0].trim()}`
               : 'الجمعية الشرعية - فرع منشأة البكاري'}
           </h1>
 
-          {/* برنامج منظم الجمعة */}
           <div className="mt-1 flex items-center justify-center gap-1.5">
             <span className="text-xs font-bold text-amber-300 tracking-wide font-heading">
               برنامج منظّم الجمعة
             </span>
           </div>
 
-          {/* v2 Pill Badge */}
           <div className="mt-1.5 flex items-center justify-center">
             <span className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 via-amber-400/25 to-emerald-500/20 border border-amber-400/50 text-[11px] font-mono font-bold text-amber-200 shadow-inner">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
@@ -130,7 +154,10 @@ export function Sidebar({
           return (
             <button
               key={item.id}
-              onClick={() => onTabChange(item.id)}
+              onClick={() => {
+                onTabChange(item.id);
+                if (isMobileView) onCloseMobile?.();
+              }}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-heading transition-all duration-200 cursor-pointer ${
                 isActive
                   ? 'bg-gradient-to-l from-emerald-800/90 to-emerald-900/95 text-amber-300 font-bold shadow-md shadow-emerald-950/50 border-r-4 border-amber-400 ring-1 ring-amber-400/30 translate-x-[-2px]'
@@ -154,7 +181,10 @@ export function Sidebar({
       {/* Bottom Area: Settings Button & Hijri Live Status */}
       <div className="relative p-3 bg-black/30 border-t border-emerald-900/70 space-y-2">
         <button
-          onClick={() => onTabChange('settings')}
+          onClick={() => {
+            onTabChange('settings');
+            if (isMobileView) onCloseMobile?.();
+          }}
           className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-heading font-semibold transition-all cursor-pointer ${
             currentTab === 'settings'
               ? 'bg-amber-900/60 text-amber-200 border border-amber-500/50 font-bold shadow-md'
@@ -177,6 +207,35 @@ export function Sidebar({
           <span className="text-[11px] text-amber-300 font-bold font-heading">🌙 1448 هـ</span>
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* 1. Desktop Static Sidebar (Visible only on lg and larger screens) */}
+      <aside
+        className="hidden lg:flex w-72 bg-gradient-to-b from-[#03261e] via-[#053d30] to-[#021c15] text-slate-100 border-l border-emerald-900/70 flex-col h-screen shrink-0 sticky top-0 select-none shadow-2xl z-30 relative overflow-hidden"
+        dir="rtl"
+      >
+        {renderContent(false)}
+      </aside>
+
+      {/* 2. Mobile Responsive Drawer (Visible on small & medium screens when open) */}
+      {isOpenMobile && (
+        <div className="fixed inset-0 z-50 lg:hidden flex" dir="rtl">
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 bg-slate-950/80 backdrop-blur-xs transition-opacity duration-200 animate-in fade-in cursor-pointer"
+            onClick={onCloseMobile}
+            aria-label="إغلاق القائمة"
+          />
+
+          {/* Off-canvas Sliding Container */}
+          <div className="relative w-76 max-w-[85vw] bg-gradient-to-b from-[#03261e] via-[#053d30] to-[#021c15] text-slate-100 h-full flex flex-col shadow-2xl z-50 animate-in slide-in-from-right duration-250 border-l border-amber-400/40">
+            {renderContent(true)}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
