@@ -994,18 +994,20 @@ api.post('/mosques/bulk-delete', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'BULK_DELETE_MOSQUES', 'MOSQUE', 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف المساجد المحددة', details: error.message });
+    console.warn('DB bulk delete mosques failed, falling back to memoryStore:', error?.message);
+    const count = memoryStore.bulkDeleteMosques(req.body.ids || []);
+    res.json({ success: true, count });
   }
 });
 
 api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
-  try {
-    const mosqueId = Number(req.params.id);
-    const { imamId, relationshipType, priority, notes } = req.body;
-    if (!imamId || !relationshipType) {
-      return res.status(400).json({ error: 'الخطيب ونوع العلاقة مطلوبان' });
-    }
+  const mosqueId = Number(req.params.id);
+  const { imamId, relationshipType, priority, notes } = req.body;
+  if (!imamId || !relationshipType) {
+    return res.status(400).json({ error: 'الخطيب ونوع العلاقة مطلوبان' });
+  }
 
+  try {
     // Check if rule already exists for this pair
     const existing = await db.select().from(mosqueImamRules).where(
       and(eq(mosqueImamRules.mosqueId, mosqueId), eq(mosqueImamRules.imamId, Number(imamId)))
@@ -1034,17 +1036,27 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'UPDATE_MOSQUE_RULE', 'MOSQUE_RULE', saved.id, { mosqueId, imamId, relationshipType });
     res.json(saved);
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حفظ قاعدة المسجد', details: error.message });
+    console.warn('DB rule save failed, falling back to memoryStore:', error?.message);
+    const fallbackSaved = memoryStore.upsertRule({
+      mosqueId,
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority ? Number(priority) : 1,
+      notes,
+    });
+    res.json(fallbackSaved);
   }
 });
 
 api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response) => {
+  const ruleId = Number(req.params.ruleId);
   try {
-    const ruleId = Number(req.params.ruleId);
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
     res.json({ success: true });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف القاعدة', details: error.message });
+    console.warn('DB rule delete failed, falling back to memoryStore:', error?.message);
+    memoryStore.deleteRule(ruleId);
+    res.json({ success: true });
   }
 });
 
@@ -1235,7 +1247,13 @@ api.post('/mosques/:id/fixed-patterns', async (req: AuthRequest, res: Response) 
       patternId: lastPatternId,
     });
   } catch (error: any) {
-    console.error('Error saving fixed pattern:', error);
+    console.warn('DB error saving fixed pattern, falling back to memoryStore:', error?.message);
+    try {
+      const fallbackResult = memoryStore.saveFixedPattern(Number(req.params.id), req.body);
+      return res.json(fallbackResult);
+    } catch (fbErr: any) {
+      console.error('Fallback saveFixedPattern failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر حفظ نمط التثبيت', details: error.message });
   }
 });
@@ -1372,19 +1390,34 @@ api.post('/mosques/:id/fixed-patterns/copy', async (req: AuthRequest, res: Respo
       copiedItemsCount: newItems.length,
     });
   } catch (error: any) {
-    console.error('Error copying fixed pattern:', error);
+    console.warn('DB error copying fixed pattern, falling back to memoryStore:', error?.message);
+    try {
+      const { sourceYear, sourceMonth, targetYear, targetMonth } = req.body;
+      const fallbackResult = memoryStore.copyFixedPattern(
+        Number(req.params.id),
+        Number(sourceYear),
+        Number(sourceMonth),
+        Number(targetYear),
+        Number(targetMonth)
+      );
+      return res.json(fallbackResult);
+    } catch (fbErr: any) {
+      console.error('Fallback copyFixedPattern failed:', fbErr);
+    }
     res.status(500).json({ error: 'تعذر نسخ نمط التثبيت', details: error.message });
   }
 });
 
 api.delete('/mosques/:id/fixed-patterns/:patternId', async (req: AuthRequest, res: Response) => {
+  const patternId = Number(req.params.patternId);
   try {
-    const patternId = Number(req.params.patternId);
     await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
     await logAudit(req, 'DELETE_FIXED_PATTERN', 'MOSQUE', Number(req.params.id), { patternId });
     res.json({ success: true, message: 'تم حذف نمط التثبيت بنجاح' });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف نمط التثبيت', details: error.message });
+    console.warn('DB error deleting fixed pattern, falling back to memoryStore:', error?.message);
+    memoryStore.deleteFixedPattern(patternId);
+    res.json({ success: true, message: 'تم حذف نمط التثبيت بنجاح' });
   }
 });
 
@@ -1868,7 +1901,9 @@ api.post('/imams/bulk-delete', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'BULK_DELETE_IMAMS', 'IMAM', 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
   } catch (error: any) {
-    res.status(500).json({ error: 'تعذر حذف الخطباء المحددين', details: error.message });
+    console.warn('DB bulk delete imams failed, falling back to memoryStore:', error?.message);
+    const count = memoryStore.bulkDeleteImams(req.body.ids || []);
+    res.json({ success: true, count });
   }
 });
 

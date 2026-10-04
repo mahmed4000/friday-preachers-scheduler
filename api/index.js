@@ -110655,10 +110655,33 @@ var init_memoryStore = __esm({
         return true;
       },
       createRule(data) {
+        return this.upsertRule(data);
+      },
+      upsertRule(data) {
+        const mosqueId = Number(data.mosqueId);
+        const imamId = Number(data.imamId);
+        const existingIndex = memoryRules.findIndex(
+          (r2) => Number(r2.mosqueId) === mosqueId && Number(r2.imamId) === imamId
+        );
+        if (existingIndex >= 0) {
+          memoryRules[existingIndex] = {
+            ...memoryRules[existingIndex],
+            relationshipType: data.relationshipType,
+            priority: data.priority ? Number(data.priority) : 1,
+            notes: data.notes || null,
+            updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+          };
+          this.persistToDisk();
+          return memoryRules[existingIndex];
+        }
         const nextId = memoryRules.reduce((max, r2) => Math.max(max, r2.id || 0), 0) + 1;
         const newRule = {
           id: nextId,
-          ...data,
+          mosqueId,
+          imamId,
+          relationshipType: data.relationshipType,
+          priority: data.priority ? Number(data.priority) : 1,
+          notes: data.notes || null,
           createdAt: (/* @__PURE__ */ new Date()).toISOString()
         };
         memoryRules.push(newRule);
@@ -110666,9 +110689,121 @@ var init_memoryStore = __esm({
         return newRule;
       },
       deleteRule(id) {
-        memoryRules = memoryRules.filter((r2) => r2.id !== id);
+        memoryRules = memoryRules.filter((r2) => Number(r2.id) !== Number(id));
         this.persistToDisk();
         return true;
+      },
+      saveFixedPattern(mosqueId, body) {
+        const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
+        const hYear = Number(hijriYear);
+        const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+        let lastPatternId = 0;
+        for (const hMonth of targetMonths) {
+          let mFridaysCount = Number(fridaysCount) || 5;
+          try {
+            const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
+            if (details && details.fridaysCount) {
+              mFridaysCount = details.fridaysCount;
+            }
+          } catch {
+          }
+          const existingIndex = memoryPatterns.findIndex(
+            (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === hYear && Number(p.hijriMonth) === hMonth
+          );
+          let patternId;
+          if (existingIndex >= 0) {
+            patternId = memoryPatterns[existingIndex].id;
+            memoryPatterns[existingIndex] = {
+              ...memoryPatterns[existingIndex],
+              patternType,
+              fridaysCount: mFridaysCount,
+              notes: notes || null,
+              updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+            };
+            memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== patternId);
+          } else {
+            patternId = memoryPatterns.reduce((max, p) => Math.max(max, p.id || 0), 0) + 1;
+            memoryPatterns.push({
+              id: patternId,
+              mosqueId,
+              hijriYear: hYear,
+              hijriMonth: hMonth,
+              patternType,
+              fridaysCount: mFridaysCount,
+              isActive: true,
+              notes: notes || null,
+              createdAt: (/* @__PURE__ */ new Date()).toISOString()
+            });
+          }
+          lastPatternId = patternId;
+          const itemsToInsert = items.filter((it) => Number(it.fridayIndex) <= mFridaysCount).map((item, idx) => ({
+            id: memoryPatternItems.reduce((max, pi) => Math.max(max, pi.id || 0), 0) + idx + 1,
+            patternId,
+            fridayIndex: Number(item.fridayIndex),
+            imamId: Number(item.imamId),
+            sequence: idx + 1,
+            notes: item.notes || null
+          }));
+          memoryPatternItems.push(...itemsToInsert);
+        }
+        if (patternType === "SAME_ALL" && items[0]?.imamId) {
+          this.updateMosque(mosqueId, {
+            fixedImamId: Number(items[0].imamId),
+            fixedPattern: "ALL",
+            fixedCount: Number(fridaysCount) || 5
+          });
+        }
+        this.persistToDisk();
+        return {
+          success: true,
+          message: applyToFullYear ? `\u062A\u0645 \u062A\u062B\u0628\u064A\u062A \u0627\u0644\u0646\u0645\u0637 \u0627\u0644\u0645\u0639\u062A\u0645\u062F \u0644\u0644\u0645\u0633\u062C\u062F \u0644\u062C\u0645\u064A\u0639 \u0623\u0634\u0647\u0631 \u0627\u0644\u0639\u0627\u0645 \u0627\u0644\u0647\u062C\u0631\u064A ${hYear} \u0647\u0640 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 (12 \u0634\u0647\u0631\u0627\u064B)` : "\u062A\u0645 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0644\u0644\u0645\u0633\u062C\u062F \u0628\u0646\u062C\u0627\u062D",
+          patternId: lastPatternId
+        };
+      },
+      copyFixedPattern(mosqueId, sourceYear, sourceMonth, targetYear, targetMonth) {
+        const sYear = Number(sourceYear);
+        const sMonth = Number(sourceMonth);
+        const tYear = Number(targetYear);
+        const tMonth = Number(targetMonth);
+        const sourcePattern = memoryPatterns.find(
+          (p) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === sYear && Number(p.hijriMonth) === sMonth
+        );
+        if (!sourcePattern) {
+          throw new Error("\u0644\u0645 \u064A\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0646\u0645\u0637 \u0645\u062D\u0641\u0648\u0638 \u0641\u064A \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u0645\u0635\u062F\u0631");
+        }
+        const sourceItems = memoryPatternItems.filter((pi) => Number(pi.patternId) === sourcePattern.id);
+        const targetDetails = CalendarService.getHijriMonthDetails(tYear, tMonth);
+        const targetFridaysCount = targetDetails.fridaysCount;
+        return this.saveFixedPattern(mosqueId, {
+          hijriYear: tYear,
+          hijriMonth: tMonth,
+          patternType: sourcePattern.patternType,
+          fridaysCount: targetFridaysCount,
+          items: sourceItems.map((si) => ({
+            fridayIndex: si.fridayIndex,
+            imamId: si.imamId,
+            notes: si.notes
+          }))
+        });
+      },
+      deleteFixedPattern(patternId) {
+        const pId = Number(patternId);
+        memoryPatterns = memoryPatterns.filter((p) => Number(p.id) !== pId);
+        memoryPatternItems = memoryPatternItems.filter((pi) => Number(pi.patternId) !== pId);
+        this.persistToDisk();
+        return true;
+      },
+      bulkDeleteMosques(ids) {
+        const idSet = new Set(ids.map(Number));
+        memoryMosques = memoryMosques.filter((m2) => !idSet.has(Number(m2.id)));
+        this.persistToDisk();
+        return ids.length;
+      },
+      bulkDeleteImams(ids) {
+        const idSet = new Set(ids.map(Number));
+        memoryImams = memoryImams.filter((i2) => !idSet.has(Number(i2.id)));
+        this.persistToDisk();
+        return ids.length;
       },
       persistToDisk() {
         try {
@@ -135606,16 +135741,18 @@ api.post("/mosques/bulk-delete", async (req, res) => {
     await logAudit(req, "BULK_DELETE_MOSQUES", "MOSQUE", 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0627\u0644\u0645\u062D\u062F\u062F\u0629", details: error.message });
+    console.warn("DB bulk delete mosques failed, falling back to memoryStore:", error?.message);
+    const count = memoryStore.bulkDeleteMosques(req.body.ids || []);
+    res.json({ success: true, count });
   }
 });
 api.post("/mosques/:id/rules", async (req, res) => {
+  const mosqueId = Number(req.params.id);
+  const { imamId, relationshipType, priority, notes } = req.body;
+  if (!imamId || !relationshipType) {
+    return res.status(400).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
+  }
   try {
-    const mosqueId = Number(req.params.id);
-    const { imamId, relationshipType, priority, notes } = req.body;
-    if (!imamId || !relationshipType) {
-      return res.status(400).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
-    }
     const existing = await db.select().from(mosqueImamRules).where(
       and(eq(mosqueImamRules.mosqueId, mosqueId), eq(mosqueImamRules.imamId, Number(imamId)))
     );
@@ -135638,16 +135775,26 @@ api.post("/mosques/:id/rules", async (req, res) => {
     await logAudit(req, "UPDATE_MOSQUE_RULE", "MOSQUE_RULE", saved.id, { mosqueId, imamId, relationshipType });
     res.json(saved);
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F", details: error.message });
+    console.warn("DB rule save failed, falling back to memoryStore:", error?.message);
+    const fallbackSaved = memoryStore.upsertRule({
+      mosqueId,
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority ? Number(priority) : 1,
+      notes
+    });
+    res.json(fallbackSaved);
   }
 });
 api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
+  const ruleId = Number(req.params.ruleId);
   try {
-    const ruleId = Number(req.params.ruleId);
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629", details: error.message });
+    console.warn("DB rule delete failed, falling back to memoryStore:", error?.message);
+    memoryStore.deleteRule(ruleId);
+    res.json({ success: true });
   }
 });
 api.get("/mosques/:id/fixed-patterns", async (req, res) => {
@@ -135798,7 +135945,13 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
       patternId: lastPatternId
     });
   } catch (error) {
-    console.error("Error saving fixed pattern:", error);
+    console.warn("DB error saving fixed pattern, falling back to memoryStore:", error?.message);
+    try {
+      const fallbackResult = memoryStore.saveFixedPattern(Number(req.params.id), req.body);
+      return res.json(fallbackResult);
+    } catch (fbErr) {
+      console.error("Fallback saveFixedPattern failed:", fbErr);
+    }
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A", details: error.message });
   }
 });
@@ -135914,18 +136067,33 @@ api.post("/mosques/:id/fixed-patterns/copy", async (req, res) => {
       copiedItemsCount: newItems.length
     });
   } catch (error) {
-    console.error("Error copying fixed pattern:", error);
+    console.warn("DB error copying fixed pattern, falling back to memoryStore:", error?.message);
+    try {
+      const { sourceYear, sourceMonth, targetYear, targetMonth } = req.body;
+      const fallbackResult = memoryStore.copyFixedPattern(
+        Number(req.params.id),
+        Number(sourceYear),
+        Number(sourceMonth),
+        Number(targetYear),
+        Number(targetMonth)
+      );
+      return res.json(fallbackResult);
+    } catch (fbErr) {
+      console.error("Fallback copyFixedPattern failed:", fbErr);
+    }
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0646\u0633\u062E \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A", details: error.message });
   }
 });
 api.delete("/mosques/:id/fixed-patterns/:patternId", async (req, res) => {
+  const patternId = Number(req.params.patternId);
   try {
-    const patternId = Number(req.params.patternId);
     await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
     await logAudit(req, "DELETE_FIXED_PATTERN", "MOSQUE", Number(req.params.id), { patternId });
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A", details: error.message });
+    console.warn("DB error deleting fixed pattern, falling back to memoryStore:", error?.message);
+    memoryStore.deleteFixedPattern(patternId);
+    res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
   }
 });
 api.post("/mosques/import", async (req, res) => {
@@ -136341,7 +136509,9 @@ api.post("/imams/bulk-delete", async (req, res) => {
     await logAudit(req, "BULK_DELETE_IMAMS", "IMAM", 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u062D\u062F\u062F\u064A\u0646", details: error.message });
+    console.warn("DB bulk delete imams failed, falling back to memoryStore:", error?.message);
+    const count = memoryStore.bulkDeleteImams(req.body.ids || []);
+    res.json({ success: true, count });
   }
 });
 api.post("/imams/:id/availabilities", async (req, res) => {

@@ -1018,10 +1018,34 @@ export const memoryStore = {
   },
 
   createRule(data: any) {
+    return this.upsertRule(data);
+  },
+
+  upsertRule(data: any) {
+    const mosqueId = Number(data.mosqueId);
+    const imamId = Number(data.imamId);
+    const existingIndex = memoryRules.findIndex(
+      (r: any) => Number(r.mosqueId) === mosqueId && Number(r.imamId) === imamId
+    );
+    if (existingIndex >= 0) {
+      memoryRules[existingIndex] = {
+        ...memoryRules[existingIndex],
+        relationshipType: data.relationshipType,
+        priority: data.priority ? Number(data.priority) : 1,
+        notes: data.notes || null,
+        updatedAt: new Date().toISOString(),
+      };
+      this.persistToDisk();
+      return memoryRules[existingIndex];
+    }
     const nextId = memoryRules.reduce((max: number, r: any) => Math.max(max, r.id || 0), 0) + 1;
     const newRule = {
       id: nextId,
-      ...data,
+      mosqueId,
+      imamId,
+      relationshipType: data.relationshipType,
+      priority: data.priority ? Number(data.priority) : 1,
+      notes: data.notes || null,
       createdAt: new Date().toISOString(),
     };
     memoryRules.push(newRule);
@@ -1030,9 +1054,145 @@ export const memoryStore = {
   },
 
   deleteRule(id: number) {
-    memoryRules = memoryRules.filter((r: any) => r.id !== id);
+    memoryRules = memoryRules.filter((r: any) => Number(r.id) !== Number(id));
     this.persistToDisk();
     return true;
+  },
+
+  saveFixedPattern(mosqueId: number, body: any) {
+    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
+    const hYear = Number(hijriYear);
+    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+
+    let lastPatternId = 0;
+
+    for (const hMonth of targetMonths) {
+      let mFridaysCount = Number(fridaysCount) || 5;
+      try {
+        const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
+        if (details && details.fridaysCount) {
+          mFridaysCount = details.fridaysCount;
+        }
+      } catch {}
+
+      const existingIndex = memoryPatterns.findIndex(
+        (p: any) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === hYear && Number(p.hijriMonth) === hMonth
+      );
+
+      let patternId: number;
+      if (existingIndex >= 0) {
+        patternId = memoryPatterns[existingIndex].id;
+        memoryPatterns[existingIndex] = {
+          ...memoryPatterns[existingIndex],
+          patternType,
+          fridaysCount: mFridaysCount,
+          notes: notes || null,
+          updatedAt: new Date().toISOString(),
+        };
+        // Remove existing items
+        memoryPatternItems = memoryPatternItems.filter((pi: any) => Number(pi.patternId) !== patternId);
+      } else {
+        patternId = memoryPatterns.reduce((max: number, p: any) => Math.max(max, p.id || 0), 0) + 1;
+        memoryPatterns.push({
+          id: patternId,
+          mosqueId,
+          hijriYear: hYear,
+          hijriMonth: hMonth,
+          patternType,
+          fridaysCount: mFridaysCount,
+          isActive: true,
+          notes: notes || null,
+          createdAt: new Date().toISOString(),
+        });
+      }
+
+      lastPatternId = patternId;
+
+      // Filter and insert items for this month's Friday count
+      const itemsToInsert = items
+        .filter((it: any) => Number(it.fridayIndex) <= mFridaysCount)
+        .map((item: any, idx: number) => ({
+          id: memoryPatternItems.reduce((max: number, pi: any) => Math.max(max, pi.id || 0), 0) + idx + 1,
+          patternId,
+          fridayIndex: Number(item.fridayIndex),
+          imamId: Number(item.imamId),
+          sequence: idx + 1,
+          notes: item.notes || null,
+        }));
+
+      memoryPatternItems.push(...itemsToInsert);
+    }
+
+    // Update legacy fixed pattern on mosque if SAME_ALL
+    if (patternType === 'SAME_ALL' && items[0]?.imamId) {
+      this.updateMosque(mosqueId, {
+        fixedImamId: Number(items[0].imamId),
+        fixedPattern: 'ALL',
+        fixedCount: Number(fridaysCount) || 5,
+      });
+    }
+
+    this.persistToDisk();
+    return {
+      success: true,
+      message: applyToFullYear
+        ? `تم تثبيت النمط المعتمد للمسجد لجميع أشهر العام الهجري ${hYear} هـ بالكامل (12 شهراً)`
+        : 'تم حفظ نمط التثبيت للمسجد بنجاح',
+      patternId: lastPatternId,
+    };
+  },
+
+  copyFixedPattern(mosqueId: number, sourceYear: number, sourceMonth: number, targetYear: number, targetMonth: number) {
+    const sYear = Number(sourceYear);
+    const sMonth = Number(sourceMonth);
+    const tYear = Number(targetYear);
+    const tMonth = Number(targetMonth);
+
+    const sourcePattern = memoryPatterns.find(
+      (p: any) => Number(p.mosqueId) === mosqueId && Number(p.hijriYear) === sYear && Number(p.hijriMonth) === sMonth
+    );
+
+    if (!sourcePattern) {
+      throw new Error('لم يتم العثور على نمط محفوظ في الشهر المصدر');
+    }
+
+    const sourceItems = memoryPatternItems.filter((pi: any) => Number(pi.patternId) === sourcePattern.id);
+    const targetDetails = CalendarService.getHijriMonthDetails(tYear, tMonth);
+    const targetFridaysCount = targetDetails.fridaysCount;
+
+    return this.saveFixedPattern(mosqueId, {
+      hijriYear: tYear,
+      hijriMonth: tMonth,
+      patternType: sourcePattern.patternType,
+      fridaysCount: targetFridaysCount,
+      items: sourceItems.map((si: any) => ({
+        fridayIndex: si.fridayIndex,
+        imamId: si.imamId,
+        notes: si.notes,
+      })),
+    });
+  },
+
+  deleteFixedPattern(patternId: number) {
+    const pId = Number(patternId);
+    memoryPatterns = memoryPatterns.filter((p: any) => Number(p.id) !== pId);
+    memoryPatternItems = memoryPatternItems.filter((pi: any) => Number(pi.patternId) !== pId);
+    this.persistToDisk();
+    return true;
+  },
+
+  bulkDeleteMosques(ids: number[]) {
+    const idSet = new Set(ids.map(Number));
+    memoryMosques = memoryMosques.filter((m: any) => !idSet.has(Number(m.id)));
+    this.persistToDisk();
+    return ids.length;
+  },
+
+  bulkDeleteImams(ids: number[]) {
+    const idSet = new Set(ids.map(Number));
+    memoryImams = memoryImams.filter((i: any) => !idSet.has(Number(i.id)));
+    this.persistToDisk();
+    return ids.length;
   },
 
   persistToDisk() {
