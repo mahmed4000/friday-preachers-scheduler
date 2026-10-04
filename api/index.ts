@@ -9,15 +9,17 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 let isSeeded = false;
 
-// Auto-seed database on serverless cold start if empty
+// Auto-seed database on serverless cold start if empty and DATABASE_URL is provided
 app.use(async (req: Request, res: Response, next) => {
   if (!isSeeded) {
-    try {
-      await seedDatabase();
-      isSeeded = true;
-    } catch (err) {
-      console.error('Vercel cold start seed check error:', err);
-      isSeeded = true;
+    isSeeded = true;
+    const hasDbUrl = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL);
+    if (hasDbUrl) {
+      try {
+        await seedDatabase();
+      } catch (err) {
+        console.warn('Vercel cold start seed check error:', err);
+      }
     }
   }
   next();

@@ -1,11 +1,19 @@
 import { initializeApp, getApps } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
-import firebaseConfig from '../../firebase-applet-config.json';
+import { getAuth, Auth } from 'firebase-admin/auth';
+import { firebaseConfig } from './firebaseConfig.ts';
 
-if (!getApps().length) {
-  initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
+let adminAuthInstance: Auth | null = null;
+
+try {
+  if (!getApps().length) {
+    initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
+  }
+  adminAuthInstance = getAuth();
+} catch (err) {
+  console.warn('Firebase Admin SDK initialization warning:', err);
 }
 
-export const adminAuth = getAuth();
+export const adminAuth = adminAuthInstance;
+
