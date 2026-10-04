@@ -20,10 +20,18 @@ import {
   ChevronLeft,
   ChevronRight,
   ShieldCheck,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import { Mosque, Imam, Friday, Assignment, MonthlySchedule } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { buildWhatsAppLink } from '../../lib/whatsapp.ts';
+import { CalendarService } from '../../services/calendar/calendarService.ts';
+import {
+  getKhutbahTopic,
+  setAssignmentCustomKhutbahTopic,
+  POPULAR_SUGGESTED_TOPICS,
+} from '../../services/khutbahTopicsService.ts';
 
 export interface PreacherCardAssignmentItem {
   assignment: Assignment;
@@ -54,8 +62,36 @@ export function PreacherMobileCardModal({
   assignmentsList = [],
   onStatusUpdated,
 }: PreacherMobileCardModalProps) {
+  const currentHijri = CalendarService.getCurrentDateTime().hijri;
+  const hYear = schedule?.hijriYear || currentHijri.year;
+  const hMonth = schedule?.hijriMonth || currentHijri.month;
+
   // If list is provided, track active index
   const [selectedIdx, setSelectedIdx] = useState(0);
+
+  // Auto-select clicked Friday or first active / upcoming Friday when opening
+  useEffect(() => {
+    if (isOpen && assignmentsList.length > 0) {
+      if (friday) {
+        const matchingIdx = assignmentsList.findIndex(
+          (item) => item.friday.fridayIndex === friday.fridayIndex
+        );
+        if (matchingIdx !== -1) {
+          setSelectedIdx(matchingIdx);
+          return;
+        }
+      }
+      const firstUpcomingIdx = assignmentsList.findIndex((item) => {
+        const v = CalendarService.validateFridayAction(hYear, hMonth, item.friday.fridayIndex);
+        return !v.isPastFriday;
+      });
+      if (firstUpcomingIdx !== -1) {
+        setSelectedIdx(firstUpcomingIdx);
+      } else {
+        setSelectedIdx(assignmentsList.length - 1);
+      }
+    }
+  }, [isOpen, assignmentsList.length, friday?.fridayIndex, hYear, hMonth]);
 
   // Active assignment & mosque & friday
   const activeItem =
@@ -69,6 +105,11 @@ export function PreacherMobileCardModal({
   const currentMosque = activeItem?.mosque || null;
   const currentFriday = activeItem?.friday || null;
 
+  // Determine if selected Friday is already in the past
+  const isPastFriday = currentFriday
+    ? CalendarService.validateFridayAction(hYear, hMonth, currentFriday.fridayIndex).isPastFriday
+    : false;
+
   const [confirmationStatus, setConfirmationStatus] = useState<string>(
     currentAssignment?.confirmationStatus || 'PENDING'
   );
@@ -77,12 +118,42 @@ export function PreacherMobileCardModal({
   const [showApologyReason, setShowApologyReason] = useState(false);
   const [apologyReason, setApologyReason] = useState('');
 
+  // Sermon topic state (customizable directly on card or global)
+  const [sermonTopic, setSermonTopic] = useState<string>('فضل الاستقامة ورعاية الأمانة في المعاملات');
+  const [isEditingTopic, setIsEditingTopic] = useState(false);
+  const [topicDraft, setTopicDraft] = useState('');
+
   // Sync confirmation status when switching assignment
   useEffect(() => {
     if (currentAssignment) {
       setConfirmationStatus(currentAssignment.confirmationStatus || 'PENDING');
     }
   }, [currentAssignment]);
+
+  // Sync sermon topic when switching Friday
+  useEffect(() => {
+    if (currentFriday) {
+      const topic = getKhutbahTopic(
+        currentFriday.fridayIndex,
+        schedule?.id,
+        currentAssignment?.id,
+        hYear,
+        hMonth
+      );
+      setSermonTopic(topic);
+      setTopicDraft(topic);
+      setIsEditingTopic(false);
+    }
+  }, [currentFriday?.fridayIndex, currentAssignment?.id, schedule?.id, hYear, hMonth]);
+
+  const handleSaveTopic = () => {
+    if (!topicDraft.trim() || !currentFriday) return;
+    if (currentAssignment?.id) {
+      setAssignmentCustomKhutbahTopic(currentAssignment.id, topicDraft.trim());
+    }
+    setSermonTopic(topicDraft.trim());
+    setIsEditingTopic(false);
+  };
 
   // Close on Escape key press
   useEffect(() => {
@@ -107,12 +178,11 @@ export function PreacherMobileCardModal({
       : '';
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
 
-  // Unified Sermon topic for the Friday
-  const sermonTopic = 'فضل الاستقامة ورعاية الأمانة في المعاملات';
-
   // Pre-filled WhatsApp message text
   const shareText = currentAssignment && currentMosque && currentFriday
-    ? `السلام عليكم ورحمة الله وبركاته،\nفضيلة الشيخ / ${imam.name} المحترم،\n\nنحيط فضيلتكم علماً بتكليفكم بخطبة وصلاة الجمعة:\n🕌 المسجد: ${currentMosque.name} (${currentMosque.region || 'المنطقة'})\n📅 التاريخ: ${currentFriday.hijriDate} (الموافق: ${currentFriday.gregorianDate || 'الجمعة'})\n📖 موضوع الخطبة: ${sermonTopic}\n📍 موقع المسجد: ${mapsUrl}\n👤 مسؤول المسجد: ${currentMosque.managerName || 'إدارة المسجد'} (${currentMosque.phone || '—'})\n\nشاكرين لفضيلتكم حسن التعاون ونسأل الله لكم السداد والتوفيق.\nأمانة الشؤون الدينية — الجمعية الشرعية`
+    ? isPastFriday
+      ? `السلام عليكم ورحمة الله وبركاته،\nفضيلة الشيخ / ${imam.name} المحترم،\n\nنشارك مع فضيلتكم بيانات الجمعة المؤرشفة السابقة:\n🕌 المسجد: ${currentMosque.name} (${currentMosque.region || 'المنطقة'})\n📅 التاريخ: ${currentFriday.hijriDate} (الموافق: ${currentFriday.gregorianDate || 'الجمعة'})\n📖 موضوع الخطبة: ${sermonTopic}\n📍 موقع المسجد: ${mapsUrl}\n\nتقبل الله منا ومنكم صالح الأعمال وجزاكم الله خيراً.\nالجمعية الشرعية — فرع منشأة البكاري`
+      : `السلام عليكم ورحمة الله وبركاته،\nفضيلة الشيخ / ${imam.name} المحترم،\n\nنحيط فضيلتكم علماً بتكليفكم بخطبة وصلاة الجمعة القادمة:\n🕌 المسجد: ${currentMosque.name} (${currentMosque.region || 'المنطقة'})\n📅 التاريخ: ${currentFriday.hijriDate} (الموافق: ${currentFriday.gregorianDate || 'الجمعة'})\n📖 موضوع الخطبة: ${sermonTopic}\n📍 موقع المسجد: ${mapsUrl}\n👤 مسؤول المسجد: ${currentMosque.managerName || 'إدارة المسجد'} (${currentMosque.phone || '—'})\n\nشاكرين لفضيلتكم حسن التعاون ونسأل الله لكم السداد والتوفيق.\nأمانة الشؤون الدينية — الجمعية الشرعية`
     : `السلام عليكم ورحمة الله وبركاته،\nفضيلة الشيخ / ${imam.name} المحترم،\nتحية طيبة مباركة من أمانة شؤون المساجد والدعوة بالجمعية الشرعية.\n\nكود الخطيب: PRE-${imam.id}\nالنوع: ${imam.type === 'FIXED' ? 'خطيب راتب' : 'خطيب مرن'}\n\nنسأل الله لكم دوام التوفيق والسداد.`;
 
   const handleCopyLink = () => {
@@ -204,21 +274,32 @@ export function PreacherMobileCardModal({
 
           {/* Multiple Assignments Tabs (if any) */}
           {assignmentsList.length > 1 && (
-            <div className="mt-3 pt-3 border-t border-emerald-800/80 flex items-center gap-1.5 overflow-x-auto">
+            <div className="mt-3 pt-3 border-t border-emerald-800/80 flex items-center gap-1.5 overflow-x-auto pb-1">
               <span className="text-[10px] text-emerald-300 font-bold shrink-0">اختر الجمعة:</span>
-              {assignmentsList.map((item, idx) => (
-                <button
-                  key={item.assignment.id || idx}
-                  onClick={() => setSelectedIdx(idx)}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
-                    selectedIdx === idx
-                      ? 'bg-amber-400 text-slate-950 shadow-xs'
-                      : 'bg-emerald-800/80 text-white hover:bg-emerald-700/80'
-                  }`}
-                >
-                  جمعة {item.friday.fridayIndex} ({item.mosque.name})
-                </button>
-              ))}
+              {assignmentsList.map((item, idx) => {
+                const itemCheck = CalendarService.validateFridayAction(hYear, hMonth, item.friday.fridayIndex);
+                const isItemPast = itemCheck.isPastFriday;
+                return (
+                  <button
+                    key={item.assignment.id || idx}
+                    onClick={() => setSelectedIdx(idx)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                      selectedIdx === idx
+                        ? 'bg-amber-400 text-slate-950 shadow-xs ring-2 ring-amber-300'
+                        : isItemPast
+                        ? 'bg-emerald-950/80 text-emerald-300 hover:bg-emerald-900'
+                        : 'bg-emerald-800 text-white hover:bg-emerald-700'
+                    }`}
+                  >
+                    <span>جمعة {item.friday.fridayIndex}</span>
+                    {isItemPast ? (
+                      <span className="text-[9px] bg-slate-900/60 text-slate-300 px-1 py-0.2 rounded font-normal">منتهية ⏱️</span>
+                    ) : (
+                      <span className="text-[9px] bg-emerald-600 text-white px-1 py-0.2 rounded font-normal">قادمة 🟢</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -309,16 +390,76 @@ export function PreacherMobileCardModal({
                 </div>
               </div>
 
-              {/* Unified Khutbah Topic */}
-              <div className="p-3 bg-amber-50/80 border border-amber-300/80 rounded-xl text-xs space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-amber-950 font-heading">
-                  <BookOpen className="w-3.5 h-3.5 text-amber-700" />
-                  <span>موضوع خطبة الجمعة المعتمد:</span>
+              {/* Unified / Custom Khutbah Topic */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-300 rounded-2xl text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-amber-950 font-heading">
+                    <BookOpen className="w-4 h-4 text-amber-700" />
+                    <span>موضوع خطبة الجمعة:</span>
+                  </div>
+                  {!isPastFriday && (
+                    <button
+                      onClick={() => setIsEditingTopic(!isEditingTopic)}
+                      className="text-[11px] font-bold text-amber-900 hover:text-amber-950 bg-amber-200/80 hover:bg-amber-300 px-2 py-0.5 rounded-lg border border-amber-400/50 flex items-center gap-1 transition-all cursor-pointer"
+                      title="تحديد أو تغيير موضوع الخطبة لهذا التكليف"
+                    >
+                      <Edit3 className="w-3 h-3 text-amber-800" />
+                      <span>{isEditingTopic ? 'إلغاء' : 'تحديد / تغيير الموضوع ✏️'}</span>
+                    </button>
+                  )}
                 </div>
-                <p className="text-slate-900 font-black pr-5">{sermonTopic}</p>
-                <p className="text-[11px] text-amber-900 pr-5">
-                  يرجى الالتزام بالوقت المحدد (15-20 دقيقة) ومحاور الخطبة الشرعية المعتمدة.
-                </p>
+
+                {isEditingTopic ? (
+                  <div className="space-y-2 pt-1 border-t border-amber-200">
+                    <input
+                      type="text"
+                      value={topicDraft}
+                      onChange={(e) => setTopicDraft(e.target.value)}
+                      placeholder="اكتب عنوان وموضوع الخطبة..."
+                      className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-emerald-600 focus:ring-1 focus:ring-emerald-600"
+                    />
+                    {/* Popular suggestions */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-amber-900 font-bold block">موضوعات مقترحة سريعة:</span>
+                      <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+                        {POPULAR_SUGGESTED_TOPICS.slice(0, 6).map((sugg, sIdx) => (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onClick={() => setTopicDraft(sugg)}
+                            className="text-[10px] bg-white hover:bg-amber-100 text-slate-800 px-2 py-0.5 rounded-md border border-amber-200 transition-colors text-right cursor-pointer"
+                          >
+                            {sugg}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditingTopic(false)}
+                        className="px-2.5 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        إلغاء
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveTopic}
+                        className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-xs cursor-pointer"
+                      >
+                        <Save className="w-3 h-3" />
+                        <span>حفظ واعتماد</span>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-slate-900 font-black pr-5 text-sm leading-snug">{sermonTopic}</p>
+                    <p className="text-[11px] text-amber-900 pr-5">
+                      يرجى الالتزام بالوقت المحدد (15-20 دقيقة) ومحاور الخطبة الشرعية المعتمدة.
+                    </p>
+                  </>
+                )}
               </div>
 
               {/* Attendance Confirmation Section */}
@@ -327,7 +468,35 @@ export function PreacherMobileCardModal({
                   حالة استلام وتأكيد التكليف:
                 </span>
 
-                {confirmationStatus === 'CONFIRMED' ? (
+                {isPastFriday ? (
+                  <div className="p-3.5 bg-slate-100/90 border border-slate-300 rounded-2xl space-y-2 text-xs text-slate-700">
+                    <div className="flex items-center gap-2 font-black text-slate-800">
+                      <Clock className="w-4 h-4 text-slate-500 shrink-0" />
+                      <span>جمعة منتهية / مؤرشفة (انقضى موعدها) ⏱️</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed pr-6">
+                      انقضى موعد هذه الجمعة وانتهت في الواقع، وأزرار التأكيد أو الاعتذار غير مفعلة للجمع السابقة لحماية دقة السجلات.
+                    </p>
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[11px] font-bold">
+                      <span className="text-slate-500">حالة التكليف المسجلة:</span>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full ${
+                          confirmationStatus === 'CONFIRMED'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : confirmationStatus === 'DECLINED'
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : 'bg-amber-100 text-amber-800 border border-amber-300'
+                        }`}
+                      >
+                        {confirmationStatus === 'CONFIRMED'
+                          ? 'حاضر (تم بنجاح ✓)'
+                          : confirmationStatus === 'DECLINED'
+                          ? 'معتذر ✕'
+                          : 'قيد المراجعة'}
+                      </span>
+                    </div>
+                  </div>
+                ) : confirmationStatus === 'CONFIRMED' ? (
                   <div className="p-3 bg-emerald-100/90 border border-emerald-300 text-emerald-950 rounded-xl flex items-center justify-between text-xs font-bold">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5 text-emerald-700 shrink-0" />
@@ -382,7 +551,7 @@ export function PreacherMobileCardModal({
                 )}
 
                 {/* Apology Reason Drawer */}
-                {showApologyReason && (
+                {!isPastFriday && showApologyReason && (
                   <div className="p-3 bg-rose-50/80 rounded-xl border border-rose-200 space-y-2 mt-2">
                     <div className="flex items-center justify-between text-xs font-bold text-rose-900">
                       <span className="flex items-center gap-1">
@@ -480,7 +649,11 @@ export function PreacherMobileCardModal({
             >
               <Share2 className="w-4 h-4" />
               <span>
-                {currentAssignment ? 'إرسال التكليف عبر واتساب' : 'مراسلة الخطيب عبر واتساب'}
+                {isPastFriday
+                  ? 'مشاركة تفاصيل الجمعة المؤرشفة عبر واتساب'
+                  : currentAssignment
+                  ? 'إرسال التكليف عبر واتساب'
+                  : 'مراسلة الخطيب عبر واتساب'}
               </span>
             </a>
 

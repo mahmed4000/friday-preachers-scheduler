@@ -1171,6 +1171,20 @@ export function ScheduleReviewBoard({
           imam={mobileCardData.imam}
           friday={mobileCardData.friday}
           schedule={schedule}
+          assignmentsList={
+            assignments
+              .filter((a) => a.imamId === mobileCardData.imam.id)
+              .map((a) => {
+                const m = mosques.find((mItem) => mItem.id === a.mosqueId) || mobileCardData.mosque;
+                const f = fridays.find((fItem) => fItem.fridayIndex === a.fridayIndex) || mobileCardData.friday;
+                return {
+                  assignment: a,
+                  mosque: m,
+                  friday: f,
+                };
+              })
+              .sort((a, b) => a.friday.fridayIndex - b.friday.fridayIndex)
+          }
           onStatusUpdated={onRefreshData}
         />
       )}

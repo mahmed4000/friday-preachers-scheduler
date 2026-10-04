@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BookOpen,
   Calendar,
@@ -12,48 +12,18 @@ import {
 } from 'lucide-react';
 import { MonthlySchedule, Friday } from '../../types/index.ts';
 
+import {
+  loadScheduleKhutbahTopics,
+  saveScheduleKhutbahTopics,
+  KhutbahTopicItem,
+} from '../../services/khutbahTopicsService.ts';
+
 interface KhutbahTopicsModalProps {
   isOpen: boolean;
   onClose: () => void;
   schedule: MonthlySchedule;
   fridays: Friday[];
 }
-
-interface KhutbahTopicItem {
-  fridayIndex: number;
-  title: string;
-  elements: string;
-  hadithReference: string;
-  durationMinutes: number;
-}
-
-const DEFAULT_TOPICS: Record<number, { title: string; elements: string; hadith: string }> = {
-  1: {
-    title: 'بر الوالدين وأثره في تماسك الأسرة واستقرار المجتمع',
-    elements: 'مكانة الوالدين في القرآن والسنة · صور الإحسان العملي في زماننا · عواقب العقوق الدنيوية والأخروية',
-    hadith: 'رِضَى الرَّبِّ فِي رِضَى الْوَالِدِ، وَسَخَطُ الرَّبِّ فِي سَخَطِ الْوَالِدِ (رواه الترمذي)',
-  },
-  2: {
-    title: 'الأمانة في المعاملات والمسؤوليات الوظيفية والمجتمعية',
-    elements: 'مفهوم الأمانة الشامل في الإسلام · التحذير من الغش والتطفيف وخيانة العهد · ثمار الأمانة في بركة الرزق',
-    hadith: 'لا إِيمَانَ لِمَنْ لا أَمَانَةَ لَهُ، وَلا دِينَ لِمَنْ لا عَهْدَ لَهُ (رواه أحمد)',
-  },
-  3: {
-    title: 'الاستقامة وحسن الخلق: مفتاح القلوب وأثقل ما في الميزان',
-    elements: 'حقيقة الاستقامة على أمر الله · أثر الكلمة الطيبة وحسن الجوار · كيف يجسد المسلم أخلاقه في الشارع والعمل',
-    hadith: 'إِنَّ مِنْ أَحَبِّكُمْ إِلَيَّ وَأَقْرَبِكُمْ مِنِّي مَجْلِسًا يَوْمَ الْقِيَامَةِ أَحَاسِنَكُمْ أَخْلاقًا (رواه الترمذي)',
-  },
-  4: {
-    title: 'أهمية الوقت وقيمة العمر والتحذير من التسويف والغفلة',
-    elements: 'نعمة الفراغ والصحة · اغتنام مواسم الطاعات · محاسبة النفس والمبادرة بالعمل الصالح قبل فوات الأوان',
-    hadith: 'نِعْمَتَانِ مَغْبُونٌ فِيهِمَا كَثِيرٌ مِنَ النَّاسِ: الصِّحَّةُ وَالْفَرَاغُ (رواه البخاري)',
-  },
-  5: {
-    title: 'التكافل المجتمعي ورعاية الفقراء والأيتام وإغاثة الملهوف',
-    elements: 'المسلم للمسلم كالبنيان يشد بعضه بعضاً · فضل الصدقة الخفية وإطعام الطعام · ثواب كفالة اليتيم في الجنة',
-    hadith: 'أَنَا وَكَافِلُ الْيَتِيمِ فِي الْجَنَّةِ هَكَذَا (وأشار بالسبابة والوسطى)',
-  },
-};
 
 export function KhutbahTopicsModal({
   isOpen,
@@ -62,25 +32,16 @@ export function KhutbahTopicsModal({
   fridays,
 }: KhutbahTopicsModalProps) {
   const [topics, setTopics] = useState<Record<number, KhutbahTopicItem>>(() => {
-    const initial: Record<number, KhutbahTopicItem> = {};
-    fridays.forEach((f) => {
-      const def = DEFAULT_TOPICS[f.fridayIndex] || {
-        title: `خطبة الجمعة المباركة (${f.ordinalName})`,
-        elements: 'عناصر الخطبة والتوجيه الدعوي المعتمد',
-        hadith: 'حديث شريف في فضائل الذكر والدعاء',
-      };
-      initial[f.fridayIndex] = {
-        fridayIndex: f.fridayIndex,
-        title: def.title,
-        elements: def.elements,
-        hadithReference: def.hadith,
-        durationMinutes: 20,
-      };
-    });
-    return initial;
+    return loadScheduleKhutbahTopics(schedule.id, schedule.hijriYear, schedule.hijriMonth, fridays);
   });
 
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTopics(loadScheduleKhutbahTopics(schedule.id, schedule.hijriYear, schedule.hijriMonth, fridays));
+    }
+  }, [isOpen, schedule.id, schedule.hijriYear, schedule.hijriMonth]);
 
   if (!isOpen) return null;
 
@@ -95,11 +56,12 @@ export function KhutbahTopicsModal({
   };
 
   const handleSave = () => {
+    saveScheduleKhutbahTopics(schedule.id, schedule.hijriYear, schedule.hijriMonth, topics);
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
       onClose();
-    }, 1500);
+    }, 1200);
   };
 
   return (
