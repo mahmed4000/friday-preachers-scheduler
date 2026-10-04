@@ -111,7 +111,8 @@ export function MosqueProfileView({
   };
 
   useEffect(() => {
-    loadProfile(selectedScheduleId);
+    setSelectedScheduleId(undefined);
+    loadProfile(undefined);
   }, [mosqueId]);
 
   const handlePrint = () => {
@@ -304,7 +305,11 @@ export function MosqueProfileView({
     );
   }
 
-  const { mosque, fixedImam, activeSchedule, availableSchedules, stats, assignments, upcomingAssignments, linkedImams, rules, auditLogs } = data;
+  const { mosque, fixedImam, activeSchedule, availableSchedules, stats, assignments, linkedImams, rules, auditLogs } = data;
+
+  const upcomingAssignments = React.useMemo(() => {
+    return CalendarService.deduplicateAssignmentsByFriday(data.upcomingAssignments || []);
+  }, [data.upcomingAssignments]);
 
   const profileTabs = [
     { id: 'upcoming', label: 'الجمعات القادمة', badge: upcomingAssignments.length },
@@ -478,11 +483,15 @@ export function MosqueProfileView({
                 }}
                 className="text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
               >
-                {availableSchedules.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.monthName} {s.hijriYear} هـ ({s.fridaysCount} جمعات) — {s.status === 'APPROVED' ? 'معتمد' : s.status === 'PUBLISHED' ? 'منشور' : s.status === 'REVIEW' ? 'قيد المراجعة' : 'مسودة'}
-                  </option>
-                ))}
+                {availableSchedules.map((s) => {
+                  const currentDT = CalendarService.getCurrentDateTime();
+                  const isCurrent = s.hijriYear === currentDT.hijri.year && s.hijriMonth === currentDT.hijri.month;
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.monthName} {s.hijriYear} هـ {isCurrent ? '⭐ (الشهر الحالي)' : ''} ({s.fridaysCount} جمعات) — {s.status === 'APPROVED' ? 'معتمد' : s.status === 'PUBLISHED' ? 'منشور' : s.status === 'REVIEW' ? 'قيد المراجعة' : 'مسودة'}
+                    </option>
+                  );
+                })}
               </select>
             </div>
           </div>

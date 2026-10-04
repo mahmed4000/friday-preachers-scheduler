@@ -347,6 +347,144 @@ export class CalendarService {
       return aVal - bVal;
     });
   }
+
+  /**
+   * اختيار الجدول المعتمد الافتراضي (المركزي) وفق التقويم الهجري الحالي
+   * يضمن البدء بالشهر الحالي، ثم أقرب شهر مستقبلي معتمد، وتجنب القفز لشهور بعيدة
+   */
+  public static resolveCanonicalSchedule<
+    T extends { id: number; hijriYear: number; hijriMonth: number; status?: string }
+  >(schedules: T[], requestedScheduleId?: number): T | null {
+    if (!schedules || schedules.length === 0) return null;
+
+    if (requestedScheduleId) {
+      const found = schedules.find((s) => s.id === requestedScheduleId);
+      if (found) return found;
+    }
+
+    const currentDT = this.getCurrentDateTime();
+    const currYear = currentDT.hijri.year;
+    const currMonth = currentDT.hijri.month;
+    const currVal = currYear * 12 + currMonth;
+
+    const statusWeight: Record<string, number> = {
+      PUBLISHED: 4,
+      APPROVED: 3,
+      REVIEW: 2,
+      DRAFT: 1,
+    };
+
+    // 1. الشهر الحالي تماماً
+    const currentMonthSchedules = schedules.filter(
+      (s) => s.hijriYear === currYear && s.hijriMonth === currMonth
+    );
+    if (currentMonthSchedules.length > 0) {
+      return [...currentMonthSchedules].sort(
+        (a, b) => (statusWeight[b.status || ''] || 0) - (statusWeight[a.status || ''] || 0)
+      )[0];
+    }
+
+    // 2. أقرب جدول مستقبلي معتمد أو منشور (Upcoming Active)
+    const upcomingActive = schedules
+      .filter(
+        (s) =>
+          s.hijriYear * 12 + s.hijriMonth >= currVal &&
+          (s.status === 'APPROVED' || s.status === 'PUBLISHED')
+      )
+      .sort((a, b) => {
+        const aVal = a.hijriYear * 12 + a.hijriMonth;
+        const bVal = b.hijriYear * 12 + b.hijriMonth;
+        if (aVal !== bVal) return aVal - bVal; // الأقرب زمنياً أولاً
+        return (statusWeight[b.status || ''] || 0) - (statusWeight[a.status || ''] || 0);
+      });
+    if (upcomingActive.length > 0) {
+      return upcomingActive[0];
+    }
+
+    // 3. أقرب جدول مستقبلي عام (حتى لو مسودة أو مراجعة)
+    const upcomingAll = schedules
+      .filter((s) => s.hijriYear * 12 + s.hijriMonth >= currVal)
+      .sort((a, b) => {
+        const aVal = a.hijriYear * 12 + a.hijriMonth;
+        const bVal = b.hijriYear * 12 + b.hijriMonth;
+        if (aVal !== bVal) return aVal - bVal;
+        return (statusWeight[b.status || ''] || 0) - (statusWeight[a.status || ''] || 0);
+      });
+    if (upcomingAll.length > 0) {
+      return upcomingAll[0];
+    }
+
+    // 4. أحدث جدول في الماضي
+    const pastSchedules = schedules
+      .filter((s) => s.hijriYear * 12 + s.hijriMonth < currVal)
+      .sort((a, b) => {
+        const aVal = a.hijriYear * 12 + a.hijriMonth;
+        const bVal = b.hijriYear * 12 + b.hijriMonth;
+        return bVal - aVal; // الأحدث ماضياً أولاً
+      });
+    if (pastSchedules.length > 0) {
+      return pastSchedules[0];
+    }
+
+    return schedules[0] || null;
+  }
+
+  /**
+   * ترتيب قائمة الجداول المتاحة في القوائم المنسدلة:
+   * الشهر الحالي أولاً، ثم الشهور المستقبلية تصاعدياً، ثم الشهور الماضية تنازلياً
+   */
+  public static sortSchedulesForSelection<
+    T extends { id: number; hijriYear: number; hijriMonth: number; status?: string }
+  >(schedules: T[]): T[] {
+    if (!schedules || schedules.length === 0) return [];
+    const currentDT = this.getCurrentDateTime();
+    const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+
+    return [...schedules].sort((a, b) => {
+      const aVal = a.hijriYear * 12 + a.hijriMonth;
+      const bVal = b.hijriYear * 12 + b.hijriMonth;
+
+      const aIsCurrent = aVal === currVal;
+      const bIsCurrent = bVal === currVal;
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+
+      const aIsUpcoming = aVal > currVal;
+      const bIsUpcoming = bVal > currVal;
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+
+      if (aIsUpcoming && bIsUpcoming) {
+        return aVal - bVal; // Nearest future first
+      }
+      return bVal - aVal; // Most recent past first
+    });
+  }
+
+  /**
+   * إزالة التكرارات وضمان وجود تكليف واحد فقط لكل جمعة في الشهر
+   */
+  public static deduplicateAssignmentsByFriday<
+    T extends { fridayIndex: number; id?: number; isLocked?: boolean }
+  >(assignments: T[]): T[] {
+    if (!assignments || assignments.length === 0) return [];
+    const map = new Map<number, T>();
+    for (const a of assignments) {
+      const existing = map.get(a.fridayIndex);
+      if (!existing) {
+        map.set(a.fridayIndex, a);
+      } else {
+        if (a.isLocked && !existing.isLocked) {
+          map.set(a.fridayIndex, a);
+        } else if (!existing.isLocked || a.isLocked === existing.isLocked) {
+          if ((a.id || 0) >= (existing.id || 0)) {
+            map.set(a.fridayIndex, a);
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((x, y) => x.fridayIndex - y.fridayIndex);
+  }
 }
 
 export {

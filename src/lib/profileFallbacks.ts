@@ -7,6 +7,7 @@ import {
   Imam,
   Mosque,
 } from '../types/index.ts';
+import { CalendarService } from '../services/calendar/calendarService.ts';
 
 const seed = initialSeed as any;
 
@@ -29,11 +30,7 @@ export function getFallbackImamProfile(
 
   const allAssignments = assignments.filter((a: any) => a.imamId === id);
 
-  const activeSchedule = scheduleId
-    ? schedules.find((s: any) => s.id === scheduleId) || null
-    : schedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      schedules[0] ||
-      null;
+  const activeSchedule = CalendarService.resolveCanonicalSchedule(schedules, scheduleId);
 
   const profileAssignments: ProfileAssignmentItem[] = allAssignments.map((a: any) => {
     const f = fridayMap.get(a.fridayId);
@@ -68,11 +65,10 @@ export function getFallbackImamProfile(
     return x.fridayIndex - y.fridayIndex;
   });
 
-  const upcomingAssignments = activeSchedule
-    ? profileAssignments
-        .filter((a: any) => a.scheduleId === activeSchedule.id)
-        .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+  const rawUpcoming = activeSchedule
+    ? profileAssignments.filter((a: any) => a.scheduleId === activeSchedule.id)
     : profileAssignments.filter((a: any) => a.isUpcoming);
+  const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
   const pastAssignments = profileAssignments.filter((a: any) => !a.isUpcoming);
 
@@ -132,7 +128,7 @@ export function getFallbackImamProfile(
   return {
     imam,
     activeSchedule,
-    availableSchedules: schedules.map((s: any) => ({
+    availableSchedules: CalendarService.sortSchedulesForSelection(schedules).map((s: any) => ({
       id: s.id,
       monthName: s.monthName,
       hijriYear: s.hijriYear,
@@ -169,11 +165,7 @@ export function getFallbackMosqueProfile(
   const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
   const allAssignments = assignments.filter((a: any) => a.mosqueId === id);
 
-  const activeSchedule = scheduleId
-    ? schedules.find((s: any) => s.id === scheduleId) || null
-    : schedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      schedules[0] ||
-      null;
+  const activeSchedule = CalendarService.resolveCanonicalSchedule(schedules, scheduleId);
 
   const profileAssignments: ProfileAssignmentItem[] = allAssignments.map((a: any) => {
     const f = fridayMap.get(a.fridayId);
@@ -208,11 +200,10 @@ export function getFallbackMosqueProfile(
     return x.fridayIndex - y.fridayIndex;
   });
 
-  const upcomingAssignments = activeSchedule
-    ? profileAssignments
-        .filter((a: any) => a.scheduleId === activeSchedule.id)
-        .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+  const rawUpcoming = activeSchedule
+    ? profileAssignments.filter((a: any) => a.scheduleId === activeSchedule.id)
     : profileAssignments.filter((a: any) => a.isUpcoming);
+  const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
   const allRules = rules.filter((r: any) => r.mosqueId === id);
   const rulesGrouped = {
@@ -263,7 +254,7 @@ export function getFallbackMosqueProfile(
     mosque,
     fixedImam,
     activeSchedule,
-    availableSchedules: schedules.map((s: any) => ({
+    availableSchedules: CalendarService.sortSchedulesForSelection(schedules).map((s: any) => ({
       id: s.id,
       monthName: s.monthName,
       hijriYear: s.hijriYear,

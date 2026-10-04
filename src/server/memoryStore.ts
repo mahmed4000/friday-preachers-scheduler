@@ -359,11 +359,7 @@ export const memoryStore = {
     const scheduleMap = new Map(memorySchedules.map((s: any) => [s.id, s]));
     const mosqueMap = new Map(memoryMosques.map((m: any) => [m.id, m]));
 
-    const activeSchedule =
-      (scheduleId ? memorySchedules.find((s: any) => s.id === scheduleId) : null) ||
-      memorySchedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      memorySchedules[0] ||
-      null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(memorySchedules, scheduleId);
 
     const profileAssignments = allAssignments.map((a: any) => {
       const f = fridayMap.get(a.fridayId) as any;
@@ -416,11 +412,10 @@ export const memoryStore = {
       return x.fridayIndex - y.fridayIndex;
     });
 
-    const upcomingAssignments = activeSchedule
-      ? profileAssignments
-          .filter((a: any) => a.scheduleId === activeSchedule.id)
-          .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+    const rawUpcoming = activeSchedule
+      ? profileAssignments.filter((a: any) => a.scheduleId === activeSchedule.id)
       : profileAssignments.filter((a: any) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
     const rules = memoryRules
       .filter((r: any) => r.imamId === id)
@@ -475,7 +470,7 @@ export const memoryStore = {
     return {
       imam,
       activeSchedule,
-      availableSchedules: memorySchedules.map((s: any) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(memorySchedules).map((s: any) => ({
         id: s.id,
         monthName: s.monthName,
         hijriYear: s.hijriYear,
@@ -503,11 +498,7 @@ export const memoryStore = {
     const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
     const allAssignments = memoryAssignments.filter((a: any) => a.mosqueId === id);
 
-    const activeSchedule =
-      (scheduleId ? memorySchedules.find((s: any) => s.id === scheduleId) : null) ||
-      memorySchedules.find((s: any) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      memorySchedules[0] ||
-      null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(memorySchedules, scheduleId);
 
     const profileAssignments = allAssignments.map((a: any) => {
       const f = fridayMap.get(a.fridayId) as any;
@@ -560,11 +551,10 @@ export const memoryStore = {
       return x.fridayIndex - y.fridayIndex;
     });
 
-    const upcomingAssignments = activeSchedule
-      ? profileAssignments
-          .filter((a: any) => a.scheduleId === activeSchedule.id)
-          .sort((x: any, y: any) => x.fridayIndex - y.fridayIndex)
+    const rawUpcoming = activeSchedule
+      ? profileAssignments.filter((a: any) => a.scheduleId === activeSchedule.id)
       : profileAssignments.filter((a: any) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
     const allRules = memoryRules.filter((r: any) => r.mosqueId === id);
     const rulesGrouped = {
@@ -615,7 +605,7 @@ export const memoryStore = {
       mosque,
       fixedImam,
       activeSchedule,
-      availableSchedules: memorySchedules.map((s: any) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(memorySchedules).map((s: any) => ({
         id: s.id,
         monthName: s.monthName,
         hijriYear: s.hijriYear,

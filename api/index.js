@@ -124628,6 +124628,111 @@ var CalendarService = class {
       return aVal - bVal;
     });
   }
+  /**
+   * اختيار الجدول المعتمد الافتراضي (المركزي) وفق التقويم الهجري الحالي
+   * يضمن البدء بالشهر الحالي، ثم أقرب شهر مستقبلي معتمد، وتجنب القفز لشهور بعيدة
+   */
+  static resolveCanonicalSchedule(schedules, requestedScheduleId) {
+    if (!schedules || schedules.length === 0) return null;
+    if (requestedScheduleId) {
+      const found = schedules.find((s2) => s2.id === requestedScheduleId);
+      if (found) return found;
+    }
+    const currentDT = this.getCurrentDateTime();
+    const currYear = currentDT.hijri.year;
+    const currMonth = currentDT.hijri.month;
+    const currVal = currYear * 12 + currMonth;
+    const statusWeight = {
+      PUBLISHED: 4,
+      APPROVED: 3,
+      REVIEW: 2,
+      DRAFT: 1
+    };
+    const currentMonthSchedules = schedules.filter(
+      (s2) => s2.hijriYear === currYear && s2.hijriMonth === currMonth
+    );
+    if (currentMonthSchedules.length > 0) {
+      return [...currentMonthSchedules].sort(
+        (a, b) => (statusWeight[b.status || ""] || 0) - (statusWeight[a.status || ""] || 0)
+      )[0];
+    }
+    const upcomingActive = schedules.filter(
+      (s2) => s2.hijriYear * 12 + s2.hijriMonth >= currVal && (s2.status === "APPROVED" || s2.status === "PUBLISHED")
+    ).sort((a, b) => {
+      const aVal = a.hijriYear * 12 + a.hijriMonth;
+      const bVal = b.hijriYear * 12 + b.hijriMonth;
+      if (aVal !== bVal) return aVal - bVal;
+      return (statusWeight[b.status || ""] || 0) - (statusWeight[a.status || ""] || 0);
+    });
+    if (upcomingActive.length > 0) {
+      return upcomingActive[0];
+    }
+    const upcomingAll = schedules.filter((s2) => s2.hijriYear * 12 + s2.hijriMonth >= currVal).sort((a, b) => {
+      const aVal = a.hijriYear * 12 + a.hijriMonth;
+      const bVal = b.hijriYear * 12 + b.hijriMonth;
+      if (aVal !== bVal) return aVal - bVal;
+      return (statusWeight[b.status || ""] || 0) - (statusWeight[a.status || ""] || 0);
+    });
+    if (upcomingAll.length > 0) {
+      return upcomingAll[0];
+    }
+    const pastSchedules = schedules.filter((s2) => s2.hijriYear * 12 + s2.hijriMonth < currVal).sort((a, b) => {
+      const aVal = a.hijriYear * 12 + a.hijriMonth;
+      const bVal = b.hijriYear * 12 + b.hijriMonth;
+      return bVal - aVal;
+    });
+    if (pastSchedules.length > 0) {
+      return pastSchedules[0];
+    }
+    return schedules[0] || null;
+  }
+  /**
+   * ترتيب قائمة الجداول المتاحة في القوائم المنسدلة:
+   * الشهر الحالي أولاً، ثم الشهور المستقبلية تصاعدياً، ثم الشهور الماضية تنازلياً
+   */
+  static sortSchedulesForSelection(schedules) {
+    if (!schedules || schedules.length === 0) return [];
+    const currentDT = this.getCurrentDateTime();
+    const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+    return [...schedules].sort((a, b) => {
+      const aVal = a.hijriYear * 12 + a.hijriMonth;
+      const bVal = b.hijriYear * 12 + b.hijriMonth;
+      const aIsCurrent = aVal === currVal;
+      const bIsCurrent = bVal === currVal;
+      if (aIsCurrent && !bIsCurrent) return -1;
+      if (!aIsCurrent && bIsCurrent) return 1;
+      const aIsUpcoming = aVal > currVal;
+      const bIsUpcoming = bVal > currVal;
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+      if (aIsUpcoming && bIsUpcoming) {
+        return aVal - bVal;
+      }
+      return bVal - aVal;
+    });
+  }
+  /**
+   * إزالة التكرارات وضمان وجود تكليف واحد فقط لكل جمعة في الشهر
+   */
+  static deduplicateAssignmentsByFriday(assignments2) {
+    if (!assignments2 || assignments2.length === 0) return [];
+    const map = /* @__PURE__ */ new Map();
+    for (const a of assignments2) {
+      const existing = map.get(a.fridayIndex);
+      if (!existing) {
+        map.set(a.fridayIndex, a);
+      } else {
+        if (a.isLocked && !existing.isLocked) {
+          map.set(a.fridayIndex, a);
+        } else if (!existing.isLocked || a.isLocked === existing.isLocked) {
+          if ((a.id || 0) >= (existing.id || 0)) {
+            map.set(a.fridayIndex, a);
+          }
+        }
+      }
+    }
+    return Array.from(map.values()).sort((x2, y) => x2.fridayIndex - y.fridayIndex);
+  }
 };
 
 // src/services/location/egyptLocationService.ts
@@ -133987,7 +134092,7 @@ var memoryStore = {
     const fridayMap = new Map(memoryFridays.map((f3) => [f3.id, f3]));
     const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
     const mosqueMap = new Map(memoryMosques.map((m2) => [m2.id, m2]));
-    const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(memorySchedules, scheduleId);
     const profileAssignments = allAssignments.map((a) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
@@ -134034,7 +134139,8 @@ var memoryStore = {
       }
       return x2.fridayIndex - y.fridayIndex;
     });
-    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
     const rules = memoryRules.filter((r2) => r2.imamId === id).map((r2) => {
       const m2 = mosqueMap.get(r2.mosqueId);
       return {
@@ -134082,7 +134188,7 @@ var memoryStore = {
     return {
       imam,
       activeSchedule,
-      availableSchedules: memorySchedules.map((s2) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(memorySchedules).map((s2) => ({
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,
@@ -134106,7 +134212,7 @@ var memoryStore = {
     const scheduleMap = new Map(memorySchedules.map((s2) => [s2.id, s2]));
     const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
     const allAssignments = memoryAssignments.filter((a) => a.mosqueId === id);
-    const activeSchedule = (scheduleId ? memorySchedules.find((s2) => s2.id === scheduleId) : null) || memorySchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || memorySchedules[0] || null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(memorySchedules, scheduleId);
     const profileAssignments = allAssignments.map((a) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
@@ -134153,7 +134259,8 @@ var memoryStore = {
       }
       return x2.fridayIndex - y.fridayIndex;
     });
-    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
     const allRules = memoryRules.filter((r2) => r2.mosqueId === id);
     const rulesGrouped = {
       preferred: allRules.filter((r2) => r2.relationshipType === "PREFERRED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name })),
@@ -134199,7 +134306,7 @@ var memoryStore = {
       mosque,
       fixedImam,
       activeSchedule,
-      availableSchedules: memorySchedules.map((s2) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(memorySchedules).map((s2) => ({
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,
@@ -135661,7 +135768,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
     const allImams = await db.select().from(imams);
     const imamMap = new Map(allImams.map((i2) => [i2.id, i2]));
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
-    const activeSchedule = (requestedScheduleId ? allSchedules.find((s2) => s2.id === requestedScheduleId) : null) || allSchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || allSchedules.find((s2) => s2.status === "REVIEW" || s2.status === "DRAFT") || allSchedules[0] || null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
     const profileAssignments = allAssignments.map((a) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
@@ -135708,7 +135815,8 @@ api.get("/mosques/:id/profile", async (req, res) => {
       }
       return x2.fridayIndex - y.fridayIndex;
     });
-    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
     const allRules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.mosqueId, id));
     const rulesGrouped = {
       preferred: allRules.filter((r2) => r2.relationshipType === "PREFERRED").map((r2) => ({ ...r2, imamName: imamMap.get(r2.imamId)?.name, imamType: imamMap.get(r2.imamId)?.type })),
@@ -135755,7 +135863,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
       mosque,
       fixedImam,
       activeSchedule,
-      availableSchedules: allSchedules.map((s2) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules).map((s2) => ({
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,
@@ -136448,7 +136556,7 @@ api.get("/imams/:id/profile", async (req, res) => {
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m2) => [m2.id, m2]));
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
-    const activeSchedule = (requestedScheduleId ? allSchedules.find((s2) => s2.id === requestedScheduleId) : null) || allSchedules.find((s2) => s2.status === "APPROVED" || s2.status === "PUBLISHED") || allSchedules.find((s2) => s2.status === "REVIEW" || s2.status === "DRAFT") || allSchedules[0] || null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
     const profileAssignments = allAssignments.map((a) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
@@ -136495,7 +136603,8 @@ api.get("/imams/:id/profile", async (req, res) => {
       }
       return x2.fridayIndex - y.fridayIndex;
     });
-    const upcomingAssignments = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id).sort((x2, y) => x2.fridayIndex - y.fridayIndex) : profileAssignments.filter((a) => a.isUpcoming);
+    const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
     const allRules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
     const enrichedRules = allRules.map((r2) => {
       const m2 = mosqueMap.get(r2.mosqueId);
@@ -136550,7 +136659,7 @@ api.get("/imams/:id/profile", async (req, res) => {
     res.json({
       imam,
       activeSchedule,
-      availableSchedules: allSchedules.map((s2) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules).map((s2) => ({
         id: s2.id,
         monthName: s2.monthName,
         hijriYear: s2.hijriYear,

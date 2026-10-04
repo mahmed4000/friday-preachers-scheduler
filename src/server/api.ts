@@ -700,14 +700,9 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
     const allImams = await db.select().from(imams);
     const imamMap = new Map(allImams.map((i) => [i.id, i]));
 
-    // Determine target schedule (from query or active approved/published/latest)
+    // Determine target schedule using central canonical resolver (current month first)
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : undefined;
-    const activeSchedule =
-      (requestedScheduleId ? allSchedules.find((s) => s.id === requestedScheduleId) : null) ||
-      allSchedules.find((s) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      allSchedules.find((s) => s.status === 'REVIEW' || s.status === 'DRAFT') ||
-      allSchedules[0] ||
-      null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
 
     const profileAssignments = allAssignments.map((a) => {
       const f = fridayMap.get(a.fridayId);
@@ -760,12 +755,11 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
       return x.fridayIndex - y.fridayIndex;
     });
 
-    // Upcoming assignments strictly for the targeted monthly schedule
-    const upcomingAssignments = activeSchedule
-      ? profileAssignments
-          .filter((a) => a.scheduleId === activeSchedule.id)
-          .sort((x, y) => x.fridayIndex - y.fridayIndex)
+    // Upcoming assignments strictly for the targeted monthly schedule with Friday deduplication
+    const rawUpcoming = activeSchedule
+      ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id)
       : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
     // Rules
     const allRules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.mosqueId, id));
@@ -821,7 +815,7 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
       mosque,
       fixedImam,
       activeSchedule,
-      availableSchedules: allSchedules.map((s) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules).map((s) => ({
         id: s.id,
         monthName: s.monthName,
         hijriYear: s.hijriYear,
@@ -1629,14 +1623,9 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m) => [m.id, m]));
 
-    // Determine target schedule (from query or active approved/published/latest)
+    // Determine target schedule using central canonical resolver (current month first)
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : undefined;
-    const activeSchedule =
-      (requestedScheduleId ? allSchedules.find((s) => s.id === requestedScheduleId) : null) ||
-      allSchedules.find((s) => s.status === 'APPROVED' || s.status === 'PUBLISHED') ||
-      allSchedules.find((s) => s.status === 'REVIEW' || s.status === 'DRAFT') ||
-      allSchedules[0] ||
-      null;
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
 
     const profileAssignments = allAssignments.map((a) => {
       const f = fridayMap.get(a.fridayId);
@@ -1689,12 +1678,11 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
       return x.fridayIndex - y.fridayIndex;
     });
 
-    // Upcoming assignments strictly for the targeted monthly schedule
-    const upcomingAssignments = activeSchedule
-      ? profileAssignments
-          .filter((a) => a.scheduleId === activeSchedule.id)
-          .sort((x, y) => x.fridayIndex - y.fridayIndex)
+    // Upcoming assignments strictly for the targeted monthly schedule with Friday deduplication
+    const rawUpcoming = activeSchedule
+      ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id)
       : profileAssignments.filter((a) => a.isUpcoming);
+    const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
 
     // Rules
     const allRules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
@@ -1759,7 +1747,7 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
     res.json({
       imam,
       activeSchedule,
-      availableSchedules: allSchedules.map((s) => ({
+      availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules).map((s) => ({
         id: s.id,
         monthName: s.monthName,
         hijriYear: s.hijriYear,
