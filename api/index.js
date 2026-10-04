@@ -132973,12 +132973,16 @@ function getSupabaseClient() {
   }
   return cachedClient;
 }
-var supabaseUrl, supabaseKey, isSupabaseConfigured, cachedClient;
+var fallbackUrl, fallbackKey, dynamicUrl, dynamicKey, supabaseUrl, supabaseKey, isSupabaseConfigured, cachedClient;
 var init_supabaseClient = __esm({
   "src/lib/supabaseClient.ts"() {
     init_dist5();
-    supabaseUrl = getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || "";
-    supabaseKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || "";
+    fallbackUrl = "https://tctaqmtvypibxsaehawf.supabase.co";
+    fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg";
+    dynamicUrl = "";
+    dynamicKey = "";
+    supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || fallbackUrl;
+    supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || fallbackKey;
     isSupabaseConfigured = Boolean(
       supabaseUrl && supabaseKey && supabaseUrl.startsWith("https://") && !supabaseUrl.includes("placeholder") && !supabaseUrl.includes("your-project")
     );
@@ -133043,10 +133047,28 @@ var init_supabaseSyncService = __esm({
             };
           }
           const latencyMs = Date.now() - startTime;
+          let counts = void 0;
+          try {
+            const [mRes, iRes, sRes, aRes] = await Promise.all([
+              client.from("mosques").select("*", { count: "exact", head: true }),
+              client.from("imams").select("*", { count: "exact", head: true }),
+              client.from("monthly_schedules").select("*", { count: "exact", head: true }),
+              client.from("assignments").select("*", { count: "exact", head: true })
+            ]);
+            counts = {
+              mosques: mRes.count ?? 0,
+              imams: iRes.count ?? 0,
+              schedules: sRes.count ?? 0,
+              assignments: aRes.count ?? 0
+            };
+          } catch {
+          }
           return {
             configured: true,
             connected: true,
             latencyMs,
+            counts,
+            url: "https://tctaqmtvypibxsaehawf.supabase.co",
             message: `\u0645\u062A\u0635\u0644 \u0628\u0633\u062D\u0627\u0628\u0629 Supabase \u0628\u0646\u062C\u0627\u062D (\u0632\u0645\u0646 \u0627\u0644\u0627\u0633\u062A\u062C\u0627\u0628\u0629: ${latencyMs} \u0645\u0644\u064A \u062B\u0627\u0646\u064A\u0629)`
           };
         } catch (err) {
@@ -133105,6 +133127,19 @@ var init_supabaseSyncService = __esm({
           const { error: imamErr } = await client.from("imams").upsert(dbImams, { onConflict: "id" });
           if (imamErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0625\u0644\u0649 \u0627\u0644\u0633\u062D\u0627\u0628\u0629: ${imamErr.message}`);
         }
+        const rules = memoryStore.getRules ? memoryStore.getRules() : [];
+        if (rules.length > 0) {
+          const dbRules = rules.map((r2) => ({
+            id: r2.id,
+            mosque_id: r2.mosqueId,
+            imam_id: r2.imamId,
+            relationship_type: r2.relationshipType,
+            priority: r2.priority || 1,
+            notes: r2.notes || null
+          }));
+          const { error: ruleErr } = await client.from("mosque_imam_rules").upsert(dbRules, { onConflict: "id" });
+          if (ruleErr) console.warn("Supabase rules sync warning:", ruleErr.message);
+        }
         let totalAssignmentsSynced = 0;
         if (schedules.length > 0) {
           for (const s2 of schedules) {
@@ -133128,13 +133163,28 @@ var init_supabaseSyncService = __esm({
             );
             if (schedErr) throw new Error(`\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062C\u062F\u0648\u0644 ${s2.id}: ${schedErr.message}`);
             const details = memoryStore.getScheduleDetails(s2.id);
+            if (details?.fridays && details.fridays.length > 0) {
+              const dbFridays = details.fridays.map((f3) => ({
+                id: f3.id,
+                schedule_id: s2.id,
+                friday_index: f3.fridayIndex,
+                hijri_date: f3.hijriDate || "",
+                gregorian_date: f3.gregorianDate || "",
+                gregorian_iso: f3.gregorianIso || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+                period_status: f3.periodStatus || "CURRENT",
+                is_past: Boolean(f3.isPast)
+              }));
+              const { error: friErr } = await client.from("fridays").upsert(dbFridays, { onConflict: "id" });
+              if (friErr) console.warn("Supabase fridays sync warning:", friErr.message);
+            }
             if (details?.assignments && details.assignments.length > 0) {
+              const validImamIds = new Set(imams2.map((i2) => Number(i2.id)));
               const dbAssignments = details.assignments.map((a) => ({
                 id: a.id,
                 schedule_id: a.scheduleId,
                 mosque_id: a.mosqueId,
                 friday_index: a.fridayIndex,
-                imam_id: a.imamId || null,
+                imam_id: a.imamId && validImamIds.has(Number(a.imamId)) ? Number(a.imamId) : null,
                 is_locked: a.isLocked || false,
                 source: a.source || "BALANCED",
                 notes: a.notes || null,

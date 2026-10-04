@@ -180,10 +180,32 @@ export function SupabaseCloudSettings() {
           </div>
         </div>
 
+        {status?.counts && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-center">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block">المساجد بالسحابة</span>
+              <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-400 font-mono">{status.counts.mosques}</strong>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-center">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block">الخطباء بالسحابة</span>
+              <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-400 font-mono">{status.counts.imams}</strong>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-center">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block">الجداول المرفوعة</span>
+              <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-400 font-mono">{status.counts.schedules}</strong>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 text-center">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400 block">التكليفات المسجلة</span>
+              <strong className="text-sm font-bold text-emerald-700 dark:text-emerald-400 font-mono">{status.counts.assignments}</strong>
+            </div>
+          </div>
+        )}
+
         {status?.latencyMs !== undefined && (
-          <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center gap-4 text-[11px] text-slate-500 dark:text-slate-400">
             <span>⚡ سرعة الاستجابة (Latency): <strong>{status.latencyMs} ms</strong></span>
             <span>🔒 نوع الحماية: <strong>SSL / Row Level Security</strong></span>
+            {status?.url && <span>🌐 مشروع السحابة: <strong className="font-mono">{status.url}</strong></span>}
           </div>
         )}
       </div>

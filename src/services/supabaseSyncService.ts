@@ -78,10 +78,28 @@ export const SupabaseSyncService = {
       }
 
       const latencyMs = Date.now() - startTime;
+      let counts = undefined;
+      try {
+        const [mRes, iRes, sRes, aRes] = await Promise.all([
+          client.from('mosques').select('*', { count: 'exact', head: true }),
+          client.from('imams').select('*', { count: 'exact', head: true }),
+          client.from('monthly_schedules').select('*', { count: 'exact', head: true }),
+          client.from('assignments').select('*', { count: 'exact', head: true }),
+        ]);
+        counts = {
+          mosques: mRes.count ?? 0,
+          imams: iRes.count ?? 0,
+          schedules: sRes.count ?? 0,
+          assignments: aRes.count ?? 0,
+        };
+      } catch {}
+
       return {
         configured: true,
         connected: true,
         latencyMs,
+        counts,
+        url: 'https://tctaqmtvypibxsaehawf.supabase.co',
         message: `متصل بسحابة Supabase بنجاح (زمن الاستجابة: ${latencyMs} ملي ثانية)`,
       };
     } catch (err: any) {
@@ -149,7 +167,22 @@ export const SupabaseSyncService = {
       if (imamErr) throw new Error(`فشل رفع الخطباء إلى السحابة: ${imamErr.message}`);
     }
 
-    // 3. Sync Schedules & Assignments
+    // 3. Sync Mosque Rules
+    const rules = memoryStore.getRules ? memoryStore.getRules() : [];
+    if (rules.length > 0) {
+      const dbRules = rules.map((r: any) => ({
+        id: r.id,
+        mosque_id: r.mosqueId,
+        imam_id: r.imamId,
+        relationship_type: r.relationshipType,
+        priority: r.priority || 1,
+        notes: r.notes || null,
+      }));
+      const { error: ruleErr } = await client.from('mosque_imam_rules').upsert(dbRules, { onConflict: 'id' });
+      if (ruleErr) console.warn('Supabase rules sync warning:', ruleErr.message);
+    }
+
+    // 4. Sync Schedules & Assignments
     let totalAssignmentsSynced = 0;
     if (schedules.length > 0) {
       for (const s of schedules) {
@@ -174,13 +207,30 @@ export const SupabaseSyncService = {
         if (schedErr) throw new Error(`فشل رفع الجدول ${s.id}: ${schedErr.message}`);
 
         const details = memoryStore.getScheduleDetails(s.id);
+
+        if (details?.fridays && details.fridays.length > 0) {
+          const dbFridays = details.fridays.map((f: any) => ({
+            id: f.id,
+            schedule_id: s.id,
+            friday_index: f.fridayIndex,
+            hijri_date: f.hijriDate || '',
+            gregorian_date: f.gregorianDate || '',
+            gregorian_iso: f.gregorianIso || new Date().toISOString().split('T')[0],
+            period_status: f.periodStatus || 'CURRENT',
+            is_past: Boolean(f.isPast),
+          }));
+          const { error: friErr } = await client.from('fridays').upsert(dbFridays, { onConflict: 'id' });
+          if (friErr) console.warn('Supabase fridays sync warning:', friErr.message);
+        }
+
         if (details?.assignments && details.assignments.length > 0) {
+          const validImamIds = new Set(imams.map((i: any) => Number(i.id)));
           const dbAssignments = details.assignments.map((a: any) => ({
             id: a.id,
             schedule_id: a.scheduleId,
             mosque_id: a.mosqueId,
             friday_index: a.fridayIndex,
-            imam_id: a.imamId || null,
+            imam_id: a.imamId && validImamIds.has(Number(a.imamId)) ? Number(a.imamId) : null,
             is_locked: a.isLocked || false,
             source: a.source || 'BALANCED',
             notes: a.notes || null,
