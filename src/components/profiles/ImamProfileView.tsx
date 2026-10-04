@@ -21,8 +21,11 @@ import {
   ExternalLink,
   ChevronLeft,
   FileText,
+  Sparkles,
+  Smartphone,
 } from 'lucide-react';
 import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
+import { PreacherMobileCardModal, PreacherCardAssignmentItem } from '../portal/PreacherMobileCardModal.tsx';
 import { ImamProfileData, Imam, Mosque } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import initialSeed from '../../db/initialSeed.json';
@@ -57,6 +60,13 @@ export function ImamProfileView({
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('upcoming');
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [smartCardOpen, setSmartCardOpen] = useState(false);
+  const [selectedSmartCardAssign, setSelectedSmartCardAssign] = useState<any>(null);
+
+  const handleOpenSmartCard = (targetAssign?: any) => {
+    setSelectedSmartCardAssign(targetAssign || null);
+    setSmartCardOpen(true);
+  };
 
   const loadProfile = async (schedId?: number) => {
     setLoading(true);
@@ -334,6 +344,15 @@ export function ImamProfileView({
               </Button>
             )}
 
+            <button
+              onClick={() => handleOpenSmartCard()}
+              className="px-3 py-1.5 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black rounded-lg transition-all text-xs flex items-center gap-1.5 cursor-pointer shadow-xs border border-amber-500/40"
+              title="فتح الكارت الذهبي الذكي للخطيب"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-950" />
+              <span>الكارت الذهبي 📱</span>
+            </button>
+
             <Button
               variant="secondary"
               size="sm"
@@ -581,10 +600,18 @@ export function ImamProfileView({
                     </div>
                   </div>
 
-                  <div className="text-left space-y-1">
+                  <div className="text-left space-y-1.5 flex flex-col items-end">
                     <Badge variant={a.source === 'FIXED' ? 'fixed' : 'preferred'} size="sm">
                       {a.source === 'FIXED' ? 'راتب' : a.source === 'PREFERENCE' ? 'مفضل' : 'متوازن'}
                     </Badge>
+                    <button
+                      onClick={() => handleOpenSmartCard(a)}
+                      className="px-2 py-0.5 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black rounded-md text-[11px] flex items-center gap-1 cursor-pointer shadow-2xs border border-amber-500/40"
+                      title="فتح الكارت الذهبي لهذه الجمعة"
+                    >
+                      <Sparkles className="w-2.5 h-2.5 text-amber-950" />
+                      <span>الكارت الذهبي 📱</span>
+                    </button>
                     <span className="text-[10px] text-slate-400 block font-mono">
                       شهر {a.monthName}
                     </span>
@@ -863,6 +890,100 @@ export function ImamProfileView({
         selectedIds={[imamId]}
         allImams={[imam]}
       />
+
+      {/* Preacher Golden Smart Card Modal */}
+      {smartCardOpen && (
+        <PreacherMobileCardModal
+          isOpen={smartCardOpen}
+          onClose={() => {
+            setSmartCardOpen(false);
+            setSelectedSmartCardAssign(null);
+          }}
+          imam={imam}
+          assignment={
+            selectedSmartCardAssign ||
+            (upcomingAssignments.length > 0
+              ? upcomingAssignments[0]
+              : assignments.length > 0
+              ? assignments[0]
+              : null)
+          }
+          mosque={
+            selectedSmartCardAssign
+              ? ({
+                  id: selectedSmartCardAssign.mosqueId,
+                  name: selectedSmartCardAssign.mosqueName,
+                  code: selectedSmartCardAssign.mosqueCode,
+                  region: selectedSmartCardAssign.mosqueRegion || selectedSmartCardAssign.region,
+                  formattedAddress: selectedSmartCardAssign.formattedAddress,
+                  address: selectedSmartCardAssign.address,
+                  latitude: selectedSmartCardAssign.latitude,
+                  longitude: selectedSmartCardAssign.longitude,
+                  managerName: selectedSmartCardAssign.managerName,
+                  phone: selectedSmartCardAssign.mosquePhone || selectedSmartCardAssign.phone,
+                } as any)
+              : upcomingAssignments.length > 0
+              ? ({
+                  id: upcomingAssignments[0].mosqueId,
+                  name: upcomingAssignments[0].mosqueName,
+                  code: upcomingAssignments[0].mosqueCode,
+                  region: upcomingAssignments[0].mosqueRegion || upcomingAssignments[0].region,
+                  formattedAddress: upcomingAssignments[0].formattedAddress,
+                  address: upcomingAssignments[0].address,
+                  latitude: upcomingAssignments[0].latitude,
+                  longitude: upcomingAssignments[0].longitude,
+                  managerName: upcomingAssignments[0].managerName,
+                  phone: upcomingAssignments[0].mosquePhone || upcomingAssignments[0].phone,
+                } as any)
+              : null
+          }
+          friday={
+            selectedSmartCardAssign
+              ? ({
+                  id: selectedSmartCardAssign.id,
+                  fridayIndex: selectedSmartCardAssign.fridayIndex,
+                  ordinalName: `الجمعة ${selectedSmartCardAssign.fridayIndex}`,
+                  hijriDate: selectedSmartCardAssign.hijriDate,
+                  gregorianDate: selectedSmartCardAssign.gregorianDate,
+                } as any)
+              : upcomingAssignments.length > 0
+              ? ({
+                  id: upcomingAssignments[0].id,
+                  fridayIndex: upcomingAssignments[0].fridayIndex,
+                  ordinalName: `الجمعة ${upcomingAssignments[0].fridayIndex}`,
+                  hijriDate: upcomingAssignments[0].hijriDate,
+                  gregorianDate: upcomingAssignments[0].gregorianDate,
+                } as any)
+              : null
+          }
+          schedule={activeSchedule || null}
+          assignmentsList={
+            (upcomingAssignments.length > 0 ? upcomingAssignments : assignments).map((a) => ({
+              assignment: a,
+              mosque: {
+                id: a.mosqueId,
+                name: a.mosqueName,
+                code: a.mosqueCode,
+                region: a.mosqueRegion || a.region,
+                formattedAddress: a.formattedAddress,
+                address: a.address,
+                latitude: a.latitude,
+                longitude: a.longitude,
+                managerName: a.managerName,
+                phone: a.mosquePhone || a.phone,
+              } as any,
+              friday: {
+                id: a.id,
+                fridayIndex: a.fridayIndex,
+                ordinalName: `الجمعة ${a.fridayIndex}`,
+                hijriDate: a.hijriDate,
+                gregorianDate: a.gregorianDate,
+              } as any,
+            }))
+          }
+          onStatusUpdated={() => loadProfile()}
+        />
+      )}
     </div>
   );
 }

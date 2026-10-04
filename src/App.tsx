@@ -580,6 +580,8 @@ export default function App() {
                   onAddImam={handleOpenAddImam}
                   onEditImam={handleOpenEditImam}
                   onRefresh={loadInitialData}
+                  activeScheduleData={activeScheduleData}
+                  mosques={mosques}
                 />
               )}
 

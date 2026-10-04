@@ -12,20 +12,23 @@ import {
   Upload,
   CheckSquare,
 } from 'lucide-react';
-import { Imam } from '../../types/index.ts';
+import { Imam, Mosque, MonthlyScheduleData, Assignment, Friday, MonthlySchedule } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { Badge } from '../common/Badge.tsx';
 import { ClickableImam } from '../../context/ProfileNavigationContext.tsx';
 import { ImportWizardModal } from '../import-export/ImportWizardModal.tsx';
 import { ExportModal } from '../import-export/ExportModal.tsx';
 import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
-import { FileText } from 'lucide-react';
+import { PreacherMobileCardModal, PreacherCardAssignmentItem } from '../portal/PreacherMobileCardModal.tsx';
+import { FileText, Sparkles, Smartphone } from 'lucide-react';
 
 interface ImamsViewProps {
   imams: Imam[];
   onAddImam: () => void;
   onEditImam: (imam: Imam) => void;
   onRefresh?: () => void;
+  activeScheduleData?: MonthlyScheduleData | null;
+  mosques?: Mosque[];
 }
 
 export function ImamsView({
@@ -33,6 +36,8 @@ export function ImamsView({
   onAddImam,
   onEditImam,
   onRefresh,
+  activeScheduleData,
+  mosques = [],
 }: ImamsViewProps) {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
@@ -43,6 +48,50 @@ export function ImamsView({
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [batchPdfModalOpen, setBatchPdfModalOpen] = useState(false);
+  const [smartCardData, setSmartCardData] = useState<{
+    imam: Imam;
+    assignment?: Assignment | null;
+    mosque?: Mosque | null;
+    friday?: Friday | null;
+    schedule?: MonthlySchedule | null;
+    assignmentsList?: PreacherCardAssignmentItem[];
+  } | null>(null);
+
+  const handleOpenSmartCard = (imam: Imam) => {
+    const imamAssignments =
+      activeScheduleData?.assignments?.filter((a) => a.imamId === imam.id) || [];
+
+    if (imamAssignments.length > 0) {
+      const items: PreacherCardAssignmentItem[] = [];
+      for (const a of imamAssignments) {
+        const m = mosques?.find((x) => x.id === a.mosqueId) || null;
+        const f =
+          activeScheduleData?.fridays?.find((x) => x.fridayIndex === a.fridayIndex) || null;
+        if (m && f) {
+          items.push({ assignment: a, mosque: m, friday: f });
+        }
+      }
+
+      const firstItem = items[0] || null;
+      setSmartCardData({
+        imam,
+        assignment: firstItem?.assignment || null,
+        mosque: firstItem?.mosque || null,
+        friday: firstItem?.friday || null,
+        schedule: activeScheduleData?.schedule || null,
+        assignmentsList: items,
+      });
+    } else {
+      setSmartCardData({
+        imam,
+        assignment: null,
+        mosque: null,
+        friday: null,
+        schedule: activeScheduleData?.schedule || null,
+        assignmentsList: [],
+      });
+    }
+  };
 
   const filteredImams = imams.filter((i) => {
     const matchSearch =
@@ -340,6 +389,14 @@ export function ImamsView({
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
+                            onClick={() => handleOpenSmartCard(imam)}
+                            className="px-2.5 py-1 bg-gradient-to-r from-amber-400 to-amber-300 hover:from-amber-300 hover:to-amber-200 text-slate-950 font-black rounded-md transition-all text-xs flex items-center gap-1 cursor-pointer shadow-xs border border-amber-500/40"
+                            title="فتح الكارت الذهبي الذكي للخطيب"
+                          >
+                            <Sparkles className="w-3.5 h-3.5 text-amber-950" />
+                            <span>الكارت الذهبي 📱</span>
+                          </button>
+                          <button
                             onClick={() => onEditImam(imam)}
                             className="px-2.5 py-1 text-slate-700 hover:text-emerald-800 hover:bg-emerald-50 rounded-md transition-colors text-xs font-medium border border-slate-200 flex items-center gap-1 cursor-pointer"
                           >
@@ -388,6 +445,21 @@ export function ImamsView({
         selectedIds={selectedImamIds}
         allImams={imams}
       />
+
+      {/* Preacher Golden Smart Card Modal */}
+      {smartCardData && (
+        <PreacherMobileCardModal
+          isOpen={!!smartCardData}
+          onClose={() => setSmartCardData(null)}
+          imam={smartCardData.imam}
+          assignment={smartCardData.assignment}
+          mosque={smartCardData.mosque}
+          friday={smartCardData.friday}
+          schedule={smartCardData.schedule}
+          assignmentsList={smartCardData.assignmentsList}
+          onStatusUpdated={onRefresh}
+        />
+      )}
     </div>
   );
 }
