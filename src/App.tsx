@@ -37,7 +37,8 @@ import {
   OverrideRecord,
   OrganizationSettings,
 } from './types/index.ts';
-import { DEFAULT_ORGANIZATION_SETTINGS } from './lib/defaultLogo.ts';
+import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from './lib/defaultLogo.ts';
+import { CalendarService } from './services/calendar/calendarService.ts';
 import { fetchApi } from './lib/api.ts';
 import initialSeed from './db/initialSeed.json';
 import { AlertCircle, RefreshCw } from 'lucide-react';

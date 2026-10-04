@@ -26,7 +26,7 @@ import { eq, desc, asc, and, ilike, ne, inArray } from 'drizzle-orm';
 import { SchedulingEngine } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
 import { optionalAuth, AuthRequest } from '../middleware/auth.ts';
-import { DEFAULT_ORGANIZATION_SETTINGS } from '../lib/defaultLogo.ts';
+import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from '../lib/defaultLogo.ts';
 import { OrganizationSettings } from '../types/index.ts';
 import { CalendarService } from '../services/calendar/calendarService.ts';
 import { EgyptAdministrativeProvider } from '../services/location/egyptLocationService.ts';

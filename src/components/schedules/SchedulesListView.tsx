@@ -51,10 +51,10 @@ export function SchedulesListView({
     } catch {
       return {
         ...schedule,
-        periodStatus: schedule.status === 'ARCHIVED' ? 'PAST' : 'FUTURE',
-        isPast: schedule.status === 'ARCHIVED',
+        periodStatus: (schedule.status as any) === 'ARCHIVED' ? 'PAST' : 'FUTURE',
+        isPast: (schedule.status as any) === 'ARCHIVED',
         isCurrent: false,
-        isFuture: schedule.status !== 'ARCHIVED',
+        isFuture: (schedule.status as any) !== 'ARCHIVED',
       };
     }
   });
