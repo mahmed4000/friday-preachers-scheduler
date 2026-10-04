@@ -14,7 +14,6 @@ import {
   Archive,
   Sparkles,
   Layers,
-  ChevronLeft,
 } from 'lucide-react';
 import { Badge } from '../common/Badge.tsx';
 import { CalendarService } from '../../services/calendar/calendarService.ts';
@@ -34,8 +33,8 @@ export function SchedulesListView({
 }: SchedulesListViewProps) {
   const [activeTab, setActiveTab] = useState<TabType>('ACTIVE_UPCOMING');
 
-  // Ensure schedules are strictly ordered: Current first, then future chronological, then archive past
-  const sortedSchedules = CalendarService.sortSchedulesChronologically(schedules);
+  // Strict chronological sorting: Current month FIRST (top-right in RTL), then upcoming ASC, then past archive
+  const sortedSchedules = CalendarService.sortSchedulesChronologically(schedules || []);
 
   const enrichedWithPeriod = sortedSchedules.map((schedule) => {
     try {
@@ -52,19 +51,23 @@ export function SchedulesListView({
     } catch {
       return {
         ...schedule,
+        periodStatus: schedule.status === 'ARCHIVED' ? 'PAST' : 'FUTURE',
         isPast: schedule.status === 'ARCHIVED',
         isCurrent: false,
-        isFuture: true,
+        isFuture: schedule.status !== 'ARCHIVED',
       };
     }
   });
 
-  const currentMonthSchedule = enrichedWithPeriod.find((s) => s.isCurrent || s.periodStatus === 'CURRENT');
-  const upcomingSchedules = enrichedWithPeriod.filter(
-    (s) => (!s.isPast && s.periodStatus !== 'PAST') && s.id !== currentMonthSchedule?.id
-  );
-  const archivedSchedules = enrichedWithPeriod.filter((s) => s.isPast || s.periodStatus === 'PAST');
   const activeAndUpcomingList = enrichedWithPeriod.filter((s) => !s.isPast && s.periodStatus !== 'PAST');
+  const archivedSchedules = enrichedWithPeriod.filter((s) => s.isPast || s.periodStatus === 'PAST');
+
+  const displayedSchedules =
+    activeTab === 'ACTIVE_UPCOMING'
+      ? activeAndUpcomingList
+      : activeTab === 'ARCHIVE'
+      ? archivedSchedules
+      : enrichedWithPeriod;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -112,16 +115,13 @@ export function SchedulesListView({
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {/* Top Header Bar */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
         <div>
-          <div className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-emerald-800" />
-            <h3 className="text-base font-bold text-slate-900 font-heading">سجل الجداول الشهرية</h3>
-          </div>
-          <p className="text-xs text-slate-500 mt-1">
-            إدارة وتوليد واعتماد ومراجعة جداول خطباء الجمعة مرتبة زمنياً، مع عزل الشهور المنتهية في الأرشيف
+          <h3 className="text-base font-bold text-slate-900 font-heading">سجل الجداول الشهرية</h3>
+          <p className="text-xs text-slate-500 mt-0.5">
+            عرض وتوليد واعتماد ومراجعة جداول خطباء الجمعة مرتبة من اليمين إلى الشمال بدءاً من الشهر الحالي، مع عزل الشهور المنتهية في الأرشيف
           </p>
         </div>
 
@@ -194,205 +194,26 @@ export function SchedulesListView({
         </button>
       </div>
 
-      {/* VIEW: Active & Upcoming */}
-      {activeTab === 'ACTIVE_UPCOMING' && (
-        <div className="space-y-6">
-          {/* Hero Section: Current Month */}
-          {currentMonthSchedule && (
-            <div className="bg-linear-to-l from-emerald-50/70 via-white to-emerald-50/40 border-2 border-emerald-600/60 rounded-2xl p-5 shadow-xs relative overflow-hidden">
-              <div className="absolute top-0 left-0 bg-emerald-600 text-white text-[10px] font-bold px-3 py-1 rounded-br-xl flex items-center gap-1 shadow-2xs">
-                <Sparkles className="w-3 h-3" />
-                <span>الشهر المباشر قيد التنفيذ الآن</span>
-              </div>
-
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mt-2">
-                <div>
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className="font-mono text-xs text-emerald-800 font-bold">#{currentMonthSchedule.id}</span>
-                    {getPeriodBadge(currentMonthSchedule)}
-                    {getStatusBadge(currentMonthSchedule.status)}
-                  </div>
-
-                  <h3 className="text-xl font-bold text-slate-900 font-heading flex items-center gap-2">
-                    <span>جدول شهر {currentMonthSchedule.monthName} {currentMonthSchedule.hijriYear} هـ</span>
-                  </h3>
-
-                  <p className="text-xs text-slate-600 mt-1 flex items-center gap-3">
-                    <span>📅 {currentMonthSchedule.fridaysCount} جمعات في الشهر</span>
-                    <span>•</span>
-                    <span>نسخة معتمدة V{currentMonthSchedule.currentVersion}</span>
-                    {currentMonthSchedule.approvedBy && (
-                      <>
-                        <span>•</span>
-                        <span className="text-emerald-800 font-medium">معتمد بواسطة: {currentMonthSchedule.approvedBy}</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => onSelectSchedule(currentMonthSchedule.id)}
-                    className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-xl flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
-                  >
-                    <Eye className="w-4 h-4" />
-                    <span>فتح لوحة توزيع الشهر الحالي</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Section: Upcoming Months (Chronological Order) */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-bold text-slate-800 font-heading flex items-center gap-2">
-                <Calendar className="w-4 h-4 text-blue-600" />
-                <span>الشهور القادمة (مرتبة حسب التاريخ تصاعدياً)</span>
-              </h4>
-              <span className="text-xs text-slate-500">{upcomingSchedules.length} شهور مجدولة مستقبلاً</span>
-            </div>
-
-            {upcomingSchedules.length === 0 ? (
-              <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-xs text-slate-500">
-                لا توجد شهور قادمة مجدولة بعد. يمكنك النقر على &quot;إنشاء جدول شهري جديد&quot; لجدولة الشهر القادم.
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {upcomingSchedules.map((schedule) => (
-                  <div
-                    key={schedule.id}
-                    className="bg-white rounded-xl border border-slate-200 shadow-2xs hover:shadow-xs hover:border-slate-300 transition-all p-5 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3 gap-2">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-slate-400 font-medium">#{schedule.id}</span>
-                          {getPeriodBadge(schedule)}
-                        </div>
-                        {getStatusBadge(schedule.status)}
-                      </div>
-
-                      <h4 className="text-base font-bold text-slate-900 font-heading">
-                        {schedule.monthName} {schedule.hijriYear} هـ
-                      </h4>
-                      <p className="text-xs text-slate-500 mt-1">
-                        {schedule.fridaysCount} جمعات في الشهر · الإصدار V{schedule.currentVersion}
-                      </p>
-
-                      {schedule.approvedBy && (
-                        <div className="mt-3 text-[11px] text-emerald-800 bg-emerald-50/70 p-2 rounded-lg flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span>معتمد بواسطة: {schedule.approvedBy}</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
-                      <span className="text-[11px] text-slate-400">
-                        {schedule.publishedAt ? 'تم النشر والتوزيع' : 'في مرحلة الإعداد والمراجعة'}
-                      </span>
-                      <button
-                        onClick={() => onSelectSchedule(schedule.id)}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-900 hover:bg-slate-800 text-white"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>لوحة المراجعة</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Grid of Schedules (Ordered strictly from right to left in RTL: Current Month first at top-right, then future ASC) */}
+      {displayedSchedules.length === 0 ? (
+        <div className="bg-white p-12 rounded-xl border border-slate-200 text-center">
+          <Archive className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+          <p className="text-xs font-bold text-slate-700">لا توجد جداول في هذا القسم حالياً</p>
         </div>
-      )}
-
-      {/* VIEW: Past Archive */}
-      {activeTab === 'ARCHIVE' && (
-        <div className="space-y-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-3">
-            <Archive className="w-5 h-5 text-slate-600 shrink-0" />
-            <div>
-              <h4 className="text-xs font-bold text-slate-800 font-heading">أرشيف الشهور السابقة المنتهية</h4>
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                سجلات تاريخية موثقة ومقفلة رقابياً. يمكنك استعراض التوزيعات السابقة للتوثيق واستخراج التقارير دون تعديل.
-              </p>
-            </div>
-          </div>
-
-          {archivedSchedules.length === 0 ? (
-            <div className="bg-white p-12 rounded-xl border border-slate-200 text-center">
-              <Archive className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-xs font-bold text-slate-700">لا توجد شهور مؤرشفة سابقة حالياً</p>
-              <p className="text-[11px] text-slate-400 mt-1">
-                عند انتهاء فترة الشهر الحالي وانقضاء جمعاته، سيتم تحويله تلقائياً إلى هذا الأرشيف.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {archivedSchedules.map((schedule) => (
-                <div
-                  key={schedule.id}
-                  className="bg-slate-50/60 rounded-xl border border-slate-300/80 shadow-2xs hover:shadow-xs transition-all p-5 flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3 gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-xs text-slate-400 font-medium">#{schedule.id}</span>
-                        {getPeriodBadge(schedule)}
-                      </div>
-                      {getStatusBadge(schedule.status)}
-                    </div>
-
-                    <h4 className="text-base font-bold text-slate-800 font-heading flex items-center gap-2">
-                      <span>{schedule.monthName} {schedule.hijriYear} هـ</span>
-                      <Lock className="w-3.5 h-3.5 text-slate-400" />
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {schedule.fridaysCount} جمعات منتهية · الإصدار V{schedule.currentVersion}
-                    </p>
-
-                    {schedule.approvedBy && (
-                      <div className="mt-3 text-[11px] text-slate-700 bg-slate-100 p-2 rounded-lg flex items-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span>معتمد تاريخياً: {schedule.approvedBy}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="pt-4 mt-4 border-t border-slate-200 flex items-center justify-between">
-                    <span className="text-[11px] text-slate-400 font-medium">أرشيف للقراءة فقط</span>
-                    <button
-                      onClick={() => onSelectSchedule(schedule.id)}
-                      className="px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer bg-slate-700 hover:bg-slate-800 text-white"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>عرض سجل الأرشيف</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* VIEW: All Schedules */}
-      {activeTab === 'ALL' && (
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {enrichedWithPeriod.map((schedule) => {
-            const isPast = schedule.isPast || schedule.periodStatus === 'PAST';
+          {displayedSchedules.map((schedule) => {
             const isCur = schedule.isCurrent || schedule.periodStatus === 'CURRENT';
+            const isPast = schedule.isPast || schedule.periodStatus === 'PAST';
 
             return (
               <div
                 key={schedule.id}
                 className={`bg-white rounded-xl border shadow-2xs hover:shadow-xs transition-all p-5 flex flex-col justify-between ${
                   isCur
-                    ? 'border-emerald-500 ring-2 ring-emerald-500/20'
+                    ? 'border-emerald-500 ring-2 ring-emerald-500/30 bg-linear-to-bl from-emerald-50/40 via-white to-white'
                     : isPast
-                    ? 'border-slate-200 bg-slate-50/40'
+                    ? 'border-slate-300/80 bg-slate-50/60'
                     : 'border-slate-200 hover:border-slate-300'
                 }`}
               >
@@ -405,16 +226,26 @@ export function SchedulesListView({
                     {getStatusBadge(schedule.status)}
                   </div>
 
-                  <h4 className="text-base font-bold text-slate-900 font-heading">
-                    {schedule.monthName} {schedule.hijriYear} هـ
+                  <h4 className="text-base font-bold text-slate-900 font-heading flex items-center gap-2">
+                    <span>{schedule.monthName} {schedule.hijriYear} هـ</span>
+                    {isCur && <span className="text-emerald-700 text-xs font-normal">🟢 (مباشر)</span>}
+                    {isPast && <Lock className="w-3.5 h-3.5 text-slate-400" />}
                   </h4>
                   <p className="text-xs text-slate-500 mt-1">
                     {schedule.fridaysCount} جمعات في الشهر · الإصدار V{schedule.currentVersion}
                   </p>
 
                   {schedule.approvedBy && (
-                    <div className="mt-3 text-[11px] text-emerald-800 bg-emerald-50/70 p-2 rounded-lg flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <div
+                      className={`mt-3 text-[11px] p-2 rounded-lg flex items-center gap-1.5 ${
+                        isPast
+                          ? 'text-slate-700 bg-slate-100'
+                          : 'text-emerald-800 bg-emerald-50/70'
+                      }`}
+                    >
+                      <CheckCircle2
+                        className={`w-3.5 h-3.5 shrink-0 ${isPast ? 'text-slate-500' : 'text-emerald-600'}`}
+                      />
                       <span>معتمد بواسطة: {schedule.approvedBy}</span>
                     </div>
                   )}
@@ -422,15 +253,21 @@ export function SchedulesListView({
 
                 <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
                   <span className="text-[11px] text-slate-400">
-                    {isPast ? 'أرشيف منتهي' : schedule.publishedAt ? 'تم النشر' : 'في مرحلة الإعداد'}
+                    {isPast
+                      ? 'أرشيف منتهي'
+                      : isCur
+                      ? 'الشهر المباشر حالياً'
+                      : schedule.publishedAt
+                      ? 'تم النشر والتوزيع'
+                      : 'في مرحلة الإعداد'}
                   </span>
                   <button
                     onClick={() => onSelectSchedule(schedule.id)}
                     className={`px-3 py-1.5 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer ${
-                      isPast
+                      isCur
+                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-xs font-bold'
+                        : isPast
                         ? 'bg-slate-700 hover:bg-slate-800 text-white'
-                        : isCur
-                        ? 'bg-emerald-700 hover:bg-emerald-800 text-white'
                         : 'bg-slate-900 hover:bg-slate-800 text-white'
                     }`}
                   >
