@@ -298,50 +298,48 @@ export function ImamProfileModal({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">اسم فضيلة الشيخ *</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">اسم فضيلة الشيخ *</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="مثال: الشيخ د. عبد الله بن محمد المنشاوي"
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white placeholder:text-slate-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">المنطقة السكنية / المفضلة</label>
-                <select
+                <label className="block text-xs font-bold text-slate-800 mb-1">المنطقة السكنية / المفضلة للتوزيع</label>
+                <input
+                  type="text"
                   value={region}
                   onChange={(e) => setRegion(e.target.value)}
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600 bg-white"
-                >
-                  <option value="الوسط">الوسط</option>
-                  <option value="الشمال">الشمال</option>
-                  <option value="الجنوب">الجنوب</option>
-                  <option value="الشرق">الشرق</option>
-                  <option value="الغرب">الغرب</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">رقم الهاتف</label>
-                <input
-                  type="text"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0501112233"
-                  className="w-full text-xs p-2.5 font-mono border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  placeholder="مثال: العمرانية الغربية، منشأة البكاري..."
+                  className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white placeholder:text-slate-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">رقم الواتساب الرسمي لإرسال الجداول</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">رقم الهاتف</label>
                 <input
-                  type="text"
+                  type="tel"
+                  dir="ltr"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="مثال: 01012345678 (اختياري)"
+                  className="w-full text-xs font-mono font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white placeholder:text-slate-400 text-right"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-800 mb-1">رقم الواتساب الرسمي لإرسال الجداول</label>
+                <input
+                  type="tel"
+                  dir="ltr"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
-                  placeholder="0501112233"
-                  className="w-full text-xs p-2.5 font-mono border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  placeholder="مثال: 01012345678 (اختياري)"
+                  className="w-full text-xs font-mono font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white placeholder:text-slate-400 text-right"
                 />
               </div>
             </div>
@@ -375,18 +373,18 @@ export function ImamProfileModal({
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="w-4 h-4 text-emerald-600 rounded border-slate-300"
                 />
-                <span className="text-xs font-medium text-slate-800">الخطيب نشط وجاهز للخطابة</span>
+                <span className="text-xs font-bold text-slate-800">الخطيب نشط وجاهز للخطابة</span>
               </label>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">ملاحظات واختصاصات</label>
+              <label className="block text-xs font-bold text-slate-800 mb-1">ملاحظات واختصاصات</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
                 placeholder="التخصص الشرعي، الإجازات، أسلوب الخطابة..."
-                className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 bg-white placeholder:text-slate-400"
               />
             </div>
           </div>
@@ -441,16 +439,16 @@ export function ImamProfileModal({
 
             <div className="grid grid-cols-3 gap-4 pt-3 border-t border-slate-200">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الحد الأدنى (Minimum)</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">الحد الأدنى (Minimum)</label>
                 <input
                   type="number"
                   min={0}
                   max={5}
                   value={minFridays}
                   onChange={(e) => setMinFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-200 rounded-lg bg-white"
+                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                 />
-                <span className="block text-[10px] text-slate-400 mt-1 text-center">أقل عدد جمعات مطلوب</span>
+                <span className="block text-[10px] text-slate-500 mt-1 text-center">أقل عدد جمعات مطلوب</span>
               </div>
 
               <div>
@@ -461,22 +459,22 @@ export function ImamProfileModal({
                   max={5}
                   value={targetFridays}
                   onChange={(e) => setTargetFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border-2 border-emerald-500 rounded-lg bg-white text-emerald-900"
+                  className="w-full text-xs p-2.5 font-bold text-center border-2 border-emerald-500 rounded-lg bg-white text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
-                <span className="block text-[10px] text-emerald-700 mt-1 text-center font-medium">الهدف الأساسي للمحرك</span>
+                <span className="block text-[10px] text-emerald-700 mt-1 text-center font-bold">الهدف الأساسي للمحرك</span>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">الحد الأقصى (Maximum)</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">الحد الأقصى (Maximum)</label>
                 <input
                   type="number"
                   min={1}
                   max={5}
                   value={maxFridays}
                   onChange={(e) => setMaxFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-200 rounded-lg bg-white"
+                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
                 />
-                <span className="block text-[10px] text-slate-400 mt-1 text-center">قيد صارم لا يتجاوز دون استثناء</span>
+                <span className="block text-[10px] text-slate-500 mt-1 text-center">قيد صارم لا يتجاوز دون استثناء</span>
               </div>
             </div>
           </div>
@@ -555,14 +553,14 @@ export function ImamProfileModal({
           </div>
         )}
 
-        {/* Footer Actions */}
-        <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
+        {/* Sticky Footer Actions (Always visible at the bottom of the modal) */}
+        <div className="sticky bottom-0 -mx-3.5 sm:-mx-6 -mb-3.5 sm:-mb-6 p-3 sm:p-4 bg-white/95 backdrop-blur-xs border-t border-slate-200 flex items-center justify-between z-20 shadow-xs">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
-            إغلاق
+            إلغاء وإغلاق
           </button>
 
           {(activeTab === 'info' || activeTab === 'limits') && (
@@ -570,10 +568,10 @@ export function ImamProfileModal({
               type="button"
               disabled={saving}
               onClick={handleSave}
-              className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition-colors"
+              className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all cursor-pointer"
             >
-              <Save className="w-3.5 h-3.5" />
-              <span>{saving ? 'جارٍ الحفظ...' : 'حفظ بيانات الخطيب'}</span>
+              <Save className="w-4 h-4" />
+              <span>{saving ? 'جارٍ حفظ البيانات...' : 'حفظ بيانات الخطيب'}</span>
             </button>
           )}
         </div>

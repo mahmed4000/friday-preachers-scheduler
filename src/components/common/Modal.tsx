@@ -46,13 +46,13 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4">
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div
-        className={`relative w-full ${widthClasses[maxWidth]} bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all my-3 sm:my-8`}
+        className={`relative w-full ${widthClasses[maxWidth]} max-h-[calc(100dvh-2rem)] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden transform transition-all my-auto`}
         role="dialog"
         aria-modal="true"
       >
-        <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-slate-50/50">
+        <div className="shrink-0 flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 bg-slate-50/50">
           <div>
             <h3 className="text-base sm:text-lg font-bold text-slate-900 font-heading">{title}</h3>
             {subtitle && <p className="text-xs text-slate-500 mt-0.5">{subtitle}</p>}
@@ -65,7 +65,7 @@ export function Modal({
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-3.5 sm:p-6 max-h-[85vh] overflow-y-auto">{children}</div>
+        <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 overscroll-contain">{children}</div>
       </div>
     </div>
   );
