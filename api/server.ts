@@ -9,20 +9,23 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 let isSeeded = false;
 
-// Auto-seed database on serverless cold start if empty and DATABASE_URL is provided
-app.use(async (req: Request, res: Response, next) => {
+// Auto-seed database on serverless cold start in the background without blocking the request
+app.use((req: Request, res: Response, next) => {
   if (!isSeeded) {
     isSeeded = true;
     const hasDbUrl = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL);
     if (hasDbUrl) {
-      try {
-        await seedDatabase();
-      } catch (err) {
-        console.warn('Vercel cold start seed check error:', err);
-      }
+      seedDatabase().catch((err) => {
+        console.warn('Vercel cold start background seed check error:', err);
+      });
     }
   }
   next();
+});
+
+// Lightweight keep-alive / health-check endpoint (for cron-job.org / UptimeRobot to prevent cold start)
+app.get(['/api/health', '/health'], (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok', timestamp: Date.now(), uptime: process.uptime() });
 });
 
 // Mount API routes for both /api and root serverless routing

@@ -139209,19 +139209,20 @@ var app = (0, import_express2.default)();
 app.use(import_express2.default.json({ limit: "50mb" }));
 app.use(import_express2.default.urlencoded({ limit: "50mb", extended: true }));
 var isSeeded = false;
-app.use(async (req, res, next) => {
+app.use((req, res, next) => {
   if (!isSeeded) {
     isSeeded = true;
     const hasDbUrl = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL);
     if (hasDbUrl) {
-      try {
-        await seedDatabase();
-      } catch (err) {
-        console.warn("Vercel cold start seed check error:", err);
-      }
+      seedDatabase().catch((err) => {
+        console.warn("Vercel cold start background seed check error:", err);
+      });
     }
   }
   next();
+});
+app.get(["/api/health", "/health"], (_req, res) => {
+  res.status(200).json({ status: "ok", timestamp: Date.now(), uptime: process.uptime() });
 });
 app.use("/api", api_default);
 app.use("/", api_default);
