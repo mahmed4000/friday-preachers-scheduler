@@ -24,6 +24,7 @@ import {
   ThumbsDown,
   Plus,
   Download,
+  ArrowUpDown,
 } from 'lucide-react';
 import { MosqueProfileData, Mosque, Imam } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
@@ -64,6 +65,9 @@ export function MosqueProfileView({
   const [fixedPatternData, setFixedPatternData] = useState<any>(null);
   const [exportModalOpen, setExportModalOpen] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [scheduleSortDirection, setScheduleSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [scheduleFilterStatus, setScheduleFilterStatus] = useState<'ALL' | 'UPCOMING' | 'PAST'>('ALL');
+  const [scheduleFilterMonth, setScheduleFilterMonth] = useState<string>('ALL');
 
   const loadProfile = async (schedId?: number) => {
     setLoading(true);
@@ -809,80 +813,251 @@ export function MosqueProfileView({
       )}
 
       {/* TAB 2: FULL SCHEDULE */}
-      {activeTab === 'schedule' && (
-        <Card variant="default" className="overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/60 flex items-center justify-between">
-            <h3 className="text-sm font-bold font-heading text-slate-900">
-              سجل خطباء الجمعة في المسجد عبر الشهور
-            </h3>
-            <span className="text-xs text-slate-500">إجمالي {assignments.length} جمعة</span>
-          </div>
+      {activeTab === 'schedule' && (() => {
+        // Collect unique months
+        const availableMonthsInAssignments: Array<{ key: string; label: string; year: number; month: number }> = [];
+        const seenKeys = new Set<string>();
+        for (const a of assignments) {
+          const mNum = a.hijriMonth || 1;
+          const key = `${a.hijriYear}-${mNum}`;
+          if (!seenKeys.has(key)) {
+            seenKeys.add(key);
+            availableMonthsInAssignments.push({
+              key,
+              label: `شهر ${a.monthName} ${a.hijriYear} هـ`,
+              year: a.hijriYear,
+              month: mNum,
+            });
+          }
+        }
+        availableMonthsInAssignments.sort((x, y) => (x.year * 12 + x.month) - (y.year * 12 + y.month));
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
-              <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-3 w-10 text-center">م</th>
-                  <th className="py-2.5 px-3">الجمعة والتاريخ</th>
-                  <th className="py-2.5 px-3">الشهر والسنة</th>
-                  <th className="py-2.5 px-3">الخطيب المكلف</th>
-                  <th className="py-2.5 px-3 text-center">مصدر التعيين</th>
-                  <th className="py-2.5 px-3 text-center">القفل</th>
-                  <th className="py-2.5 px-3 text-center">الحالة</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {assignments.map((a, idx) => (
-                  <tr key={a.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="py-2.5 px-3 text-center font-bold text-slate-500 tabular-nums">
-                      {idx + 1}
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="font-bold text-slate-900 block font-heading">
-                        الجمعة ({a.fridayIndex})
-                      </span>
-                      <span className="text-[11px] text-slate-500 font-mono">{a.hijriDate}</span>
-                    </td>
-                    <td className="py-2.5 px-3 font-medium text-slate-700">
-                      شهر {a.monthName} {a.hijriYear} هـ
-                    </td>
-                    <td className="py-2.5 px-3">
-                      {a.imamId && a.imamName ? (
-                        <ClickableImam
-                          id={a.imamId}
-                          name={a.imamName}
-                          className="text-xs font-bold text-slate-900 hover:text-emerald-800"
-                        />
-                      ) : (
-                        <span className="text-rose-700 font-bold italic">شاغر</span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <Badge variant={a.source === 'FIXED' ? 'fixed' : 'balanced'} size="sm">
-                        {a.source === 'FIXED'
-                          ? 'خطيب راتب'
-                          : a.source === 'PREFERENCE'
-                          ? 'تفضيل مسجد'
-                          : a.source === 'BALANCED'
-                          ? 'توزيع عادل'
-                          : a.source}
-                      </Badge>
-                    </td>
-                    <td className="py-2.5 px-3 text-center text-xs">
-                      {a.isLocked ? <Lock className="w-3.5 h-3.5 text-purple-700 mx-auto" /> : '—'}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <Badge variant={a.isUpcoming ? 'approved' : 'inactive'} size="sm">
-                        {a.isUpcoming ? 'قادمة ومؤكدة' : 'سابقة'}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+        // Filter & sort assignments
+        let filtered = [...assignments];
+        if (scheduleFilterMonth !== 'ALL') {
+          filtered = filtered.filter((a) => `${a.hijriYear}-${a.hijriMonth || 1}` === scheduleFilterMonth);
+        }
+        if (scheduleFilterStatus === 'UPCOMING') {
+          filtered = filtered.filter((a) => a.isUpcoming);
+        } else if (scheduleFilterStatus === 'PAST') {
+          filtered = filtered.filter((a) => !a.isUpcoming);
+        }
+
+        filtered.sort((x, y) => {
+          const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+          const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+          let diff = 0;
+          if (xVal !== yVal) {
+            diff = xVal - yVal;
+          } else {
+            diff = (x.fridayIndex || 1) - (y.fridayIndex || 1);
+          }
+          return scheduleSortDirection === 'asc' ? diff : -diff;
+        });
+
+        const upcomingCount = assignments.filter((a) => a.isUpcoming).length;
+        const pastCount = assignments.filter((a) => !a.isUpcoming).length;
+
+        return (
+          <Card variant="default" className="overflow-hidden space-y-0">
+            {/* Table Header & Controls Bar */}
+            <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold font-heading text-slate-900 flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4 text-emerald-800" />
+                  <span>جدول خطباء المسجد الكامل (مرتب زمنياً)</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  عرض تسلسلي منتظم لكافة جمعات وخطباء المسجد مرتبة زمنياً شهراً فشهراً (إجمالي {assignments.length} جمعة مسجلة)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Sort Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setScheduleSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                  className="px-2.5 py-1.5 bg-white border border-slate-300 hover:border-emerald-700 text-slate-800 font-bold rounded-lg text-xs flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer"
+                  title="تغيير اتجاه ترتيب الجدول"
+                >
+                  <ArrowUpDown className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>
+                    {scheduleSortDirection === 'asc' ? 'الترتيب: من الأقدم للأحدث ⬇️' : 'الترتيب: من الأحدث للأقدم ⬆️'}
+                  </span>
+                </button>
+
+                {/* Filter by Month Select */}
+                {availableMonthsInAssignments.length > 1 && (
+                  <select
+                    value={scheduleFilterMonth}
+                    onChange={(e) => setScheduleFilterMonth(e.target.value)}
+                    className="text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
+                  >
+                    <option value="ALL">كافة الأشهر المسجلة ({assignments.length})</option>
+                    {availableMonthsInAssignments.map((m) => (
+                      <option key={m.key} value={m.key}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            {/* Quick Filter Status Tabs */}
+            <div className="px-4 py-2.5 bg-white border-b border-slate-100 flex items-center justify-between gap-2 flex-wrap text-xs">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[11px] text-slate-500 font-semibold ml-1">تصفية:</span>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterStatus('ALL')}
+                  className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer ${
+                    scheduleFilterStatus === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  الكل ({assignments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterStatus('UPCOMING')}
+                  className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    scheduleFilterStatus === 'UPCOMING'
+                      ? 'bg-emerald-800 text-white shadow-2xs'
+                      : 'bg-emerald-50 text-emerald-950 border border-emerald-200 hover:bg-emerald-100'
+                  }`}
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                  <span>الجمعات القادمة ({upcomingCount})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScheduleFilterStatus('PAST')}
+                  className={`px-2.5 py-1 rounded-md font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                    scheduleFilterStatus === 'PAST'
+                      ? 'bg-slate-700 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200'
+                  }`}
+                >
+                  <Clock className="w-3 h-3 text-slate-500" />
+                  <span>الجمعات السابقة ({pastCount})</span>
+                </button>
+              </div>
+
+              <span className="text-[11px] text-slate-400 font-medium">
+                معروض الآن: {filtered.length} من أصل {assignments.length} جمعة
+              </span>
+            </div>
+
+            {/* Table */}
+            <div className="overflow-x-auto">
+              {filtered.length === 0 ? (
+                <div className="py-10 text-center text-xs text-slate-400">
+                  لا توجد تكليفات مطابقة للتصفية المحددة.
+                </div>
+              ) : (
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-100/80 text-slate-700 font-semibold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3 w-10 text-center">م</th>
+                      <th
+                        onClick={() => setScheduleSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="py-2.5 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none"
+                        title="اضغط لعكس الترتيب"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>الجمعة والتاريخ</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th
+                        onClick={() => setScheduleSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                        className="py-2.5 px-3 cursor-pointer hover:bg-slate-200/70 transition-colors select-none"
+                        title="اضغط لعكس الترتيب"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>الشهر والسنة</span>
+                          <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                        </div>
+                      </th>
+                      <th className="py-2.5 px-3">الخطيب المكلف</th>
+                      <th className="py-2.5 px-3 text-center">مصدر التعيين</th>
+                      <th className="py-2.5 px-3 text-center">القفل</th>
+                      <th className="py-2.5 px-3 text-center">الحالة</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filtered.map((a, idx) => (
+                      <tr
+                        key={a.id}
+                        className={`transition-colors ${
+                          a.isUpcoming
+                            ? 'bg-emerald-50/20 hover:bg-emerald-50/40'
+                            : 'hover:bg-slate-50/70'
+                        }`}
+                      >
+                        <td className="py-2.5 px-3 text-center font-bold text-slate-500 tabular-nums">
+                          {idx + 1}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          <span
+                            className={`font-bold block font-heading ${
+                              a.isUpcoming ? 'text-emerald-950 font-bold' : 'text-slate-900'
+                            }`}
+                          >
+                            الجمعة ({a.fridayIndex})
+                          </span>
+                          <span className="text-[11px] text-slate-500 font-mono">{a.hijriDate}</span>
+                        </td>
+                        <td className="py-2.5 px-3 font-medium text-slate-700">
+                          <span className="font-bold text-slate-900">شهر {a.monthName}</span>
+                          <span className="text-slate-500 mr-1">{a.hijriYear} هـ</span>
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {a.imamId && a.imamName ? (
+                            <ClickableImam
+                              id={a.imamId}
+                              name={a.imamName}
+                              className="text-xs font-bold text-slate-900 hover:text-emerald-800"
+                            />
+                          ) : (
+                            <span className="text-rose-700 font-bold italic">شاغر (بدون خطيب)</span>
+                          )}
+                          {a.imamPhone && (
+                            <span className="text-[10px] text-slate-400 block font-mono">
+                              هاتف: {a.imamPhone}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge variant={a.source === 'FIXED' ? 'fixed' : 'balanced'} size="sm">
+                            {a.source === 'FIXED'
+                              ? 'خطيب راتب'
+                              : a.source === 'PREFERENCE'
+                              ? 'تفضيل مسجد'
+                              : a.source === 'BALANCED'
+                              ? 'توزيع عادل'
+                              : a.source}
+                          </Badge>
+                        </td>
+                        <td className="py-2.5 px-3 text-center text-xs">
+                          {a.isLocked ? <Lock className="w-3.5 h-3.5 text-purple-700 mx-auto" /> : '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center">
+                          <Badge variant={a.isUpcoming ? 'approved' : 'inactive'} size="sm">
+                            {a.isUpcoming ? '🟢 قادمة ومؤكدة' : '⏱️ سابقة'}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* TAB 3: PREFERENCES & RULES */}
       {activeTab === 'preferences' && (

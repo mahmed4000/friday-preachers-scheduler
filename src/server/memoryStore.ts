@@ -376,6 +376,7 @@ export const memoryStore = {
         gregorianDate: f?.gregorianDate || undefined,
         monthName: s?.monthName || 'غير محدد',
         hijriYear: s?.hijriYear || 1448,
+        hijriMonth: s?.hijriMonth || 1,
         scheduleStatus: s?.status || 'APPROVED',
         mosqueId: a.mosqueId,
         mosqueName: m?.name || 'مسجد غير معروف',
@@ -390,26 +391,10 @@ export const memoryStore = {
         isUpcoming,
       };
     }).sort((x: any, y: any) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal; // Most recent past first
-        return xVal - yVal; // Nearest upcoming first
-      }
-      return x.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x.fridayIndex || 1) - (y.fridayIndex || 1);
     });
 
     const rawUpcoming = activeSchedule
@@ -515,6 +500,7 @@ export const memoryStore = {
         gregorianDate: f?.gregorianDate || undefined,
         monthName: s?.monthName || 'غير محدد',
         hijriYear: s?.hijriYear || 1448,
+        hijriMonth: s?.hijriMonth || 1,
         scheduleStatus: s?.status || 'APPROVED',
         mosqueId: mosque.id,
         mosqueName: mosque.name,
@@ -529,26 +515,10 @@ export const memoryStore = {
         isUpcoming,
       };
     }).sort((x: any, y: any) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal; // Most recent past first
-        return xVal - yVal; // Nearest upcoming first
-      }
-      return x.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x.fridayIndex || 1) - (y.fridayIndex || 1);
     });
 
     const rawUpcoming = activeSchedule

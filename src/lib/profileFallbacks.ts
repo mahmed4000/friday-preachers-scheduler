@@ -62,8 +62,10 @@ export function getFallbackImamProfile(
       isUpcoming,
     };
   }).sort((x: any, y: any) => {
-    if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
-    return x.fridayIndex - y.fridayIndex;
+    const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+    const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+    if (xVal !== yVal) return xVal - yVal;
+    return (x.fridayIndex || 1) - (y.fridayIndex || 1);
   });
 
   const rawUpcoming = activeSchedule
@@ -198,8 +200,10 @@ export function getFallbackMosqueProfile(
       isUpcoming,
     };
   }).sort((x: any, y: any) => {
-    if (x.scheduleId !== y.scheduleId) return y.scheduleId - x.scheduleId;
-    return x.fridayIndex - y.fridayIndex;
+    const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
+    const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
+    if (xVal !== yVal) return xVal - yVal;
+    return (x.fridayIndex || 1) - (y.fridayIndex || 1);
   });
 
   const rawUpcoming = activeSchedule

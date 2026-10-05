@@ -134107,6 +134107,7 @@ var memoryStore = {
         gregorianDate: f3?.gregorianDate || void 0,
         monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
         hijriYear: s2?.hijriYear || 1448,
+        hijriMonth: s2?.hijriMonth || 1,
         scheduleStatus: s2?.status || "APPROVED",
         mosqueId: a.mosqueId,
         mosqueName: m2?.name || "\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0639\u0631\u0648\u0641",
@@ -134121,23 +134122,10 @@ var memoryStore = {
         isUpcoming
       };
     }).sort((x2, y) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal;
-        return xVal - yVal;
-      }
-      return x2.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x2.fridayIndex || 1) - (y.fridayIndex || 1);
     });
     const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
     const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
@@ -134227,6 +134215,7 @@ var memoryStore = {
         gregorianDate: f3?.gregorianDate || void 0,
         monthName: s2?.monthName || "\u063A\u064A\u0631 \u0645\u062D\u062F\u062F",
         hijriYear: s2?.hijriYear || 1448,
+        hijriMonth: s2?.hijriMonth || 1,
         scheduleStatus: s2?.status || "APPROVED",
         mosqueId: mosque.id,
         mosqueName: mosque.name,
@@ -134241,23 +134230,10 @@ var memoryStore = {
         isUpcoming
       };
     }).sort((x2, y) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal;
-        return xVal - yVal;
-      }
-      return x2.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x2.fridayIndex || 1) - (y.fridayIndex || 1);
     });
     const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
     const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
@@ -135798,23 +135774,10 @@ api.get("/mosques/:id/profile", async (req, res) => {
         isUpcoming
       };
     }).sort((x2, y) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal;
-        return xVal - yVal;
-      }
-      return x2.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x2.fridayIndex || 1) - (y.fridayIndex || 1);
     });
     const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
     const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
@@ -136588,23 +136551,10 @@ api.get("/imams/:id/profile", async (req, res) => {
         isUpcoming
       };
     }).sort((x2, y) => {
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
       const xVal = (x2.hijriYear || 1448) * 12 + (x2.hijriMonth || 1);
       const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-      const xIsCurrent = xVal === currVal;
-      const yIsCurrent = yVal === currVal;
-      if (xIsCurrent && !yIsCurrent) return -1;
-      if (!xIsCurrent && yIsCurrent) return 1;
-      const xIsPast = xVal < currVal;
-      const yIsPast = yVal < currVal;
-      if (!xIsPast && yIsPast) return -1;
-      if (xIsPast && !yIsPast) return 1;
-      if (xVal !== yVal) {
-        if (xIsPast && yIsPast) return yVal - xVal;
-        return xVal - yVal;
-      }
-      return x2.fridayIndex - y.fridayIndex;
+      if (xVal !== yVal) return xVal - yVal;
+      return (x2.fridayIndex || 1) - (y.fridayIndex || 1);
     });
     const rawUpcoming = activeSchedule ? profileAssignments.filter((a) => a.scheduleId === activeSchedule.id) : profileAssignments.filter((a) => a.isUpcoming);
     const upcomingAssignments = CalendarService.deduplicateAssignmentsByFriday(rawUpcoming);
