@@ -93,6 +93,20 @@ export function PreacherMobileCardModal({
     }
   }, [isOpen, assignmentsList.length, friday?.fridayIndex, hYear, hMonth]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   // Active assignment & mosque & friday
   const activeItem =
     assignmentsList.length > 0 && selectedIdx < assignmentsList.length
@@ -236,19 +250,25 @@ export function PreacherMobileCardModal({
     }
   };
 
+  if (!isOpen) return null;
+
   return (
     <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto"
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-2.5 sm:p-4"
     >
-      <div className="relative w-full max-w-md bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-amber-300/60 overflow-hidden my-3 sm:my-6 animate-in fade-in zoom-in-95 duration-150">
+      <div
+        className="relative w-full max-w-md max-h-[calc(100dvh-1.5rem)] sm:max-h-[calc(100dvh-2.5rem)] flex flex-col bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-amber-300/60 overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150"
+        role="dialog"
+        aria-modal="true"
+      >
         {/* Header Ribbon & Close */}
-        <div className="bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-950 p-5 text-white relative border-b-2 border-amber-400">
+        <div className="shrink-0 bg-gradient-to-l from-emerald-950 via-emerald-900 to-emerald-950 p-4 sm:p-5 text-white relative border-b-2 border-amber-400">
           <button
             onClick={onClose}
-            className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all shadow-xs border border-white/20 cursor-pointer z-10"
+            className="absolute top-3.5 left-3.5 sm:top-4 sm:left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition-all shadow-xs border border-white/20 cursor-pointer z-10"
             title="إغلاق البطاقة (الرد لاحقاً)"
           >
             <X className="w-3.5 h-3.5" />
@@ -305,7 +325,7 @@ export function PreacherMobileCardModal({
         </div>
 
         {/* Card Body */}
-        <div className="p-5 space-y-4 text-right">
+        <div className="p-4 sm:p-5 space-y-4 text-right overflow-y-auto flex-1 overscroll-contain">
           {/* Preacher Block */}
           <div className="p-3.5 bg-gradient-to-r from-amber-50/60 to-emerald-50/60 rounded-2xl border border-amber-200/80 flex items-center justify-between shadow-2xs">
             <div>
