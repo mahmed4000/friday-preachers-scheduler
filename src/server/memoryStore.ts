@@ -1114,6 +1114,7 @@ export const memoryStore = {
     const existingIndex = memoryRules.findIndex(
       (r: any) => Number(r.mosqueId) === mosqueId && Number(r.imamId) === imamId
     );
+    const imamObj = memoryImams.find((i: any) => i.id === imamId);
     if (existingIndex >= 0) {
       memoryRules[existingIndex] = {
         ...memoryRules[existingIndex],
@@ -1123,7 +1124,12 @@ export const memoryStore = {
         updatedAt: new Date().toISOString(),
       };
       this.persistToDisk();
-      return memoryRules[existingIndex];
+      return {
+        ...memoryRules[existingIndex],
+        imam: imamObj?.name || undefined,
+        imamName: imamObj?.name || undefined,
+        imamType: imamObj?.type || undefined,
+      };
     }
     const nextId = memoryRules.reduce((max: number, r: any) => Math.max(max, r.id || 0), 0) + 1;
     const newRule = {
@@ -1137,7 +1143,12 @@ export const memoryStore = {
     };
     memoryRules.push(newRule);
     this.persistToDisk();
-    return newRule;
+    return {
+      ...newRule,
+      imam: imamObj?.name || undefined,
+      imamName: imamObj?.name || undefined,
+      imamType: imamObj?.type || undefined,
+    };
   },
 
   deleteRule(id: number) {
@@ -1147,9 +1158,20 @@ export const memoryStore = {
   },
 
   saveFixedPattern(mosqueId: number, body: any) {
-    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
+    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear, applyScope } = body;
     const hYear = Number(hijriYear);
-    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+    const currM = Number(hijriMonth) || CalendarService.getCurrentDateTime().hijri.month || 1;
+    let targetMonths: number[];
+    if (applyToFullYear || applyScope === 'YEAR') {
+      targetMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    } else if (applyScope === 'REMAINDER_OF_YEAR') {
+      targetMonths = [];
+      for (let m = currM; m <= 12; m++) {
+        targetMonths.push(m);
+      }
+    } else {
+      targetMonths = [Number(hijriMonth) || 1];
+    }
 
     let lastPatternId = 0;
 

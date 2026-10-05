@@ -134780,6 +134780,7 @@ var memoryStore = {
     const existingIndex = memoryRules.findIndex(
       (r2) => Number(r2.mosqueId) === mosqueId && Number(r2.imamId) === imamId
     );
+    const imamObj = memoryImams.find((i2) => i2.id === imamId);
     if (existingIndex >= 0) {
       memoryRules[existingIndex] = {
         ...memoryRules[existingIndex],
@@ -134789,7 +134790,12 @@ var memoryStore = {
         updatedAt: (/* @__PURE__ */ new Date()).toISOString()
       };
       this.persistToDisk();
-      return memoryRules[existingIndex];
+      return {
+        ...memoryRules[existingIndex],
+        imam: imamObj?.name || void 0,
+        imamName: imamObj?.name || void 0,
+        imamType: imamObj?.type || void 0
+      };
     }
     const nextId = memoryRules.reduce((max, r2) => Math.max(max, r2.id || 0), 0) + 1;
     const newRule = {
@@ -134803,7 +134809,12 @@ var memoryStore = {
     };
     memoryRules.push(newRule);
     this.persistToDisk();
-    return newRule;
+    return {
+      ...newRule,
+      imam: imamObj?.name || void 0,
+      imamName: imamObj?.name || void 0,
+      imamType: imamObj?.type || void 0
+    };
   },
   deleteRule(id) {
     memoryRules = memoryRules.filter((r2) => Number(r2.id) !== Number(id));
@@ -134811,9 +134822,20 @@ var memoryStore = {
     return true;
   },
   saveFixedPattern(mosqueId, body) {
-    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear } = body;
+    const { hijriYear, hijriMonth, patternType, fridaysCount, items = [], notes, applyToFullYear, applyScope } = body;
     const hYear = Number(hijriYear);
-    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+    const currM = Number(hijriMonth) || CalendarService.getCurrentDateTime().hijri.month || 1;
+    let targetMonths;
+    if (applyToFullYear || applyScope === "YEAR") {
+      targetMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    } else if (applyScope === "REMAINDER_OF_YEAR") {
+      targetMonths = [];
+      for (let m2 = currM; m2 <= 12; m2++) {
+        targetMonths.push(m2);
+      }
+    } else {
+      targetMonths = [Number(hijriMonth) || 1];
+    }
     let lastPatternId = 0;
     for (const hMonth of targetMonths) {
       let mFridaysCount = Number(fridaysCount) || 5;
@@ -136096,6 +136118,17 @@ api.post("/mosques/:id/rules", async (req, res) => {
   if (!imamId || !relationshipType) {
     return res.status(400).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
   }
+  if (!isDatabaseAvailable()) {
+    const fallbackSaved = memoryStore.upsertRule({
+      mosqueId,
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority ? Number(priority) : 1,
+      notes
+    });
+    SupabaseRealtimeSync.syncRule(fallbackSaved);
+    return res.json(fallbackSaved);
+  }
   try {
     const existing = await db.select().from(mosqueImamRules).where(
       and(eq(mosqueImamRules.mosqueId, mosqueId), eq(mosqueImamRules.imamId, Number(imamId)))
@@ -136120,6 +136153,7 @@ api.post("/mosques/:id/rules", async (req, res) => {
     SupabaseRealtimeSync.syncRule(saved);
     res.json(saved);
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB rule save failed, falling back to memoryStore:", error?.message);
     const fallbackSaved = memoryStore.upsertRule({
       mosqueId,
@@ -136134,11 +136168,17 @@ api.post("/mosques/:id/rules", async (req, res) => {
 });
 api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
   const ruleId = Number(req.params.ruleId);
+  if (!isDatabaseAvailable()) {
+    memoryStore.deleteRule(ruleId);
+    SupabaseRealtimeSync.deleteRule(ruleId);
+    return res.json({ success: true });
+  }
   try {
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
     SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB rule delete failed, falling back to memoryStore:", error?.message);
     memoryStore.deleteRule(ruleId);
     SupabaseRealtimeSync.deleteRule(ruleId);
@@ -136146,10 +136186,19 @@ api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
   }
 });
 api.get("/mosques/:id/fixed-patterns", async (req, res) => {
+  const mosqueId = Number(req.params.id);
+  const year = req.query.year ? Number(req.query.year) : 1448;
+  const month = req.query.month ? Number(req.query.month) : 1;
+  if (!isDatabaseAvailable()) {
+    const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
+    return res.json({
+      ...fallback,
+      monthDetails,
+      availableImams: memoryStore.getImams().filter((i2) => i2.isActive)
+    });
+  }
   try {
-    const mosqueId = Number(req.params.id);
-    const year = req.query.year ? Number(req.query.year) : 1448;
-    const month = req.query.month ? Number(req.query.month) : 9;
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     const monthDetails = CalendarService.getHijriMonthDetails(year, month);
@@ -136197,12 +136246,10 @@ api.get("/mosques/:id/fixed-patterns", async (req, res) => {
       availableImams: allImams.filter((i2) => i2.isActive)
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for fixed patterns failed, falling back to memory store:", error?.message);
-    const mId = Number(req.params.id);
-    const yr = req.query.year ? Number(req.query.year) : 1448;
-    const mo = req.query.month ? Number(req.query.month) : 4;
-    const fallback = memoryStore.getFixedPatterns(mId, yr, mo);
-    const monthDetails = CalendarService.getHijriMonthDetails(yr, mo);
+    const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
     res.json({
       ...fallback,
       monthDetails,
@@ -136211,14 +136258,29 @@ api.get("/mosques/:id/fixed-patterns", async (req, res) => {
   }
 });
 api.post("/mosques/:id/fixed-patterns", async (req, res) => {
+  const mosqueId = Number(req.params.id);
+  const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear, applyScope } = req.body;
+  if (!hijriYear || !hijriMonth && !applyToFullYear && applyScope !== "YEAR" || !patternType || !Array.isArray(items)) {
+    return res.status(400).json({ error: "\u0627\u0644\u0633\u0646\u0629 \u0627\u0644\u0647\u062C\u0631\u064A\u0629 \u0648\u0627\u0644\u0634\u0647\u0631 \u0648\u0646\u0648\u0639 \u0627\u0644\u0646\u0645\u0637 \u0648\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0645\u0637\u0644\u0648\u0628\u0629" });
+  }
+  if (!isDatabaseAvailable()) {
+    const fallbackResult = memoryStore.saveFixedPattern(mosqueId, req.body);
+    return res.json(fallbackResult);
+  }
   try {
-    const mosqueId = Number(req.params.id);
-    const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear } = req.body;
-    if (!hijriYear || !hijriMonth && !applyToFullYear || !patternType || !Array.isArray(items)) {
-      return res.status(400).json({ error: "\u0627\u0644\u0633\u0646\u0629 \u0627\u0644\u0647\u062C\u0631\u064A\u0629 \u0648\u0627\u0644\u0634\u0647\u0631 \u0648\u0646\u0648\u0639 \u0627\u0644\u0646\u0645\u0637 \u0648\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0645\u0637\u0644\u0648\u0628\u0629" });
-    }
     const hYear = Number(hijriYear);
-    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+    const currM = Number(hijriMonth) || CalendarService.getCurrentDateTime().hijri.month || 1;
+    let targetMonths;
+    if (applyToFullYear || applyScope === "YEAR") {
+      targetMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    } else if (applyScope === "REMAINDER_OF_YEAR") {
+      targetMonths = [];
+      for (let m2 = currM; m2 <= 12; m2++) {
+        targetMonths.push(m2);
+      }
+    } else {
+      targetMonths = [Number(hijriMonth) || 1];
+    }
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     let lastPatternId = 0;
@@ -136479,20 +136541,34 @@ api.post("/mosques/import", async (req, res) => {
   }
 });
 api.get("/rules", async (_req, res) => {
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getRules());
+  }
   try {
     const list = await db.select().from(mosqueImamRules).orderBy(asc(mosqueImamRules.id));
     res.json(list);
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for rules failed, falling back to memory store:", error?.message);
     res.json(memoryStore.getRules());
   }
 });
 api.post("/rules", async (req, res) => {
+  const { mosqueId, imamId, relationshipType, priority, notes } = req.body;
+  if (!mosqueId || !imamId || !relationshipType) {
+    return res.status(400).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u0648\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u062D\u0642\u0648\u0644 \u0645\u0637\u0644\u0648\u0628\u0629" });
+  }
+  if (!isDatabaseAvailable()) {
+    const created = memoryStore.createRule({
+      mosqueId: Number(mosqueId),
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority || 1,
+      notes: notes || null
+    });
+    return res.status(201).json(created);
+  }
   try {
-    const { mosqueId, imamId, relationshipType, priority, notes } = req.body;
-    if (!mosqueId || !imamId || !relationshipType) {
-      return res.status(400).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u0648\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u062D\u0642\u0648\u0644 \u0645\u0637\u0644\u0648\u0628\u0629" });
-    }
     const inserted = await db.insert(mosqueImamRules).values({
       mosqueId: Number(mosqueId),
       imamId: Number(imamId),
@@ -136503,6 +136579,7 @@ api.post("/rules", async (req, res) => {
     await logAudit(req, "CREATE", "RULE", inserted[0].id, { mosqueId, imamId, relationshipType });
     res.status(201).json(inserted[0]);
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB create rule failed, falling back to memoryStore:", error?.message);
     try {
       const created = memoryStore.createRule({
@@ -136520,14 +136597,19 @@ api.post("/rules", async (req, res) => {
   }
 });
 api.delete("/rules/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!isDatabaseAvailable()) {
+    memoryStore.deleteRule(id);
+    return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
+  }
   try {
-    const id = Number(req.params.id);
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, id));
     await logAudit(req, "DELETE", "RULE", id);
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB delete rule failed, falling back to memoryStore:", error?.message);
-    memoryStore.deleteRule(Number(req.params.id));
+    memoryStore.deleteRule(id);
     return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
   }
 });

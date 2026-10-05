@@ -24,6 +24,7 @@ import {
 import { fetchApi } from '../../lib/api.ts';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
 import { CalendarService } from '../../services/calendar/calendarService.ts';
+import { HIJRI_MONTH_NAMES } from '../../services/calendar/calendarProvider.ts';
 import { SearchablePreacherSelect } from '../common/SearchablePreacherSelect.tsx';
 
 interface MosqueProfileModalProps {
@@ -71,13 +72,22 @@ export function MosqueProfileModal({
   const [isActive, setIsActive] = useState(true);
   const [notes, setNotes] = useState('');
 
+  // Hijri date reference
+  const currentHijriInfo = useMemo(() => {
+    try {
+      return CalendarService.getCurrentDateTime().hijri;
+    } catch {
+      return { year: 1448, month: 1 };
+    }
+  }, []);
+
   // -------------------------------------------------------------
   // Fixed Preacher per Friday System State
   // -------------------------------------------------------------
   const [hasFixedPattern, setHasFixedPattern] = useState(false);
-  const [applyScope, setApplyScope] = useState<'MONTH' | 'YEAR'>('MONTH');
-  const [patternYear, setPatternYear] = useState<number>(1448);
-  const [patternMonth, setPatternMonth] = useState<number>(9); // Ramadan 1448 default
+  const [applyScope, setApplyScope] = useState<'MONTH' | 'REMAINDER_OF_YEAR' | 'YEAR'>('MONTH');
+  const [patternYear, setPatternYear] = useState<number>(currentHijriInfo.year || 1448);
+  const [patternMonth, setPatternMonth] = useState<number>(currentHijriInfo.month || 1);
   const [patternType, setPatternType] = useState<FixedAssignmentPatternType>('SAME_ALL');
   const [singleImamId, setSingleImamId] = useState<number | ''>('');
   const [fridaySlots, setFridaySlots] = useState<{ fridayIndex: number; imamId: number | ''; notes?: string }[]>([]);
@@ -89,9 +99,10 @@ export function MosqueProfileModal({
   const [patternConflictWarning, setPatternConflictWarning] = useState<string | null>(null);
   const [isCopying, setIsCopying] = useState(false);
 
-  // Rules list
+  // Rules list - Decoupled selection states
   const [rules, setRules] = useState<MosqueImamRule[]>([]);
-  const [selectedImamToAdd, setSelectedImamToAdd] = useState<number | ''>('');
+  const [selectedPreferredImam, setSelectedPreferredImam] = useState<number | ''>('');
+  const [selectedForbiddenImam, setSelectedForbiddenImam] = useState<number | ''>('');
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -202,7 +213,17 @@ export function MosqueProfileModal({
       // Load rules for this mosque
       fetchApi<any>(`/api/mosques/${mosque.id}`)
         .then((res) => {
-          if (res.rules) setRules(res.rules);
+          if (Array.isArray(res.rules)) {
+            setRules(res.rules);
+          } else if (res.rules && typeof res.rules === 'object') {
+            const flattened: MosqueImamRule[] = [
+              ...(res.rules.preferred || []),
+              ...(res.rules.forbidden || []),
+              ...(res.rules.allowed || []),
+              ...(res.rules.discouraged || []),
+            ];
+            setRules(flattened);
+          }
         })
         .catch(() => {});
     } else {
@@ -233,6 +254,8 @@ export function MosqueProfileModal({
       setFridaySlots([]);
       setRules([]);
     }
+    setSelectedPreferredImam('');
+    setSelectedForbiddenImam('');
     setActiveTab('info');
     setFeedback(null);
     setErrorMessage(null);
@@ -401,6 +424,7 @@ export function MosqueProfileModal({
             hijriYear: patternYear,
             hijriMonth: patternMonth,
             applyToFullYear: applyScope === 'YEAR',
+            applyScope,
             patternType,
             fridaysCount: actualFridaysCount,
             items: itemsToSave,
@@ -444,7 +468,6 @@ export function MosqueProfileModal({
 
       setFeedback(res.message || 'تم نسخ نمط التثبيت للشهر القادم بنجاح');
       setTimeout(() => setFeedback(null), 3500);
-      onSaved();
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر نسخ النمط للشهر القادم');
     } finally {
@@ -464,7 +487,6 @@ export function MosqueProfileModal({
       setExistingPatternId(null);
       setFeedback('تم حذف نمط التثبيت لهذا الشهر بنجاح');
       setTimeout(() => setFeedback(null), 3000);
-      onSaved();
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر حذف نمط التثبيت');
     }
@@ -475,23 +497,31 @@ export function MosqueProfileModal({
   const restrictionRules = rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED');
 
   const handleAddRule = async (type: RelationshipType) => {
-    if (!mosque || !selectedImamToAdd) return;
+    const targetImamId = type === 'PREFERRED' ? selectedPreferredImam : selectedForbiddenImam;
+    if (!mosque || !targetImamId) return;
     setErrorMessage(null);
     try {
       const highestPriority = preferredRules.length > 0 ? Math.max(...preferredRules.map((r) => r.priority)) + 1 : 1;
-      await fetchApi<MosqueImamRule>(`/api/mosques/${mosque.id}/rules`, {
+      const savedRule = await fetchApi<MosqueImamRule>(`/api/mosques/${mosque.id}/rules`, {
         method: 'POST',
         body: JSON.stringify({
-          imamId: selectedImamToAdd,
+          imamId: targetImamId,
           relationshipType: type,
           priority: type === 'PREFERRED' ? highestPriority : 1,
         }),
       });
 
-      const updated = await fetchApi<any>(`/api/mosques/${mosque.id}`);
-      if (updated.rules) setRules(updated.rules);
-      setSelectedImamToAdd('');
-      onSaved();
+      // Optimistic update: preserve all other rules, replace or add this imam's rule
+      setRules((prev) => {
+        const withoutCurrent = prev.filter((r) => r.imamId !== Number(targetImamId));
+        return [...withoutCurrent, savedRule];
+      });
+
+      if (type === 'PREFERRED') {
+        setSelectedPreferredImam('');
+      } else {
+        setSelectedForbiddenImam('');
+      }
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر إضافة القاعدة');
     }
@@ -502,8 +532,7 @@ export function MosqueProfileModal({
     setErrorMessage(null);
     try {
       await fetchApi(`/api/mosques/${mosque.id}/rules/${ruleId}`, { method: 'DELETE' });
-      setRules(rules.filter((r) => r.id !== ruleId));
-      onSaved();
+      setRules((prev) => prev.filter((r) => r.id !== ruleId));
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر حذف القاعدة');
     }
@@ -734,7 +763,7 @@ export function MosqueProfileModal({
                       <span className="text-xs font-bold text-slate-900 font-heading">نطاق تطبيق التثبيت:</span>
                     </div>
 
-                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
+                    <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
                       <button
                         type="button"
                         onClick={() => setApplyScope('MONTH')}
@@ -749,14 +778,26 @@ export function MosqueProfileModal({
 
                       <button
                         type="button"
-                        onClick={() => setApplyScope('YEAR')}
+                        onClick={() => setApplyScope('REMAINDER_OF_YEAR')}
                         className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                          applyScope === 'YEAR'
+                          applyScope === 'REMAINDER_OF_YEAR'
                             ? 'bg-emerald-800 text-white shadow-2xs font-bold'
                             : 'text-slate-600 hover:text-slate-900'
                         }`}
                       >
-                        <span>✨ العام الهجري بالكامل (طوال السنة)</span>
+                        <span>🚀 من الشهر الحالي لنهاية السنة ({currentHijriInfo.month || 1} إلى 12)</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setApplyScope('YEAR')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          applyScope === 'YEAR'
+                            ? 'bg-slate-900 text-white shadow-2xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        <span>✨ العام الهجري بالكامل (12 شهراً)</span>
                       </button>
                     </div>
                   </div>
@@ -774,19 +815,16 @@ export function MosqueProfileModal({
                           }}
                           className="text-xs font-bold p-1.5 border border-slate-300 rounded-lg bg-emerald-50/50 text-slate-900"
                         >
-                          <option value={9}>رمضان (9)</option>
-                          <option value={10}>شوال (10)</option>
-                          <option value={11}>ذو القعدة (11)</option>
-                          <option value={12}>ذو الحجة (12)</option>
-                          <option value={1}>محرم (1)</option>
-                          <option value={2}>صفر (2)</option>
-                          <option value={3}>ربيع الأول (3)</option>
-                          <option value={4}>ربيع الآخر (4)</option>
-                          <option value={5}>جمادى الأولى (5)</option>
-                          <option value={6}>جمادى الآخرة (6)</option>
-                          <option value={7}>رجب (7)</option>
-                          <option value={8}>شعبان (8)</option>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((mNum) => (
+                            <option key={mNum} value={mNum}>
+                              {HIJRI_MONTH_NAMES[mNum]} ({mNum}) {mNum === currentHijriInfo.month ? '⭐ (الشهر الحالي)' : ''}
+                            </option>
+                          ))}
                         </select>
+                      ) : applyScope === 'REMAINDER_OF_YEAR' ? (
+                        <span className="px-2.5 py-1 text-xs font-bold bg-emerald-100 text-emerald-950 rounded-lg border border-emerald-300">
+                          من شهر {HIJRI_MONTH_NAMES[currentHijriInfo.month || 1]} ({currentHijriInfo.month || 1}) حتى ذي الحجة (12)
+                        </span>
                       ) : (
                         <span className="px-2.5 py-1 text-xs font-bold bg-amber-100 text-amber-950 rounded-lg border border-amber-300">
                           جميع أشهر السنة الـ 12 (من محرم إلى ذي الحجة)
@@ -1146,7 +1184,7 @@ export function MosqueProfileModal({
         {/* Tab 3: Preferences (Ordered Drag/Move) */}
         {activeTab === 'preferences' && mosque && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-bold text-slate-900 font-heading">ترتيب أولويات الخطباء المفضلين</h4>
                 <p className="text-xs text-slate-500">
@@ -1158,20 +1196,20 @@ export function MosqueProfileModal({
               <div className="flex items-center gap-2">
                 <div className="w-72">
                   <SearchablePreacherSelect
-                    imams={imams.filter((i) => !rules.some((r) => r.imamId === i.id))}
-                    value={selectedImamToAdd}
-                    onChange={(val) => setSelectedImamToAdd(val)}
+                    imams={imams.filter((i) => !preferredRules.some((r) => r.imamId === i.id))}
+                    value={selectedPreferredImam}
+                    onChange={(val) => setSelectedPreferredImam(val)}
                     placeholder="-- ابحث عن خطيب لإضافته للمفضلة --"
                   />
                 </div>
                 <button
                   type="button"
-                  disabled={!selectedImamToAdd}
+                  disabled={!selectedPreferredImam}
                   onClick={() => handleAddRule('PREFERRED')}
                   className="px-3 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>إضافة</span>
+                  <span>إضافة للمفضلة</span>
                 </button>
               </div>
             </div>
@@ -1222,7 +1260,7 @@ export function MosqueProfileModal({
         {/* Tab 4: Restrictions */}
         {activeTab === 'restrictions' && mosque && (
           <div className="space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h4 className="text-sm font-bold text-slate-900 font-heading">قواعد الاستبعاد والحظر</h4>
                 <p className="text-xs text-slate-500">
@@ -1231,25 +1269,19 @@ export function MosqueProfileModal({
               </div>
 
               <div className="flex items-center gap-2">
-                <select
-                  value={selectedImamToAdd}
-                  onChange={(e) => setSelectedImamToAdd(e.target.value ? Number(e.target.value) : '')}
-                  className="text-xs p-2 border border-slate-200 rounded-lg bg-white focus:outline-none"
-                >
-                  <option value="">-- اختر خطيباً لإضافته للحظر --</option>
-                  {imams
-                    .filter((i) => !rules.some((r) => r.imamId === i.id))
-                    .map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                </select>
+                <div className="w-72">
+                  <SearchablePreacherSelect
+                    imams={imams.filter((i) => !restrictionRules.some((r) => r.imamId === i.id))}
+                    value={selectedForbiddenImam}
+                    onChange={(val) => setSelectedForbiddenImam(val)}
+                    placeholder="-- ابحث عن خطيب لإضافته للحظر --"
+                  />
+                </div>
                 <button
                   type="button"
-                  disabled={!selectedImamToAdd}
+                  disabled={!selectedForbiddenImam}
                   onClick={() => handleAddRule('FORBIDDEN')}
-                  className="px-3 py-2 bg-rose-700 hover:bg-rose-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                  className="px-3 py-2 bg-rose-700 hover:bg-rose-800 disabled:opacity-50 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0"
                 >
                   <ShieldBan className="w-3.5 h-3.5" />
                   <span>إضافة حظر</span>

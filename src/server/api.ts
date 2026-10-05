@@ -1045,6 +1045,18 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
     return res.status(400).json({ error: 'الخطيب ونوع العلاقة مطلوبان' });
   }
 
+  if (!isDatabaseAvailable()) {
+    const fallbackSaved = memoryStore.upsertRule({
+      mosqueId,
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority ? Number(priority) : 1,
+      notes,
+    });
+    SupabaseRealtimeSync.syncRule(fallbackSaved);
+    return res.json(fallbackSaved);
+  }
+
   try {
     // Check if rule already exists for this pair
     const existing = await db.select().from(mosqueImamRules).where(
@@ -1075,6 +1087,7 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
     SupabaseRealtimeSync.syncRule(saved);
     res.json(saved);
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB rule save failed, falling back to memoryStore:', error?.message);
     const fallbackSaved = memoryStore.upsertRule({
       mosqueId,
@@ -1090,11 +1103,18 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
 
 api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response) => {
   const ruleId = Number(req.params.ruleId);
+  if (!isDatabaseAvailable()) {
+    memoryStore.deleteRule(ruleId);
+    SupabaseRealtimeSync.deleteRule(ruleId);
+    return res.json({ success: true });
+  }
+
   try {
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
     SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB rule delete failed, falling back to memoryStore:', error?.message);
     memoryStore.deleteRule(ruleId);
     SupabaseRealtimeSync.deleteRule(ruleId);
@@ -1106,11 +1126,21 @@ api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response)
 // 2.4. Monthly Fixed Assignment Patterns per Mosque (Friday-Specific)
 // -------------------------------------------------------------
 api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
-  try {
-    const mosqueId = Number(req.params.id);
-    const year = req.query.year ? Number(req.query.year) : 1448;
-    const month = req.query.month ? Number(req.query.month) : 9;
+  const mosqueId = Number(req.params.id);
+  const year = req.query.year ? Number(req.query.year) : 1448;
+  const month = req.query.month ? Number(req.query.month) : 1;
 
+  if (!isDatabaseAvailable()) {
+    const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
+    return res.json({
+      ...fallback,
+      monthDetails,
+      availableImams: memoryStore.getImams().filter((i: any) => i.isActive),
+    });
+  }
+
+  try {
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: 'المسجد غير موجود' });
 
@@ -1166,12 +1196,10 @@ api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
       availableImams: allImams.filter((i) => i.isActive),
     });
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB fetch for fixed patterns failed, falling back to memory store:', error?.message);
-    const mId = Number(req.params.id);
-    const yr = req.query.year ? Number(req.query.year) : 1448;
-    const mo = req.query.month ? Number(req.query.month) : 4;
-    const fallback = memoryStore.getFixedPatterns(mId, yr, mo);
-    const monthDetails = CalendarService.getHijriMonthDetails(yr, mo);
+    const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
+    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
     res.json({
       ...fallback,
       monthDetails,
@@ -1181,16 +1209,32 @@ api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
 });
 
 api.post('/mosques/:id/fixed-patterns', async (req: AuthRequest, res: Response) => {
+  const mosqueId = Number(req.params.id);
+  const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear, applyScope } = req.body;
+
+  if (!hijriYear || (!hijriMonth && !applyToFullYear && applyScope !== 'YEAR') || !patternType || !Array.isArray(items)) {
+    return res.status(400).json({ error: 'السنة الهجرية والشهر ونوع النمط وقائمة الجمعات مطلوبة' });
+  }
+
+  if (!isDatabaseAvailable()) {
+    const fallbackResult = memoryStore.saveFixedPattern(mosqueId, req.body);
+    return res.json(fallbackResult);
+  }
+
   try {
-    const mosqueId = Number(req.params.id);
-    const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear } = req.body;
-
-    if (!hijriYear || (!hijriMonth && !applyToFullYear) || !patternType || !Array.isArray(items)) {
-      return res.status(400).json({ error: 'السنة الهجرية والشهر ونوع النمط وقائمة الجمعات مطلوبة' });
-    }
-
     const hYear = Number(hijriYear);
-    const targetMonths = applyToFullYear ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] : [Number(hijriMonth)];
+    const currM = Number(hijriMonth) || CalendarService.getCurrentDateTime().hijri.month || 1;
+    let targetMonths: number[];
+    if (applyToFullYear || applyScope === 'YEAR') {
+      targetMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    } else if (applyScope === 'REMAINDER_OF_YEAR') {
+      targetMonths = [];
+      for (let m = currM; m <= 12; m++) {
+        targetMonths.push(m);
+      }
+    } else {
+      targetMonths = [Number(hijriMonth) || 1];
+    }
 
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: 'المسجد غير موجود' });
@@ -1504,22 +1548,38 @@ api.post('/mosques/import', async (req: AuthRequest, res: Response) => {
 // 2.5. Rules Matrix Endpoints
 // -------------------------------------------------------------
 api.get('/rules', async (_req: Request, res: Response) => {
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getRules());
+  }
+
   try {
     const list = await db.select().from(mosqueImamRules).orderBy(asc(mosqueImamRules.id));
     res.json(list);
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB fetch for rules failed, falling back to memory store:', error?.message);
     res.json(memoryStore.getRules());
   }
 });
 
 api.post('/rules', async (req: AuthRequest, res: Response) => {
-  try {
-    const { mosqueId, imamId, relationshipType, priority, notes } = req.body;
-    if (!mosqueId || !imamId || !relationshipType) {
-      return res.status(400).json({ error: 'المسجد والخطيب ونوع العلاقة حقول مطلوبة' });
-    }
+  const { mosqueId, imamId, relationshipType, priority, notes } = req.body;
+  if (!mosqueId || !imamId || !relationshipType) {
+    return res.status(400).json({ error: 'المسجد والخطيب ونوع العلاقة حقول مطلوبة' });
+  }
 
+  if (!isDatabaseAvailable()) {
+    const created = memoryStore.createRule({
+      mosqueId: Number(mosqueId),
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority || 1,
+      notes: notes || null,
+    });
+    return res.status(201).json(created);
+  }
+
+  try {
     const inserted = await db.insert(mosqueImamRules).values({
       mosqueId: Number(mosqueId),
       imamId: Number(imamId),
@@ -1531,6 +1591,7 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
     await logAudit(req, 'CREATE', 'RULE', inserted[0].id, { mosqueId, imamId, relationshipType });
     res.status(201).json(inserted[0]);
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB create rule failed, falling back to memoryStore:', error?.message);
     try {
       const created = memoryStore.createRule({
@@ -1549,14 +1610,20 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
 });
 
 api.delete('/rules/:id', async (req: AuthRequest, res: Response) => {
+  const id = Number(req.params.id);
+  if (!isDatabaseAvailable()) {
+    memoryStore.deleteRule(id);
+    return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
+  }
+
   try {
-    const id = Number(req.params.id);
     await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, id));
     await logAudit(req, 'DELETE', 'RULE', id);
     res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   } catch (error: any) {
+    markDatabaseUnavailable();
     console.warn('DB delete rule failed, falling back to memoryStore:', error?.message);
-    memoryStore.deleteRule(Number(req.params.id));
+    memoryStore.deleteRule(id);
     return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   }
 });
