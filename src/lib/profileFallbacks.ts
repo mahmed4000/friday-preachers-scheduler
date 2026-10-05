@@ -36,7 +36,12 @@ export function getFallbackImamProfile(
     const f = fridayMap.get(a.fridayId);
     const m = mosqueMap.get(a.mosqueId);
     const s = scheduleMap.get(a.scheduleId);
-    const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+    const isUpcoming = CalendarService.isFridayUpcoming(
+      s?.hijriYear || 1448,
+      s?.hijriMonth || 1,
+      a.fridayIndex,
+      s?.periodStatus
+    );
 
     return {
       id: a.id,
@@ -174,7 +179,12 @@ export function getFallbackMosqueProfile(
     const f = fridayMap.get(a.fridayId);
     const s = scheduleMap.get(a.scheduleId);
     const i = a.imamId ? imamMap.get(a.imamId) : null;
-    const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+    const isUpcoming = CalendarService.isFridayUpcoming(
+      s?.hijriYear || 1448,
+      s?.hijriMonth || 1,
+      a.fridayIndex,
+      s?.periodStatus
+    );
 
     return {
       id: a.id,

@@ -254,6 +254,31 @@ export class CalendarService {
   }
 
   /**
+   * تحديد ما إذا كانت جمعة أو تكليف زمني يقع في المستقبل/القادم أم انتهى بالفعل
+   * وفق الحساب الزمني الدقيق للتقويم الهجري المركزي
+   */
+  public static isFridayUpcoming(
+    hijriYear: number,
+    hijriMonth: number,
+    fridayIndex: number,
+    periodStatus?: string
+  ): boolean {
+    if (periodStatus === 'PAST') return false;
+    if (periodStatus === 'FUTURE') return true;
+
+    const currentDT = this.getCurrentDateTime();
+    const curVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+    const targetVal = hijriYear * 12 + hijriMonth;
+
+    if (targetVal > curVal) return true;
+    if (targetVal < curVal) return false;
+
+    // نفس الشهر الحالي: التحقق هل مضت هذه الجمعة فعلياً
+    const validation = this.validateFridayAction(hijriYear, hijriMonth, fridayIndex);
+    return !validation.isPastFriday;
+  }
+
+  /**
    * تحويل تاريخ ميلادي إلى هجري موحد
    */
   public static gregorianToHijri(date: Date, options?: CalendarServiceOptions): HijriDateInfo {

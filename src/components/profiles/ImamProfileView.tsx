@@ -49,6 +49,30 @@ interface ImamProfileViewProps {
   onOpenMosqueProfile: (mosqueId: number) => void;
 }
 
+const imamProfileCache = new Map<string, ImamProfileData>();
+
+const normalizeProfileData = (profile: ImamProfileData): ImamProfileData => {
+  const normAssignments = (profile.assignments || []).map((a) => ({
+    ...a,
+    isUpcoming: (a.hijriYear && a.hijriMonth && a.fridayIndex)
+      ? CalendarService.isFridayUpcoming(a.hijriYear, a.hijriMonth, a.fridayIndex, a.scheduleStatus)
+      : Boolean(a.isUpcoming),
+  }));
+
+  const normUpcoming = (profile.upcomingAssignments || []).map((a) => ({
+    ...a,
+    isUpcoming: (a.hijriYear && a.hijriMonth && a.fridayIndex)
+      ? CalendarService.isFridayUpcoming(a.hijriYear, a.hijriMonth, a.fridayIndex, a.scheduleStatus)
+      : Boolean(a.isUpcoming),
+  }));
+
+  return {
+    ...profile,
+    assignments: normAssignments,
+    upcomingAssignments: normUpcoming,
+  };
+};
+
 export function ImamProfileView({
   imamId,
   onBack,
@@ -73,8 +97,18 @@ export function ImamProfileView({
   };
 
   const loadProfile = async (schedId?: number) => {
-    setLoading(true);
+    const effectiveSchedId = schedId !== undefined ? schedId : selectedScheduleId;
+    const cacheKey = `${imamId}-${effectiveSchedId || 'default'}`;
+    const cached = imamProfileCache.get(cacheKey) || imamProfileCache.get(`${imamId}-default`);
+    
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
+
     try {
       const url = schedId
         ? `/api/imams/${imamId}/profile?scheduleId=${schedId}`
@@ -82,7 +116,10 @@ export function ImamProfileView({
         ? `/api/imams/${imamId}/profile?scheduleId=${selectedScheduleId}`
         : `/api/imams/${imamId}/profile`;
       const res = await fetchApi<ImamProfileData>(url);
-      setData(res);
+      const normalized = normalizeProfileData(res);
+      imamProfileCache.set(cacheKey, normalized);
+      imamProfileCache.set(`${imamId}-default`, normalized);
+      setData(normalized);
       if (schedId) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && res.activeSchedule) {
@@ -92,7 +129,10 @@ export function ImamProfileView({
       console.warn('Backend unavailable, attempting local seed fallback for imam profile:', err);
       const fallback = getFallbackImamProfile(imamId, schedId || selectedScheduleId);
       if (fallback) {
-        setData(fallback);
+        const normalized = normalizeProfileData(fallback);
+        imamProfileCache.set(cacheKey, normalized);
+        imamProfileCache.set(`${imamId}-default`, normalized);
+        setData(normalized);
         if (schedId) {
           setSelectedScheduleId(schedId);
         } else if (!selectedScheduleId && fallback.activeSchedule) {

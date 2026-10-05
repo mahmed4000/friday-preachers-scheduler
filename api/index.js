@@ -36865,13 +36865,22 @@ var init_schema2 = __esm({
 });
 
 // src/db/index.ts
-var Pool3, createPool, pool, db;
+var Pool3, isDatabaseConfigured, isDatabaseAvailable, markDatabaseUnavailable, createPool, pool, db;
 var init_db2 = __esm({
   "src/db/index.ts"() {
     init_node_postgres();
     init_esm();
     init_schema2();
     ({ Pool: Pool3 } = esm_default);
+    isDatabaseConfigured = Boolean(
+      process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL
+    );
+    isDatabaseAvailable = () => {
+      return global._isDbAlive ?? false;
+    };
+    markDatabaseUnavailable = () => {
+      global._isDbAlive = false;
+    };
     createPool = () => {
       if (!global._postgresPool) {
         const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL;
@@ -36881,9 +36890,10 @@ var init_db2 = __esm({
             connectionString,
             ssl: connectionString.includes("localhost") || connectionString.includes("127.0.0.1") ? false : { rejectUnauthorized: false },
             max: 5,
-            connectionTimeoutMillis: 2500,
+            connectionTimeoutMillis: 1e3,
             idleTimeoutMillis: 1e4
           };
+          global._isDbAlive = true;
         } else {
           let host = process.env.SQL_HOST || "localhost";
           if (host.startsWith("/") && typeof window === "undefined") {
@@ -36903,14 +36913,27 @@ var init_db2 = __esm({
             database: process.env.SQL_DB_NAME || "postgres",
             port: Number(process.env.SQL_PORT) || 5432,
             max: 5,
-            connectionTimeoutMillis: 2500,
+            connectionTimeoutMillis: 800,
             idleTimeoutMillis: 1e4
           };
+          global._isDbAlive = false;
         }
         global._postgresPool = new Pool3(config);
         global._postgresPool.on("error", (err) => {
+          global._isDbAlive = false;
           console.warn("PostgreSQL idle pool notification:", err?.message || err);
         });
+        if (connectionString) {
+          global._postgresPool.query("SELECT 1").then(() => {
+            global._isDbAlive = true;
+            console.log("PostgreSQL database connected successfully.");
+          }).catch((err) => {
+            global._isDbAlive = false;
+            console.warn("PostgreSQL connection check failed, operating with in-memory store:", err?.message || err);
+          });
+        } else {
+          global._isDbAlive = false;
+        }
       }
       return global._postgresPool;
     };
@@ -124554,6 +124577,21 @@ var CalendarService = class {
     return { hijriYear: curYear, hijriMonth: curMonth < 12 ? curMonth + 1 : 1 };
   }
   /**
+   * تحديد ما إذا كانت جمعة أو تكليف زمني يقع في المستقبل/القادم أم انتهى بالفعل
+   * وفق الحساب الزمني الدقيق للتقويم الهجري المركزي
+   */
+  static isFridayUpcoming(hijriYear, hijriMonth, fridayIndex, periodStatus) {
+    if (periodStatus === "PAST") return false;
+    if (periodStatus === "FUTURE") return true;
+    const currentDT = this.getCurrentDateTime();
+    const curVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+    const targetVal = hijriYear * 12 + hijriMonth;
+    if (targetVal > curVal) return true;
+    if (targetVal < curVal) return false;
+    const validation = this.validateFridayAction(hijriYear, hijriMonth, fridayIndex);
+    return !validation.isPastFriday;
+  }
+  /**
    * تحويل تاريخ ميلادي إلى هجري موحد
    */
   static gregorianToHijri(date2, options) {
@@ -134097,7 +134135,12 @@ var memoryStore = {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
       const m2 = mosqueMap.get(a.mosqueId);
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s2?.hijriYear || 1448,
+        s2?.hijriMonth || 1,
+        a.fridayIndex,
+        s2?.periodStatus
+      );
       return {
         id: a.id,
         scheduleId: a.scheduleId,
@@ -134205,7 +134248,12 @@ var memoryStore = {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
       const i2 = a.imamId ? imamMap.get(a.imamId) : null;
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s2?.hijriYear || 1448,
+        s2?.hijriMonth || 1,
+        a.fridayIndex,
+        s2?.periodStatus
+      );
       return {
         id: a.id,
         scheduleId: a.scheduleId,
@@ -135278,6 +135326,9 @@ api.get("/dashboard", async (req, res) => {
   let hijriMonth = req.query.hijriMonth ? Number(req.query.hijriMonth) : currentDT.hijri.month;
   if (isNaN(hijriYear) || hijriYear < 1300 || hijriYear > 1600) hijriYear = currentDT.hijri.year;
   if (isNaN(hijriMonth) || hijriMonth < 1 || hijriMonth > 12) hijriMonth = currentDT.hijri.month;
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getDashboard(hijriYear, hijriMonth));
+  }
   try {
     const monthDetails = CalendarService.getHijriMonthDetails(hijriYear, hijriMonth);
     const allMosques = await db.select().from(mosques);
@@ -135470,6 +135521,7 @@ api.get("/dashboard", async (req, res) => {
       liveDateTime: currentDT
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for dashboard failed, falling back to memory store:", error?.message);
     const fallbackData = memoryStore.getDashboard(hijriYear, hijriMonth);
     res.json(fallbackData);
@@ -135668,6 +135720,9 @@ api.put("/settings", async (req, res) => {
 api.get("/mosques", async (req, res) => {
   const search = req.query.search || "";
   const region = req.query.region || "";
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getMosques(search, region));
+  }
   try {
     const list = await db.select().from(mosques).orderBy(asc(mosques.id));
     const allImams = await db.select().from(imams);
@@ -135693,14 +135748,20 @@ api.get("/mosques", async (req, res) => {
     });
     res.json(enhanced);
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for mosques failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getMosques(search, region);
     res.json(fallback);
   }
 });
 api.get("/mosques/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!isDatabaseAvailable()) {
+    const fallbackFound = memoryStore.getMosqueDetails(id);
+    if (fallbackFound) return res.json(fallbackFound);
+    return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+  }
   try {
-    const id = Number(req.params.id);
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
     if (!found[0]) {
       const fallbackFound = memoryStore.getMosqueDetails(id);
@@ -135719,6 +135780,7 @@ api.get("/mosques/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for mosque details failed, falling back to memory store:", error?.message);
     const fallbackFound = memoryStore.getMosqueDetails(Number(req.params.id));
     if (fallbackFound) return res.json(fallbackFound);
@@ -135726,8 +135788,14 @@ api.get("/mosques/:id", async (req, res) => {
   }
 });
 api.get("/mosques/:id/profile", async (req, res) => {
+  const id = Number(req.params.id);
+  const schedId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
+  if (!isDatabaseAvailable()) {
+    const fallback = memoryStore.getMosqueProfile(id, schedId);
+    if (!fallback) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return res.json(fallback);
+  }
   try {
-    const id = Number(req.params.id);
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
     if (!found[0]) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     const mosque = found[0];
@@ -135749,7 +135817,12 @@ api.get("/mosques/:id/profile", async (req, res) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
       const im = a.imamId ? imamMap.get(a.imamId) : null;
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s2?.hijriYear || 1448,
+        s2?.hijriMonth || 1,
+        a.fridayIndex,
+        s2?.periodStatus
+      );
       return {
         id: a.id,
         scheduleId: a.scheduleId,
@@ -135843,6 +135916,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for mosque profile failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getMosqueProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
     if (fallback) return res.json(fallback);
@@ -136460,6 +136534,9 @@ api.delete("/rules/:id", async (req, res) => {
 api.get("/imams", async (req, res) => {
   const search = req.query.search || "";
   const type = req.query.type || "";
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getImams(search, type));
+  }
   try {
     const list = await db.select().from(imams).orderBy(asc(imams.id));
     let filtered = list;
@@ -136473,14 +136550,20 @@ api.get("/imams", async (req, res) => {
     }
     res.json(filtered);
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for imams failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getImams(search, type);
     res.json(fallback);
   }
 });
 api.get("/imams/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!isDatabaseAvailable()) {
+    const fallbackFound = memoryStore.getImamDetails(id);
+    if (fallbackFound) return res.json(fallbackFound);
+    return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+  }
   try {
-    const id = Number(req.params.id);
     const found = await db.select().from(imams).where(eq(imams.id, id)).limit(1);
     if (!found[0]) {
       const fallbackFound = memoryStore.getImamDetails(id);
@@ -136501,6 +136584,7 @@ api.get("/imams/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for imam details failed, falling back to memory store:", error?.message);
     const fallbackFound = memoryStore.getImamDetails(Number(req.params.id));
     if (fallbackFound) return res.json(fallbackFound);
@@ -136508,8 +136592,14 @@ api.get("/imams/:id", async (req, res) => {
   }
 });
 api.get("/imams/:id/profile", async (req, res) => {
+  const id = Number(req.params.id);
+  const schedId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
+  if (!isDatabaseAvailable()) {
+    const fallback = memoryStore.getImamProfile(id, schedId);
+    if (!fallback) return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    return res.json(fallback);
+  }
   try {
-    const id = Number(req.params.id);
     const found = await db.select().from(imams).where(eq(imams.id, id)).limit(1);
     if (!found[0]) return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     const imam = found[0];
@@ -136526,7 +136616,12 @@ api.get("/imams/:id/profile", async (req, res) => {
       const f3 = fridayMap.get(a.fridayId);
       const s2 = scheduleMap.get(a.scheduleId);
       const m2 = mosqueMap.get(a.mosqueId);
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s2?.status !== "ARCHIVED";
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s2?.hijriYear || 1448,
+        s2?.hijriMonth || 1,
+        a.fridayIndex,
+        s2?.periodStatus
+      );
       return {
         id: a.id,
         scheduleId: a.scheduleId,
@@ -136629,6 +136724,7 @@ api.get("/imams/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for imam profile failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getImamProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
     if (fallback) return res.json(fallback);
@@ -136833,6 +136929,9 @@ api.post("/imams/:id/availabilities", async (req, res) => {
   }
 });
 api.get("/schedules", async (_req, res) => {
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getSchedules());
+  }
   try {
     const list = await db.select().from(monthlySchedules).orderBy(desc(monthlySchedules.id));
     const enrichedList = list.map((s2) => {
@@ -136855,6 +136954,7 @@ api.get("/schedules", async (_req, res) => {
     });
     res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for schedules failed, falling back to memory store:", error?.message);
     res.json(memoryStore.getSchedules());
   }
@@ -136957,8 +137057,20 @@ api.post("/schedules", async (req, res) => {
   }
 });
 api.get("/schedules/:id", async (req, res) => {
+  const scheduleId = Number(req.params.id);
+  if (!isDatabaseAvailable()) {
+    const fallback = memoryStore.getScheduleDetails(scheduleId);
+    if (fallback) {
+      return res.json({
+        ...fallback,
+        mosques: memoryStore.getMosques(),
+        imams: memoryStore.getImams(),
+        rules: memoryStore.getRules()
+      });
+    }
+    return res.status(404).json({ error: "\u0627\u0644\u062C\u062F\u0648\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+  }
   try {
-    const scheduleId = Number(req.params.id);
     const [schedule] = await db.select().from(monthlySchedules).where(eq(monthlySchedules.id, scheduleId));
     if (!schedule) return res.status(404).json({ error: "\u0627\u0644\u062C\u062F\u0648\u0644 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
@@ -137005,6 +137117,7 @@ api.get("/schedules/:id", async (req, res) => {
       rules: allRules
     });
   } catch (error) {
+    markDatabaseUnavailable();
     console.warn("DB fetch for schedule details failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getScheduleDetails(Number(req.params.id));
     if (fallback) {

@@ -50,6 +50,30 @@ interface MosqueProfileViewProps {
   onOpenImamProfile: (imamId: number) => void;
 }
 
+const mosqueProfileCache = new Map<string, MosqueProfileData>();
+
+const normalizeMosqueProfileData = (profile: MosqueProfileData): MosqueProfileData => {
+  const normAssignments = (profile.assignments || []).map((a) => ({
+    ...a,
+    isUpcoming: (a.hijriYear && a.hijriMonth && a.fridayIndex)
+      ? CalendarService.isFridayUpcoming(a.hijriYear, a.hijriMonth, a.fridayIndex, a.scheduleStatus)
+      : Boolean(a.isUpcoming),
+  }));
+
+  const normUpcoming = (profile.upcomingAssignments || []).map((a) => ({
+    ...a,
+    isUpcoming: (a.hijriYear && a.hijriMonth && a.fridayIndex)
+      ? CalendarService.isFridayUpcoming(a.hijriYear, a.hijriMonth, a.fridayIndex, a.scheduleStatus)
+      : Boolean(a.isUpcoming),
+  }));
+
+  return {
+    ...profile,
+    assignments: normAssignments,
+    upcomingAssignments: normUpcoming,
+  };
+};
+
 export function MosqueProfileView({
   mosqueId,
   onBack,
@@ -70,8 +94,18 @@ export function MosqueProfileView({
   const [scheduleFilterMonth, setScheduleFilterMonth] = useState<string>('ALL');
 
   const loadProfile = async (schedId?: number) => {
-    setLoading(true);
+    const effectiveSchedId = schedId !== undefined ? schedId : selectedScheduleId;
+    const cacheKey = `${mosqueId}-${effectiveSchedId || 'default'}`;
+    const cached = mosqueProfileCache.get(cacheKey) || mosqueProfileCache.get(`${mosqueId}-default`);
+    
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
+
     try {
       const url = schedId
         ? `/api/mosques/${mosqueId}/profile?scheduleId=${schedId}`
@@ -79,7 +113,10 @@ export function MosqueProfileView({
         ? `/api/mosques/${mosqueId}/profile?scheduleId=${selectedScheduleId}`
         : `/api/mosques/${mosqueId}/profile`;
       const res = await fetchApi<MosqueProfileData>(url);
-      setData(res);
+      const normalized = normalizeMosqueProfileData(res);
+      mosqueProfileCache.set(cacheKey, normalized);
+      mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+      setData(normalized);
       if (schedId) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && res.activeSchedule) {
@@ -99,7 +136,10 @@ export function MosqueProfileView({
       console.warn('Backend unavailable, attempting local seed fallback for mosque profile:', err);
       const fallback = getFallbackMosqueProfile(mosqueId, schedId || selectedScheduleId);
       if (fallback) {
-        setData(fallback);
+        const normalized = normalizeMosqueProfileData(fallback);
+        mosqueProfileCache.set(cacheKey, normalized);
+        mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+        setData(normalized);
         if (schedId) {
           setSelectedScheduleId(schedId);
         } else if (!selectedScheduleId && fallback.activeSchedule) {

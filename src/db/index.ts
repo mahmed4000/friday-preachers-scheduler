@@ -6,7 +6,22 @@ import * as schema from './schema.ts';
 
 declare global {
   var _postgresPool: Pool | undefined;
+  var _isDbAlive: boolean | undefined;
 }
+
+export const isDatabaseConfigured = Boolean(
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.VERCEL_POSTGRES_URL
+);
+
+export const isDatabaseAvailable = () => {
+  return global._isDbAlive ?? false;
+};
+
+export const markDatabaseUnavailable = () => {
+  global._isDbAlive = false;
+};
 
 export const createPool = () => {
   if (!global._postgresPool) {
@@ -25,9 +40,10 @@ export const createPool = () => {
             ? false
             : { rejectUnauthorized: false },
         max: 5,
-        connectionTimeoutMillis: 2500,
+        connectionTimeoutMillis: 1000,
         idleTimeoutMillis: 10000,
       };
+      global._isDbAlive = true;
     } else {
       let host = process.env.SQL_HOST || 'localhost';
       // If host is a unix socket path that does not exist, fallback to localhost
@@ -49,16 +65,33 @@ export const createPool = () => {
         database: process.env.SQL_DB_NAME || 'postgres',
         port: Number(process.env.SQL_PORT) || 5432,
         max: 5,
-        connectionTimeoutMillis: 2500,
+        connectionTimeoutMillis: 800,
         idleTimeoutMillis: 10000,
       };
+      // Without DATABASE_URL, operate in high-speed in-memory store
+      global._isDbAlive = false;
     }
 
     global._postgresPool = new Pool(config);
 
     global._postgresPool.on('error', (err) => {
+      global._isDbAlive = false;
       console.warn('PostgreSQL idle pool notification:', err?.message || err);
     });
+
+    if (connectionString) {
+      global._postgresPool.query('SELECT 1')
+        .then(() => {
+          global._isDbAlive = true;
+          console.log('PostgreSQL database connected successfully.');
+        })
+        .catch((err) => {
+          global._isDbAlive = false;
+          console.warn('PostgreSQL connection check failed, operating with in-memory store:', err?.message || err);
+        });
+    } else {
+      global._isDbAlive = false;
+    }
   }
   return global._postgresPool;
 };

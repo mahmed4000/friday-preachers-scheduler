@@ -365,7 +365,12 @@ export const memoryStore = {
       const f = fridayMap.get(a.fridayId) as any;
       const s = scheduleMap.get(a.scheduleId) as any;
       const m = mosqueMap.get(a.mosqueId) as any;
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s?.hijriYear || 1448,
+        s?.hijriMonth || 1,
+        a.fridayIndex,
+        s?.periodStatus
+      );
 
       return {
         id: a.id,
@@ -489,7 +494,12 @@ export const memoryStore = {
       const f = fridayMap.get(a.fridayId) as any;
       const s = scheduleMap.get(a.scheduleId) as any;
       const i = a.imamId ? (imamMap.get(a.imamId) as any) : null;
-      const isUpcoming = activeSchedule ? a.scheduleId === activeSchedule.id : s?.status !== 'ARCHIVED';
+      const isUpcoming = CalendarService.isFridayUpcoming(
+        s?.hijriYear || 1448,
+        s?.hijriMonth || 1,
+        a.fridayIndex,
+        s?.periodStatus
+      );
 
       return {
         id: a.id,
