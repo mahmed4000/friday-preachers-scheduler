@@ -125402,6 +125402,12 @@ var EgyptAdministrativeProvider = class {
     }
   }
   /**
+   * قائمة جميع الوحدات الإدارية والمحافظات المصرية المعتمدة
+   */
+  static getAllUnits() {
+    return Array.from(this.allUnitsMap.values());
+  }
+  /**
    * قائمة الدول المدعومة (افتراضياً: جمهورية مصر العربية)
    */
   static getCountries() {
@@ -139296,6 +139302,9 @@ api.get("/audit-logs", requireAdmin, async (_req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u062C\u0644\u0627\u062A \u0627\u0644\u062A\u062F\u0642\u064A\u0642 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
+var inMemoryImportExportLogs = [];
+var nextImportExportLogId = 1;
+var inMemoryImportSnapshots = [];
 api.post("/import-export/preview", requireAuth, async (req, res) => {
   try {
     const {
@@ -139309,7 +139318,7 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
       return res.status(400).json({ error: "\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u0631\u0641\u0648\u0639 \u0641\u0627\u0631\u063A \u0623\u0648 \u0644\u0627 \u064A\u062D\u062A\u0648\u064A \u0639\u0644\u0649 \u0635\u0641\u0648\u0641 \u0635\u0627\u0644\u062D\u0629 \u0644\u0644\u0642\u0631\u0627\u0621\u0629" });
     }
     const batchId = `IMPORT-${(/* @__PURE__ */ new Date()).getFullYear()}-${String(Math.floor(1e4 + Math.random() * 9e4))}`;
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
     const fileHeaders = Object.keys(rawRows[0] || {});
     const autoRes = autoMapHeaders(fileHeaders, entityType);
     const effectiveEntityType = autoRes.detectedEntityType;
@@ -139566,11 +139575,20 @@ api.post("/import-export/execute", requireAdmin, async (req, res) => {
     }
     try {
       const currentSnapshot = entityType === "MOSQUES" ? await db.select().from(mosques) : await db.select().from(imams);
-      await db.insert(importSnapshots).values({
+      inMemoryImportSnapshots.push({
         batchId: batchId || `BATCH-${Date.now()}`,
         entityType,
-        snapshotJson: JSON.stringify(currentSnapshot)
+        snapshotJson: JSON.stringify(currentSnapshot),
+        createdAt: /* @__PURE__ */ new Date()
       });
+      try {
+        await db.insert(importSnapshots).values({
+          batchId: batchId || `BATCH-${Date.now()}`,
+          entityType,
+          snapshotJson: JSON.stringify(currentSnapshot)
+        });
+      } catch {
+      }
     } catch (snapErr) {
       console.warn("Could not store import snapshot:", snapErr);
     }
@@ -139623,10 +139641,10 @@ api.post("/import-export/execute", requireAdmin, async (req, res) => {
               skippedCount++;
             }
           } else {
-            let finalCode = d.code;
+            let finalCode = d.code || `MOS-${Math.floor(100 + Math.random() * 900)}`;
             const duplicateCode = await db.select().from(mosques).where(eq(mosques.code, finalCode));
             if (duplicateCode.length > 0) {
-              finalCode = `${d.code}-${Math.floor(10 + Math.random() * 90)}`;
+              finalCode = `${finalCode}-${Math.floor(10 + Math.random() * 90)}`;
             }
             await db.insert(mosques).values({
               name: d.name,
@@ -139692,7 +139710,8 @@ api.post("/import-export/execute", requireAdmin, async (req, res) => {
       }
     }
     const logStatus = errorCount === 0 ? "COMPLETED" : createdCount + updatedCount > 0 ? "COMPLETED_WITH_WARNINGS" : "FAILED";
-    await db.insert(importExportLogs).values({
+    const logItem = {
+      id: nextImportExportLogId++,
       batchId: batchId || `BATCH-${Date.now()}`,
       operationType: "IMPORT",
       entityType,
@@ -139709,7 +139728,13 @@ api.post("/import-export/execute", requireAdmin, async (req, res) => {
       summaryJson: JSON.stringify({ created: createdCount, updated: updatedCount, skipped: skippedCount, errors: errorCount }),
       errorReportJson: errorReport.length > 0 ? JSON.stringify(errorReport) : null,
       completedAt: /* @__PURE__ */ new Date()
-    });
+    };
+    inMemoryImportExportLogs.unshift(logItem);
+    try {
+      await db.insert(importExportLogs).values(logItem);
+    } catch (logDbErr) {
+      console.warn("Could not store import log in DB (using memory fallback):", logDbErr);
+    }
     await logAudit(req, "EXECUTE_IMPORT", entityType, void 0, {
       batchId,
       mode,
@@ -139746,7 +139771,7 @@ api.post("/import-export/export", requireAuth, async (req, res) => {
       selectedIds = [],
       singleEntityId
     } = req.body;
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
     const unitMap = new Map(allUnits.map((u) => [u.id, u]));
     if (entityType === "MOSQUES") {
       let query = db.select().from(mosques);
@@ -139801,7 +139826,7 @@ api.post("/import-export/export", requireAuth, async (req, res) => {
             data: allUnits.map((u) => ({
               "\u0643\u0648\u062F \u0627\u0644\u0648\u062D\u062F\u0629": u.id,
               "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629": u.nameAr,
-              "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
+              "\u0627\u0644\u0646\u0648\u0639": EgyptAdministrativeProvider.getTypeLabelArabic(u.type) || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
               "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
               "\u0627\u0644\u0643\u0648\u062F \u0627\u0644\u0625\u062F\u0627\u0631\u064A": u.code || ""
             }))
@@ -139938,7 +139963,7 @@ api.post("/import-export/export", requireAuth, async (req, res) => {
 api.get("/import-export/templates/:type", async (req, res) => {
   try {
     const rawType = String(req.params.type || "").toLowerCase();
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
     if (rawType === "mosques") {
       const sampleMosques = [
         {
@@ -140015,7 +140040,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 / \u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
+            "\u0627\u0644\u0646\u0648\u0639": EgyptAdministrativeProvider.getTypeLabelArabic(u.type) || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -140089,7 +140114,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 / \u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
+            "\u0627\u0644\u0646\u0648\u0639": EgyptAdministrativeProvider.getTypeLabelArabic(u.type) || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -140135,7 +140160,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0635\u0631\u064A\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
+            "\u0627\u0644\u0646\u0648\u0639": EgyptAdministrativeProvider.getTypeLabelArabic(u.type) || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -140153,15 +140178,24 @@ api.get("/import-export/templates/:type", async (req, res) => {
 api.get("/import-export/logs", requireAdmin, async (_req, res) => {
   try {
     const logs = await db.select().from(importExportLogs).orderBy(desc(importExportLogs.id)).limit(50);
-    res.json(logs);
-  } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u062C\u0644 \u0627\u0644\u0639\u0645\u0644\u064A\u0627\u062A", details: error.message });
+    return res.json(logs);
+  } catch {
+    return res.json(inMemoryImportExportLogs.slice(0, 50));
   }
 });
 api.get("/import-export/logs/:id/error-report", requireAdmin, async (req, res) => {
   try {
     const logId = Number(req.params.id);
-    const [log] = await db.select().from(importExportLogs).where(eq(importExportLogs.id, logId));
+    let log = null;
+    try {
+      const [dbLog] = await db.select().from(importExportLogs).where(eq(importExportLogs.id, logId));
+      log = dbLog;
+    } catch {
+      log = inMemoryImportExportLogs.find((l) => l.id === logId);
+    }
+    if (!log) {
+      log = inMemoryImportExportLogs.find((l) => l.id === logId);
+    }
     if (!log || !log.errorReportJson) {
       return res.status(404).json({ error: "\u0644\u0627 \u064A\u0648\u062C\u062F \u062A\u0642\u0631\u064A\u0631 \u0623\u062E\u0637\u0627\u0621 \u0644\u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629" });
     }
@@ -140252,19 +140286,6 @@ var api_default = api;
 var app = (0, import_express2.default)();
 app.use(import_express2.default.json({ limit: "50mb" }));
 app.use(import_express2.default.urlencoded({ limit: "50mb", extended: true }));
-var isSeeded = false;
-app.use((req, res, next) => {
-  if (!isSeeded) {
-    isSeeded = true;
-    const hasDbUrl = Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL);
-    if (hasDbUrl) {
-      seedDatabase().catch((err) => {
-        console.warn("Vercel cold start background seed check error:", err);
-      });
-    }
-  }
-  next();
-});
 app.get(["/api/health", "/health"], (_req, res) => {
   res.status(200).json({ status: "ok", timestamp: Date.now(), uptime: process.uptime() });
 });
