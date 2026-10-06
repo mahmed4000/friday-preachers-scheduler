@@ -91,7 +91,32 @@ async function logAudit(req: AuthRequest, action: string, entityType: string, en
 // 1. Health & Dashboard & Calendar
 // -------------------------------------------------------------
 api.get('/health', async (_req: Request, res: Response) => {
-  res.json({ status: 'ok', version: 'supabase-v1', serverTime: new Date().toISOString() });
+  let supabaseMosqueCount = -1;
+  let supabaseError: any = null;
+  try {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data, error } = await client.from('mosques').select('id, name, address, fixed_imam_id');
+      if (error) {
+        supabaseError = error.message;
+      } else {
+        supabaseMosqueCount = data?.length ?? 0;
+      }
+    }
+  } catch (err: any) {
+    supabaseError = err.message;
+  }
+
+  res.json({
+    status: 'ok',
+    version: 'supabase-v2',
+    isSupabaseConfigured,
+    supabaseAvailable: SupabaseDataService.isAvailable(),
+    isDbAvailable: isDatabaseAvailable(),
+    supabaseMosqueCount,
+    supabaseError,
+    serverTime: new Date().toISOString(),
+  });
 });
 
 api.get('/calendar/current', async (_req: Request, res: Response) => {
