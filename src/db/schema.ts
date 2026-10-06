@@ -400,3 +400,23 @@ export const assignmentsRelations = relations(assignments, ({ one }) => ({
     references: [imams.id],
   }),
 }));
+
+// Organization Settings table
+export const organizationSettings = pgTable('organization_settings', {
+  id: serial('id').primaryKey(),
+  associationName: text('association_name').default('جمعية العناية بالمساجد').notNull(),
+  branchName: text('branch_name').default('الإدارة العامة لشؤون الخطباء'),
+  calendarProvider: text('calendar_provider').default('UMM_AL_QURA'),
+  timezone: text('timezone').default('Africa/Cairo'),
+  contactPhone: text('contact_phone'),
+  contactEmail: text('contact_email'),
+  website: text('website'),
+  address: text('address'),
+  formattedAddress: text('formatted_address'),
+  defaultDistributionMethod: text('default_distribution_method').default('Balanced Random'),
+  autoLockFixed: boolean('auto_lock_fixed').default(true),
+  logoUrl: text('logo_url'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+

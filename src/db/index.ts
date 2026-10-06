@@ -16,11 +16,17 @@ export const isDatabaseConfigured = Boolean(
 );
 
 export const isDatabaseAvailable = () => {
+  if (isDatabaseConfigured) {
+    return global._isDbAlive !== false;
+  }
   return global._isDbAlive ?? false;
 };
 
 export const markDatabaseUnavailable = () => {
-  global._isDbAlive = false;
+  // Only mark unavailable if not explicitly configured with DATABASE_URL
+  if (!isDatabaseConfigured) {
+    global._isDbAlive = false;
+  }
 };
 
 export const createPool = () => {
@@ -40,7 +46,7 @@ export const createPool = () => {
             ? false
             : { rejectUnauthorized: false },
         max: 5,
-        connectionTimeoutMillis: 1000,
+        connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 10000,
       };
       global._isDbAlive = true;
@@ -65,17 +71,17 @@ export const createPool = () => {
         database: process.env.SQL_DB_NAME || 'postgres',
         port: Number(process.env.SQL_PORT) || 5432,
         max: 5,
-        connectionTimeoutMillis: 800,
+        connectionTimeoutMillis: 10000,
         idleTimeoutMillis: 10000,
       };
-      // Without DATABASE_URL, operate in high-speed in-memory store
+      // Without DATABASE_URL, check if local Postgres is responsive
       global._isDbAlive = false;
     }
 
     global._postgresPool = new Pool(config);
 
     global._postgresPool.on('error', (err: any) => {
-      global._isDbAlive = false;
+      // Idle client timeouts or transient resets in pool should not permanently kill DB availability
       console.warn('PostgreSQL idle pool notification:', err?.message || err);
     });
 
@@ -86,8 +92,7 @@ export const createPool = () => {
           console.log('PostgreSQL database connected successfully.');
         })
         .catch((err: any) => {
-          global._isDbAlive = false;
-          console.warn('PostgreSQL connection check failed, operating with in-memory store:', err?.message || err);
+          console.warn('PostgreSQL connection check initial notice (retries permitted on query):', err?.message || err);
         });
     } else {
       global._isDbAlive = false;

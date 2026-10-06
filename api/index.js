@@ -36471,11 +36471,12 @@ __export(schema_exports, {
   mosqueImamRulesRelations: () => mosqueImamRulesRelations,
   mosques: () => mosques,
   mosquesRelations: () => mosquesRelations,
+  organizationSettings: () => organizationSettings,
   overrides: () => overrides,
   scheduleVersions: () => scheduleVersions,
   users: () => users
 });
-var countries, administrativeUnits, addresses, users, mosques, imams, fixedAssignmentPatterns, fixedAssignmentPatternItems, mosqueImamRules, imamAvailabilities, monthlySchedules, fridays, assignments, conflicts, overrides, assignmentHistory, scheduleVersions, distributionLogs, auditLogs, importExportLogs, importSnapshots, mosquesRelations, imamsRelations, fixedAssignmentPatternsRelations, fixedAssignmentPatternItemsRelations, mosqueImamRulesRelations, monthlySchedulesRelations, assignmentsRelations;
+var countries, administrativeUnits, addresses, users, mosques, imams, fixedAssignmentPatterns, fixedAssignmentPatternItems, mosqueImamRules, imamAvailabilities, monthlySchedules, fridays, assignments, conflicts, overrides, assignmentHistory, scheduleVersions, distributionLogs, auditLogs, importExportLogs, importSnapshots, mosquesRelations, imamsRelations, fixedAssignmentPatternsRelations, fixedAssignmentPatternItemsRelations, mosqueImamRulesRelations, monthlySchedulesRelations, assignmentsRelations, organizationSettings;
 var init_schema2 = __esm({
   "src/db/schema.ts"() {
     init_drizzle_orm();
@@ -36861,11 +36862,28 @@ var init_schema2 = __esm({
         references: [imams.id]
       })
     }));
+    organizationSettings = pgTable("organization_settings", {
+      id: serial("id").primaryKey(),
+      associationName: text("association_name").default("\u062C\u0645\u0639\u064A\u0629 \u0627\u0644\u0639\u0646\u0627\u064A\u0629 \u0628\u0627\u0644\u0645\u0633\u0627\u062C\u062F").notNull(),
+      branchName: text("branch_name").default("\u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0634\u0624\u0648\u0646 \u0627\u0644\u062E\u0637\u0628\u0627\u0621"),
+      calendarProvider: text("calendar_provider").default("UMM_AL_QURA"),
+      timezone: text("timezone").default("Africa/Cairo"),
+      contactPhone: text("contact_phone"),
+      contactEmail: text("contact_email"),
+      website: text("website"),
+      address: text("address"),
+      formattedAddress: text("formatted_address"),
+      defaultDistributionMethod: text("default_distribution_method").default("Balanced Random"),
+      autoLockFixed: boolean("auto_lock_fixed").default(true),
+      logoUrl: text("logo_url"),
+      createdAt: timestamp("created_at").defaultNow().notNull(),
+      updatedAt: timestamp("updated_at").defaultNow().notNull()
+    });
   }
 });
 
 // src/db/index.ts
-var Pool3, isDatabaseConfigured, isDatabaseAvailable, markDatabaseUnavailable, createPool, pool, db;
+var Pool3, isDatabaseConfigured, isDatabaseAvailable, createPool, pool, db;
 var init_db2 = __esm({
   "src/db/index.ts"() {
     init_node_postgres();
@@ -36876,10 +36894,10 @@ var init_db2 = __esm({
       process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.VERCEL_POSTGRES_URL
     );
     isDatabaseAvailable = () => {
+      if (isDatabaseConfigured) {
+        return global._isDbAlive !== false;
+      }
       return global._isDbAlive ?? false;
-    };
-    markDatabaseUnavailable = () => {
-      global._isDbAlive = false;
     };
     createPool = () => {
       if (!global._postgresPool) {
@@ -36890,7 +36908,7 @@ var init_db2 = __esm({
             connectionString,
             ssl: connectionString.includes("localhost") || connectionString.includes("127.0.0.1") ? false : { rejectUnauthorized: false },
             max: 5,
-            connectionTimeoutMillis: 1e3,
+            connectionTimeoutMillis: 1e4,
             idleTimeoutMillis: 1e4
           };
           global._isDbAlive = true;
@@ -36913,14 +36931,13 @@ var init_db2 = __esm({
             database: process.env.SQL_DB_NAME || "postgres",
             port: Number(process.env.SQL_PORT) || 5432,
             max: 5,
-            connectionTimeoutMillis: 800,
+            connectionTimeoutMillis: 1e4,
             idleTimeoutMillis: 1e4
           };
           global._isDbAlive = false;
         }
         global._postgresPool = new Pool3(config);
         global._postgresPool.on("error", (err) => {
-          global._isDbAlive = false;
           console.warn("PostgreSQL idle pool notification:", err?.message || err);
         });
         if (connectionString) {
@@ -36928,8 +36945,7 @@ var init_db2 = __esm({
             global._isDbAlive = true;
             console.log("PostgreSQL database connected successfully.");
           }).catch((err) => {
-            global._isDbAlive = false;
-            console.warn("PostgreSQL connection check failed, operating with in-memory store:", err?.message || err);
+            console.warn("PostgreSQL connection check initial notice (retries permitted on query):", err?.message || err);
           });
         } else {
           global._isDbAlive = false;
@@ -136291,7 +136307,6 @@ api.get("/dashboard", async (req, res) => {
       liveDateTime: currentDT
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for dashboard failed, falling back to memory store:", error?.message);
     const fallbackData = memoryStore.getDashboard(hijriYear, hijriMonth);
     res.json(fallbackData);
@@ -136445,6 +136460,25 @@ api.get("/locations/default", async (_req, res) => {
   }
 });
 api.get("/settings", async (_req, res) => {
+  if (isDatabaseAvailable()) {
+    try {
+      const dbSettings = await db.select().from(organizationSettings).limit(1);
+      if (dbSettings[0]) {
+        cachedOrganizationSettings = {
+          ...DEFAULT_ORGANIZATION_SETTINGS,
+          ...dbSettings[0],
+          branchName: dbSettings[0].branchName || DEFAULT_ORGANIZATION_SETTINGS.branchName,
+          calendarProvider: dbSettings[0].calendarProvider || DEFAULT_ORGANIZATION_SETTINGS.calendarProvider,
+          timezone: dbSettings[0].timezone || DEFAULT_ORGANIZATION_SETTINGS.timezone,
+          address: dbSettings[0].address || DEFAULT_ORGANIZATION_SETTINGS.address,
+          formattedAddress: dbSettings[0].formattedAddress || DEFAULT_ORGANIZATION_SETTINGS.formattedAddress,
+          logoUrl: dbSettings[0].logoUrl || DEFAULT_SHARIA_LOGO
+        };
+      }
+    } catch (e2) {
+      console.warn("DB settings read notice:", e2?.message);
+    }
+  }
   if (!cachedOrganizationSettings.logoUrl || cachedOrganizationSettings.logoUrl.startsWith("data:image/svg+xml")) {
     cachedOrganizationSettings.logoUrl = DEFAULT_SHARIA_LOGO;
   }
@@ -136470,6 +136504,45 @@ api.put("/settings", async (req, res) => {
       ...cachedOrganizationSettings,
       ...updatedData
     };
+    if (isDatabaseAvailable()) {
+      try {
+        const existing = await db.select().from(organizationSettings).limit(1);
+        if (existing[0]) {
+          await db.update(organizationSettings).set({
+            associationName: cachedOrganizationSettings.associationName,
+            branchName: cachedOrganizationSettings.branchName,
+            calendarProvider: cachedOrganizationSettings.calendarProvider,
+            timezone: cachedOrganizationSettings.timezone,
+            contactPhone: cachedOrganizationSettings.contactPhone,
+            contactEmail: cachedOrganizationSettings.contactEmail,
+            website: cachedOrganizationSettings.website,
+            address: cachedOrganizationSettings.address,
+            formattedAddress: cachedOrganizationSettings.formattedAddress,
+            defaultDistributionMethod: cachedOrganizationSettings.defaultDistributionMethod,
+            autoLockFixed: cachedOrganizationSettings.autoLockFixed,
+            logoUrl: cachedOrganizationSettings.logoUrl,
+            updatedAt: /* @__PURE__ */ new Date()
+          }).where(eq(organizationSettings.id, existing[0].id));
+        } else {
+          await db.insert(organizationSettings).values({
+            associationName: cachedOrganizationSettings.associationName,
+            branchName: cachedOrganizationSettings.branchName,
+            calendarProvider: cachedOrganizationSettings.calendarProvider,
+            timezone: cachedOrganizationSettings.timezone,
+            contactPhone: cachedOrganizationSettings.contactPhone,
+            contactEmail: cachedOrganizationSettings.contactEmail,
+            website: cachedOrganizationSettings.website,
+            address: cachedOrganizationSettings.address,
+            formattedAddress: cachedOrganizationSettings.formattedAddress,
+            defaultDistributionMethod: cachedOrganizationSettings.defaultDistributionMethod,
+            autoLockFixed: cachedOrganizationSettings.autoLockFixed,
+            logoUrl: cachedOrganizationSettings.logoUrl
+          });
+        }
+      } catch (dbErr) {
+        console.warn("DB settings persist notice:", dbErr?.message);
+      }
+    }
     if (cachedOrganizationSettings.calendarProvider || cachedOrganizationSettings.timezone) {
       CalendarService.configureDefaults(
         cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
@@ -136522,7 +136595,6 @@ api.get("/mosques", async (req, res) => {
     });
     res.json(enhanced);
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for mosques failed, falling back to memory store:", error?.message);
     if (SupabaseDataService.isAvailable()) {
       const list = await SupabaseDataService.getMosques(search, region);
@@ -136566,7 +136638,6 @@ api.get("/mosques/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for mosque details failed, falling back to memory store:", error?.message);
     const fallbackFound = memoryStore.getMosqueDetails(Number(req.params.id));
     if (fallbackFound) return res.json(fallbackFound);
@@ -136702,7 +136773,6 @@ api.get("/mosques/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for mosque profile failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getMosqueProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
     if (fallback) return res.json(fallback);
@@ -136783,31 +136853,20 @@ api.post("/mosques", async (req, res) => {
       formattedAddress: finalFormatted || address || null,
       latitude: latitude ? String(latitude) : null,
       longitude: longitude ? String(longitude) : null,
-      managerName,
-      phone,
-      whatsapp,
+      managerName: managerName || null,
+      phone: phone || null,
+      whatsapp: whatsapp || null,
       fixedImamId: fixedImamId ? Number(fixedImamId) : null,
       fixedPattern: fixedPattern || "ALL",
       fixedCount: fixedCount ? Number(fixedCount) : 0,
-      notes
+      notes: notes || null
     }).returning();
     await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created.id, { name, code });
     SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
   } catch (error) {
-    console.warn("DB create mosque failed, falling back to Supabase/memoryStore:", error?.message);
-    try {
-      if (SupabaseDataService.isAvailable()) {
-        const created2 = await SupabaseDataService.createMosque(req.body);
-        return res.status(201).json(created2);
-      }
-      const created = memoryStore.createMosque(req.body);
-      SupabaseRealtimeSync.syncMosque(created);
-      return res.status(201).json(created);
-    } catch (fbErr) {
-      console.error("Fallback createMosque failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0633\u062C\u062F", details: error.message });
+    console.error("DB create mosque failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.patch("/mosques/:id", async (req, res) => {
@@ -136846,34 +136905,41 @@ api.patch("/mosques/:id", async (req, res) => {
       await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
       return res.json(updated2);
     }
-    const [updated] = await db.update(mosques).set({
-      ...data,
-      countryId: data.countryId !== void 0 ? data.countryId ? Number(data.countryId) : 1 : void 0,
-      governorateId: data.governorateId !== void 0 ? data.governorateId ? Number(data.governorateId) : null : void 0,
-      districtId: data.districtId !== void 0 ? data.districtId ? Number(data.districtId) : null : void 0,
-      areaId: data.areaId !== void 0 ? data.areaId ? Number(data.areaId) : null : void 0,
-      fixedImamId: data.fixedImamId !== void 0 ? data.fixedImamId ? Number(data.fixedImamId) : null : void 0,
-      fixedCount: data.fixedCount !== void 0 ? Number(data.fixedCount) : void 0
-    }).where(eq(mosques.id, id)).returning();
+    const updateValues = {};
+    if (data.name !== void 0) updateValues.name = data.name;
+    if (data.code !== void 0) updateValues.code = data.code;
+    if (data.region !== void 0) updateValues.region = data.region;
+    if (data.address !== void 0) updateValues.address = data.address;
+    if (data.formattedAddress !== void 0) updateValues.formattedAddress = data.formattedAddress;
+    if (data.legacyAddress !== void 0) updateValues.legacyAddress = data.legacyAddress;
+    if (data.needsReview !== void 0) updateValues.needsReview = Boolean(data.needsReview);
+    if (data.countryId !== void 0) updateValues.countryId = data.countryId ? Number(data.countryId) : 1;
+    if (data.governorateId !== void 0) updateValues.governorateId = data.governorateId ? Number(data.governorateId) : null;
+    if (data.districtId !== void 0) updateValues.districtId = data.districtId ? Number(data.districtId) : null;
+    if (data.areaId !== void 0) updateValues.areaId = data.areaId ? Number(data.areaId) : null;
+    if (data.street !== void 0) updateValues.street = data.street || null;
+    if (data.buildingNumber !== void 0) updateValues.buildingNumber = data.buildingNumber || null;
+    if (data.landmark !== void 0) updateValues.landmark = data.landmark || null;
+    if (data.latitude !== void 0) updateValues.latitude = data.latitude ? String(data.latitude) : null;
+    if (data.longitude !== void 0) updateValues.longitude = data.longitude ? String(data.longitude) : null;
+    if (data.managerName !== void 0) updateValues.managerName = data.managerName || null;
+    if (data.phone !== void 0) updateValues.phone = data.phone || null;
+    if (data.whatsapp !== void 0) updateValues.whatsapp = data.whatsapp || null;
+    if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
+    if (data.fixedImamId !== void 0) updateValues.fixedImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
+    if (data.fixedPattern !== void 0) updateValues.fixedPattern = data.fixedPattern || "ALL";
+    if (data.fixedCount !== void 0) updateValues.fixedCount = Number(data.fixedCount) || 0;
+    if (data.notes !== void 0) updateValues.notes = data.notes || null;
+    const [updated] = await db.update(mosques).set(updateValues).where(eq(mosques.id, id)).returning();
+    if (!updated) {
+      return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    }
     await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
     SupabaseRealtimeSync.syncMosque(updated);
     res.json(updated);
   } catch (error) {
-    console.warn("DB patch mosque failed, falling back to Supabase/memoryStore:", error?.message);
-    try {
-      if (SupabaseDataService.isAvailable()) {
-        const updated2 = await SupabaseDataService.updateMosque(Number(req.params.id), req.body);
-        return res.json(updated2);
-      }
-      const updated = memoryStore.updateMosque(Number(req.params.id), req.body);
-      if (updated) {
-        SupabaseRealtimeSync.syncMosque(updated);
-        return res.json(updated);
-      }
-    } catch (fbErr) {
-      console.error("Fallback updateMosque failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062C\u062F", details: error.message });
+    console.error("DB patch mosque failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.delete("/mosques/:id", async (req, res) => {
@@ -136893,13 +136959,8 @@ api.delete("/mosques/:id", async (req, res) => {
     await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
     res.json({ success: true });
   } catch (error) {
-    console.warn("DB delete mosque failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteMosque(Number(req.params.id));
-      return res.json({ success: true });
-    }
-    memoryStore.deleteMosque(Number(req.params.id));
-    return res.json({ success: true });
+    console.error("DB delete mosque failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.post("/mosques/bulk-delete", async (req, res) => {
@@ -136983,27 +137044,8 @@ api.post("/mosques/:id/rules", async (req, res) => {
     SupabaseRealtimeSync.syncRule(saved);
     res.json(saved);
   } catch (error) {
-    markDatabaseUnavailable();
-    console.warn("DB rule save failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      const saved = await SupabaseDataService.upsertRule({
-        mosqueId,
-        imamId: Number(imamId),
-        relationshipType,
-        priority: priority ? Number(priority) : 1,
-        notes
-      });
-      return res.json(saved);
-    }
-    const fallbackSaved = memoryStore.upsertRule({
-      mosqueId,
-      imamId: Number(imamId),
-      relationshipType,
-      priority: priority ? Number(priority) : 1,
-      notes
-    });
-    SupabaseRealtimeSync.syncRule(fallbackSaved);
-    res.json(fallbackSaved);
+    console.error("DB rule save failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
@@ -137022,15 +137064,8 @@ api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
     SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error) {
-    markDatabaseUnavailable();
-    console.warn("DB rule delete failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(ruleId);
-      return res.json({ success: true });
-    }
-    memoryStore.deleteRule(ruleId);
-    SupabaseRealtimeSync.deleteRule(ruleId);
-    res.json({ success: true });
+    console.error("DB rule delete failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.get("/mosques/:id/fixed-patterns", async (req, res) => {
@@ -137094,7 +137129,6 @@ api.get("/mosques/:id/fixed-patterns", async (req, res) => {
       availableImams: allImams.filter((i2) => i2.isActive)
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for fixed patterns failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
     const monthDetails = CalendarService.getHijriMonthDetails(year, month);
@@ -137212,14 +137246,8 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
       patternId: lastPatternId
     });
   } catch (error) {
-    console.warn("DB error saving fixed pattern, falling back to memoryStore:", error?.message);
-    try {
-      const fallbackResult = memoryStore.saveFixedPattern(Number(req.params.id), req.body);
-      return res.json(fallbackResult);
-    } catch (fbErr) {
-      console.error("Fallback saveFixedPattern failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A", details: error.message });
+    console.error("DB error saving fixed pattern:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.post("/mosques/:id/fixed-patterns/copy", async (req, res) => {
@@ -137424,7 +137452,6 @@ api.get("/rules", async (req, res) => {
     const list = await db.select().from(mosqueImamRules).orderBy(asc(mosqueImamRules.id));
     res.json(list);
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for rules failed, falling back to Supabase/memoryStore:", error?.message);
     if (SupabaseDataService.isAvailable()) {
       const list = await SupabaseDataService.getRules(mosqueId);
@@ -137469,31 +137496,8 @@ api.post("/rules", async (req, res) => {
     await logAudit(req, "CREATE", "RULE", inserted[0].id, { mosqueId, imamId, relationshipType });
     res.status(201).json(inserted[0]);
   } catch (error) {
-    markDatabaseUnavailable();
-    console.warn("DB create rule failed, falling back to Supabase/memoryStore:", error?.message);
-    try {
-      if (SupabaseDataService.isAvailable()) {
-        const created2 = await SupabaseDataService.upsertRule({
-          mosqueId: Number(req.body.mosqueId),
-          imamId: Number(req.body.imamId),
-          relationshipType: req.body.relationshipType,
-          priority: req.body.priority || 1,
-          notes: req.body.notes || null
-        });
-        return res.status(201).json(created2);
-      }
-      const created = memoryStore.createRule({
-        mosqueId: Number(req.body.mosqueId),
-        imamId: Number(req.body.imamId),
-        relationshipType: req.body.relationshipType,
-        priority: req.body.priority || 1,
-        notes: req.body.notes || null
-      });
-      return res.status(201).json(created);
-    } catch (fbErr) {
-      console.error("Fallback createRule failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0642\u0627\u0639\u062F\u0629", details: error.message });
+    console.error("DB create rule failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.delete("/rules/:id", async (req, res) => {
@@ -137511,14 +137515,8 @@ api.delete("/rules/:id", async (req, res) => {
     await logAudit(req, "DELETE", "RULE", id);
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
-    markDatabaseUnavailable();
-    console.warn("DB delete rule failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(id);
-      return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
-    }
-    memoryStore.deleteRule(id);
-    return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
+    console.error("DB delete rule failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.get("/imams", async (req, res) => {
@@ -137544,7 +137542,6 @@ api.get("/imams", async (req, res) => {
     }
     res.json(filtered);
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for imams failed, falling back to memory store:", error?.message);
     if (SupabaseDataService.isAvailable()) {
       const list = await SupabaseDataService.getImams(search, type);
@@ -137586,7 +137583,6 @@ api.get("/imams/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for imam details failed, falling back to memory store:", error?.message);
     const fallbackFound = memoryStore.getImamDetails(Number(req.params.id));
     if (fallbackFound) return res.json(fallbackFound);
@@ -137726,7 +137722,6 @@ api.get("/imams/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for imam profile failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getImamProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
     if (fallback) return res.json(fallback);
@@ -137795,8 +137790,8 @@ api.post("/imams", async (req, res) => {
       minFridays: minFridays ? Number(minFridays) : 1,
       targetFridays: targetFridays ? Number(targetFridays) : 4,
       maxFridays: maxFridays ? Number(maxFridays) : 5,
-      phone,
-      whatsapp,
+      phone: phone || null,
+      whatsapp: whatsapp || null,
       region: finalRegion || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
       address: finalFormatted || address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062C\u064A\u0632\u0629\u060C \u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629",
       countryId: countryId ? Number(countryId) : 1,
@@ -137809,25 +137804,14 @@ api.post("/imams", async (req, res) => {
       formattedAddress: finalFormatted || address || null,
       latitude: latitude ? String(latitude) : null,
       longitude: longitude ? String(longitude) : null,
-      notes
+      notes: notes || null
     }).returning();
     await logAudit(req, "CREATE_IMAM", "IMAM", created.id, { name });
     SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
   } catch (error) {
-    console.warn("DB create imam failed, falling back to Supabase/memoryStore:", error?.message);
-    try {
-      if (SupabaseDataService.isAvailable()) {
-        const created2 = await SupabaseDataService.createImam(req.body);
-        return res.status(201).json(created2);
-      }
-      const created = memoryStore.createImam(req.body);
-      SupabaseRealtimeSync.syncImam(created);
-      return res.status(201).json(created);
-    } catch (fbErr) {
-      console.error("Fallback createImam failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u062E\u0637\u064A\u0628", details: error.message });
+    console.error("DB create imam failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.patch("/imams/:id", async (req, res) => {
@@ -137866,35 +137850,40 @@ api.patch("/imams/:id", async (req, res) => {
       await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
       return res.json(updated2);
     }
-    const [updated] = await db.update(imams).set({
-      ...data,
-      countryId: data.countryId !== void 0 ? data.countryId ? Number(data.countryId) : 1 : void 0,
-      governorateId: data.governorateId !== void 0 ? data.governorateId ? Number(data.governorateId) : null : void 0,
-      districtId: data.districtId !== void 0 ? data.districtId ? Number(data.districtId) : null : void 0,
-      areaId: data.areaId !== void 0 ? data.areaId ? Number(data.areaId) : null : void 0,
-      minFridays: data.minFridays !== void 0 ? Number(data.minFridays) : void 0,
-      targetFridays: data.targetFridays !== void 0 ? Number(data.targetFridays) : void 0,
-      maxFridays: data.maxFridays !== void 0 ? Number(data.maxFridays) : void 0
-    }).where(eq(imams.id, id)).returning();
+    const updateValues = {};
+    if (data.name !== void 0) updateValues.name = data.name;
+    if (data.type !== void 0) updateValues.type = data.type || "FLEXIBLE";
+    if (data.minFridays !== void 0) updateValues.minFridays = Number(data.minFridays) || 1;
+    if (data.targetFridays !== void 0) updateValues.targetFridays = Number(data.targetFridays) || 4;
+    if (data.maxFridays !== void 0) updateValues.maxFridays = Number(data.maxFridays) || 5;
+    if (data.phone !== void 0) updateValues.phone = data.phone || null;
+    if (data.whatsapp !== void 0) updateValues.whatsapp = data.whatsapp || null;
+    if (data.region !== void 0) updateValues.region = data.region || null;
+    if (data.address !== void 0) updateValues.address = data.address || null;
+    if (data.formattedAddress !== void 0) updateValues.formattedAddress = data.formattedAddress || null;
+    if (data.legacyAddress !== void 0) updateValues.legacyAddress = data.legacyAddress || null;
+    if (data.needsReview !== void 0) updateValues.needsReview = Boolean(data.needsReview);
+    if (data.countryId !== void 0) updateValues.countryId = data.countryId ? Number(data.countryId) : 1;
+    if (data.governorateId !== void 0) updateValues.governorateId = data.governorateId ? Number(data.governorateId) : null;
+    if (data.districtId !== void 0) updateValues.districtId = data.districtId ? Number(data.districtId) : null;
+    if (data.areaId !== void 0) updateValues.areaId = data.areaId ? Number(data.areaId) : null;
+    if (data.street !== void 0) updateValues.street = data.street || null;
+    if (data.buildingNumber !== void 0) updateValues.buildingNumber = data.buildingNumber || null;
+    if (data.landmark !== void 0) updateValues.landmark = data.landmark || null;
+    if (data.latitude !== void 0) updateValues.latitude = data.latitude ? String(data.latitude) : null;
+    if (data.longitude !== void 0) updateValues.longitude = data.longitude ? String(data.longitude) : null;
+    if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
+    if (data.notes !== void 0) updateValues.notes = data.notes || null;
+    const [updated] = await db.update(imams).set(updateValues).where(eq(imams.id, id)).returning();
+    if (!updated) {
+      return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    }
     await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
     SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
   } catch (error) {
-    console.warn("DB patch imam failed, falling back to Supabase/memoryStore:", error?.message);
-    try {
-      if (SupabaseDataService.isAvailable()) {
-        const updated2 = await SupabaseDataService.updateImam(Number(req.params.id), req.body);
-        return res.json(updated2);
-      }
-      const updated = memoryStore.updateImam(Number(req.params.id), req.body);
-      if (updated) {
-        SupabaseRealtimeSync.syncImam(updated);
-        return res.json(updated);
-      }
-    } catch (fbErr) {
-      console.error("Fallback updateImam failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0637\u064A\u0628", details: error.message });
+    console.error("DB patch imam failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.delete("/imams/:id", async (req, res) => {
@@ -137914,13 +137903,8 @@ api.delete("/imams/:id", async (req, res) => {
     await logAudit(req, "DELETE_IMAM", "IMAM", id);
     res.json({ success: true });
   } catch (error) {
-    console.warn("DB delete imam failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteImam(Number(req.params.id));
-      return res.json({ success: true });
-    }
-    memoryStore.deleteImam(Number(req.params.id));
-    return res.json({ success: true });
+    console.error("DB delete imam failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u062E\u0637\u064A\u0628 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.post("/imams/bulk-delete", async (req, res) => {
@@ -138009,7 +137993,6 @@ api.get("/schedules", async (_req, res) => {
     });
     res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for schedules failed, falling back to Supabase/memoryStore:", error?.message);
     if (SupabaseDataService.isAvailable()) {
       const list = await SupabaseDataService.getSchedules();
@@ -138096,23 +138079,8 @@ api.post("/schedules", async (req, res) => {
       monthDetails
     });
   } catch (error) {
-    console.warn("DB create schedule failed, falling back to memoryStore:", error?.message);
-    try {
-      const fallbackResult = memoryStore.createSchedule(
-        Number(req.body.hijriYear),
-        Number(req.body.hijriMonth),
-        req.body.calendarProvider,
-        req.body.timezone,
-        req.user?.email
-      );
-      if (fallbackResult.isDuplicate) {
-        return res.status(200).json({ ...fallbackResult.schedule, isExisting: true });
-      }
-      return res.status(201).json(fallbackResult);
-    } catch (fbError) {
-      console.error("Fallback memoryStore create schedule failed:", fbError);
-      res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631\u064A", details: fbError.message });
-    }
+    console.error("DB create schedule failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631\u064A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.get("/schedules/:id", async (req, res) => {
@@ -138180,7 +138148,6 @@ api.get("/schedules/:id", async (req, res) => {
       rules: allRules
     });
   } catch (error) {
-    markDatabaseUnavailable();
     console.warn("DB fetch for schedule details failed, falling back to memory store:", error?.message);
     const fallback = memoryStore.getScheduleDetails(Number(req.params.id));
     if (fallback) {
@@ -138687,24 +138654,8 @@ api.post("/schedules/:id/assignment", async (req, res) => {
     SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error) {
-    console.warn("DB assignment update failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const { assignmentId, newImamId, reason } = req.body;
-      const fallbackUpdated = memoryStore.updateAssignment(
-        scheduleId,
-        Number(assignmentId),
-        newImamId ? Number(newImamId) : null,
-        reason
-      );
-      if (fallbackUpdated) {
-        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
-        return res.json(fallbackUpdated);
-      }
-    } catch (fbErr) {
-      console.error("Fallback updateAssignment failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646", details: error.message });
+    console.error("DB assignment update failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
   }
 });
 api.post("/schedules/:id/lock-toggle", async (req, res) => {

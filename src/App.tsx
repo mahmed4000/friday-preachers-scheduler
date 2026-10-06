@@ -363,6 +363,8 @@ export default function App() {
       });
     }
     clearMosqueProfileCache();
+    // Re-verify against database
+    loadInitialData(false);
   };
 
   const handleImamSaved = (updatedImam?: Imam) => {
@@ -376,6 +378,8 @@ export default function App() {
         return next;
       });
     }
+    // Re-verify against database
+    loadInitialData(false);
   };
 
   useEffect(() => {

@@ -284,6 +284,11 @@ export interface OrganizationSettings {
   calendarProvider?: string;
   timezone?: string;
   lastCalendarSyncAt?: string;
+  website?: string | null;
+  contactPhone?: string | null;
+  contactEmail?: string | null;
+  defaultDistributionMethod?: string | null;
+  autoLockFixed?: boolean | null;
 }
 
 export type NavItem =

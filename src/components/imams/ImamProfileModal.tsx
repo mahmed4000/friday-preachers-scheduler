@@ -158,43 +158,8 @@ export function ImamProfileModal({
 
     setSaving(true);
     setFeedback(null);
+    setErrorMessage(null);
 
-    // 1. Optimistic Imam object (0ms UI latency)
-    const optimisticImam: Imam = {
-      ...(imam || { id: Date.now() }),
-      name,
-      phone,
-      whatsapp,
-      region: region || 'منشأة البكاري',
-      address: formattedAddress || address,
-      countryId,
-      governorateId,
-      districtId,
-      areaId,
-      street,
-      buildingNumber,
-      landmark,
-      formattedAddress: formattedAddress || address,
-      latitude,
-      longitude,
-      isActive,
-      notes,
-      type,
-      minFridays: Number(minFridays),
-      targetFridays: Number(targetFridays),
-      maxFridays: Number(maxFridays),
-    };
-
-    // 2. Trigger instant UI update in parent view
-    onSaved(optimisticImam);
-    setFeedback('تم حفظ بيانات الخطيب بنجاح ✓');
-
-    // 3. Smoothly close modal
-    setTimeout(() => {
-      onClose();
-    }, 350);
-
-    // 4. Background Server Persistence
     try {
       const payload = {
         name,
@@ -220,19 +185,56 @@ export function ImamProfileModal({
         maxFridays: Number(maxFridays),
       };
 
+      let savedResponse: any;
       if (imam) {
-        await fetchApi(`/api/imams/${imam.id}`, {
+        savedResponse = await fetchApi(`/api/imams/${imam.id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
       } else {
-        await fetchApi('/api/imams', {
+        savedResponse = await fetchApi('/api/imams', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
       }
+
+      const confirmedImam: Imam = {
+        ...(imam || {}),
+        ...savedResponse,
+        id: savedResponse?.id || imam?.id || Date.now(),
+        name,
+        phone,
+        whatsapp,
+        region: region || 'منشأة البكاري',
+        address: formattedAddress || address,
+        formattedAddress: formattedAddress || address,
+        countryId,
+        governorateId,
+        districtId,
+        areaId,
+        street,
+        buildingNumber,
+        landmark,
+        latitude,
+        longitude,
+        isActive,
+        notes,
+        type,
+        minFridays: Number(minFridays),
+        targetFridays: Number(targetFridays),
+        maxFridays: Number(maxFridays),
+      };
+
+      // Confirmed server success: notify parent view and display success feedback
+      onSaved(confirmedImam);
+      setFeedback('تم حفظ بيانات الخطيب بنجاح ✓');
+
+      setTimeout(() => {
+        onClose();
+      }, 400);
     } catch (err: any) {
-      console.warn('Background imam save warning:', err);
+      console.error('Imam save error:', err);
+      setErrorMessage(err.message || 'تعذر حفظ بيانات الخطيب في الخادم');
     } finally {
       setSaving(false);
     }
