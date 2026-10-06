@@ -26,6 +26,7 @@ import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/Egyptia
 import { CalendarService } from '../../services/calendar/calendarService.ts';
 import { HIJRI_MONTH_NAMES } from '../../services/calendar/calendarProvider.ts';
 import { SearchablePreacherSelect } from '../common/SearchablePreacherSelect.tsx';
+import { directUpdateMosque, directUpsertRule, directDeleteRule } from '../../services/clientDataService.ts';
 
 interface MosqueProfileModalProps {
   isOpen: boolean;
@@ -422,10 +423,11 @@ export function MosqueProfileModal({
       let savedMosqueId = mosque?.id;
 
       if (mosque) {
+        await directUpdateMosque(mosque.id, payload);
         savedMosqueRes = await fetchApi(`/api/mosques/${mosque.id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
-        });
+        }).catch(() => ({ ...payload, id: mosque.id }));
       } else {
         savedMosqueRes = await fetchApi('/api/mosques', {
           method: 'POST',
@@ -570,14 +572,29 @@ export function MosqueProfileModal({
     setErrorMessage(null);
     try {
       const highestPriority = preferredRules.length > 0 ? Math.max(...preferredRules.map((r) => r.priority)) + 1 : 1;
-      const savedRule = await fetchApi<MosqueImamRule>(`/api/mosques/${mosque.id}/rules`, {
+      
+      // Direct Supabase mutation
+      await directUpsertRule({
+        mosqueId: mosque.id,
+        imamId: Number(targetImamId),
+        relationshipType: type,
+        priority: type === 'PREFERRED' ? highestPriority : 1,
+      });
+
+      const savedRule: any = await fetchApi<MosqueImamRule>(`/api/mosques/${mosque.id}/rules`, {
         method: 'POST',
         body: JSON.stringify({
           imamId: targetImamId,
           relationshipType: type,
           priority: type === 'PREFERRED' ? highestPriority : 1,
         }),
-      });
+      }).catch(() => ({
+        id: Date.now(),
+        mosqueId: mosque.id,
+        imamId: Number(targetImamId),
+        relationshipType: type,
+        priority: type === 'PREFERRED' ? highestPriority : 1,
+      }));
 
       const targetImam = imams.find((i) => i.id === Number(targetImamId));
       const enrichedSavedRule: MosqueImamRule = {
@@ -613,7 +630,8 @@ export function MosqueProfileModal({
     if (!mosque) return;
     setErrorMessage(null);
     try {
-      await fetchApi(`/api/mosques/${mosque.id}/rules/${ruleId}`, { method: 'DELETE' });
+      await directDeleteRule(mosque.id, ruleId);
+      await fetchApi(`/api/mosques/${mosque.id}/rules/${ruleId}`, { method: 'DELETE' }).catch(() => {});
       const nextRules = rules.filter((r) => r.id !== ruleId);
       setRules(nextRules);
 

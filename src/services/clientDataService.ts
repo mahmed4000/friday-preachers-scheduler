@@ -4,7 +4,7 @@ import { getSupabaseClient } from '../lib/supabaseClient.ts';
 import initialSeed from '../db/initialSeed.json';
 import { CalendarService } from './calendar/calendarService.ts';
 
-const CURRENT_CACHE_VERSION = 'v2_2026_10_06_clean';
+const CURRENT_CACHE_VERSION = 'v3_2026_10_06_direct_supabase';
 
 export function ensureCleanCache() {
   try {
@@ -21,16 +21,7 @@ export function ensureCleanCache() {
 }
 
 export async function fetchMosquesResilient(): Promise<Mosque[]> {
-  try {
-    const res = await fetchApi<Mosque[]>('/api/mosques');
-    if (Array.isArray(res) && res.length > 0) {
-      try { localStorage.setItem('cached_mosques', JSON.stringify(res)); } catch {}
-      return res;
-    }
-  } catch (err) {
-    console.warn('API /api/mosques failed, attempting direct Supabase query:', err);
-  }
-
+  // 1. Primary: Direct Supabase Cloud Query (authoritative source of truth)
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -77,10 +68,22 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
         return list;
       }
     } catch (dbErr) {
-      console.warn('Direct Supabase fetch for mosques failed:', dbErr);
+      console.warn('Direct Supabase fetch for mosques failed, falling back:', dbErr);
     }
   }
 
+  // 2. Fallback: API Route
+  try {
+    const res = await fetchApi<Mosque[]>('/api/mosques');
+    if (Array.isArray(res) && res.length > 0) {
+      try { localStorage.setItem('cached_mosques', JSON.stringify(res)); } catch {}
+      return res;
+    }
+  } catch (err) {
+    console.warn('API /api/mosques failed:', err);
+  }
+
+  // 3. Fallback: LocalStorage Cache
   const cached = localStorage.getItem('cached_mosques');
   if (cached) {
     try { return JSON.parse(cached); } catch {}
@@ -90,16 +93,7 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
 }
 
 export async function fetchImamsResilient(): Promise<Imam[]> {
-  try {
-    const res = await fetchApi<Imam[]>('/api/imams');
-    if (Array.isArray(res) && res.length > 0) {
-      try { localStorage.setItem('cached_imams', JSON.stringify(res)); } catch {}
-      return res;
-    }
-  } catch (err) {
-    console.warn('API /api/imams failed, attempting direct Supabase query:', err);
-  }
-
+  // 1. Primary: Direct Supabase Cloud Query
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -124,10 +118,22 @@ export async function fetchImamsResilient(): Promise<Imam[]> {
         return list;
       }
     } catch (dbErr) {
-      console.warn('Direct Supabase fetch for imams failed:', dbErr);
+      console.warn('Direct Supabase fetch for imams failed, falling back:', dbErr);
     }
   }
 
+  // 2. Fallback: API Route
+  try {
+    const res = await fetchApi<Imam[]>('/api/imams');
+    if (Array.isArray(res) && res.length > 0) {
+      try { localStorage.setItem('cached_imams', JSON.stringify(res)); } catch {}
+      return res;
+    }
+  } catch (err) {
+    console.warn('API /api/imams failed:', err);
+  }
+
+  // 3. Fallback: LocalStorage Cache
   const cached = localStorage.getItem('cached_imams');
   if (cached) {
     try { return JSON.parse(cached); } catch {}
@@ -137,16 +143,7 @@ export async function fetchImamsResilient(): Promise<Imam[]> {
 }
 
 export async function fetchRulesResilient(): Promise<MosqueImamRule[]> {
-  try {
-    const res = await fetchApi<MosqueImamRule[]>('/api/rules');
-    if (Array.isArray(res)) {
-      try { localStorage.setItem('cached_rules', JSON.stringify(res)); } catch {}
-      return res;
-    }
-  } catch (err) {
-    console.warn('API /api/rules failed, attempting direct Supabase query:', err);
-  }
-
+  // 1. Primary: Direct Supabase Cloud Query
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -165,10 +162,22 @@ export async function fetchRulesResilient(): Promise<MosqueImamRule[]> {
         return list;
       }
     } catch (dbErr) {
-      console.warn('Direct Supabase fetch for rules failed:', dbErr);
+      console.warn('Direct Supabase fetch for rules failed, falling back:', dbErr);
     }
   }
 
+  // 2. Fallback: API Route
+  try {
+    const res = await fetchApi<MosqueImamRule[]>('/api/rules');
+    if (Array.isArray(res)) {
+      try { localStorage.setItem('cached_rules', JSON.stringify(res)); } catch {}
+      return res;
+    }
+  } catch (err) {
+    console.warn('API /api/rules failed:', err);
+  }
+
+  // 3. Fallback: LocalStorage Cache
   const cached = localStorage.getItem('cached_rules');
   if (cached) {
     try { return JSON.parse(cached); } catch {}
@@ -178,17 +187,7 @@ export async function fetchRulesResilient(): Promise<MosqueImamRule[]> {
 }
 
 export async function fetchSchedulesResilient(): Promise<MonthlySchedule[]> {
-  try {
-    const res = await fetchApi<MonthlySchedule[]>('/api/schedules');
-    if (Array.isArray(res) && res.length > 0) {
-      const sorted = CalendarService.sortSchedulesChronologically(res);
-      try { localStorage.setItem('cached_schedules', JSON.stringify(sorted)); } catch {}
-      return sorted;
-    }
-  } catch (err) {
-    console.warn('API /api/schedules failed, attempting direct Supabase query:', err);
-  }
-
+  // 1. Primary: Direct Supabase Cloud Query
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -215,10 +214,23 @@ export async function fetchSchedulesResilient(): Promise<MonthlySchedule[]> {
         return sorted;
       }
     } catch (dbErr) {
-      console.warn('Direct Supabase fetch for schedules failed:', dbErr);
+      console.warn('Direct Supabase fetch for schedules failed, falling back:', dbErr);
     }
   }
 
+  // 2. Fallback: API Route
+  try {
+    const res = await fetchApi<MonthlySchedule[]>('/api/schedules');
+    if (Array.isArray(res) && res.length > 0) {
+      const sorted = CalendarService.sortSchedulesChronologically(res);
+      try { localStorage.setItem('cached_schedules', JSON.stringify(sorted)); } catch {}
+      return sorted;
+    }
+  } catch (err) {
+    console.warn('API /api/schedules failed:', err);
+  }
+
+  // 3. Fallback: LocalStorage Cache
   const cached = localStorage.getItem('cached_schedules');
   if (cached) {
     try { return JSON.parse(cached); } catch {}
@@ -227,4 +239,100 @@ export async function fetchSchedulesResilient(): Promise<MonthlySchedule[]> {
   return CalendarService.sortSchedulesChronologically(
     (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]
   );
+}
+
+/**
+ * Direct Supabase Mutators for instant, multi-device real-time sync
+ */
+export async function directUpdateMosque(id: number, data: Partial<Mosque>): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    const dbPayload: any = {};
+    if (data.name !== undefined) dbPayload.name = data.name;
+    if (data.code !== undefined) dbPayload.code = data.code;
+    if (data.region !== undefined) dbPayload.region = data.region;
+    if (data.address !== undefined) dbPayload.address = data.address;
+    if (data.managerName !== undefined) dbPayload.manager_name = data.managerName;
+    if (data.phone !== undefined) dbPayload.phone = data.phone;
+    if (data.whatsapp !== undefined) dbPayload.whatsapp = data.whatsapp;
+    if (data.fixedImamId !== undefined) dbPayload.fixed_imam_id = data.fixedImamId;
+    if (data.notes !== undefined) dbPayload.notes = data.notes;
+    if (data.isActive !== undefined) dbPayload.is_active = data.isActive;
+    if (data.countryId !== undefined) dbPayload.country_id = data.countryId;
+    if (data.governorateId !== undefined) dbPayload.governorate_id = data.governorateId;
+    if (data.districtId !== undefined) dbPayload.district_id = data.districtId;
+    if (data.areaId !== undefined) dbPayload.area_id = data.areaId;
+
+    try {
+      await client.from('mosques').update(dbPayload).eq('id', id);
+    } catch (err) {
+      console.warn('Direct Supabase mosque update failed:', err);
+    }
+  }
+
+  // Also notify backend API
+  try {
+    await fetchApi(`/api/mosques/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  } catch (err) {
+    console.warn('API patch mosque notification error:', err);
+  }
+}
+
+export async function directUpsertRule(rule: { mosqueId: number; imamId: number; relationshipType: string; priority?: number; notes?: string | null }): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      const { data: existing } = await client.from('mosque_imam_rules').select('id').eq('mosque_id', rule.mosqueId).eq('imam_id', rule.imamId);
+      if (existing && existing.length > 0) {
+        await client.from('mosque_imam_rules').update({
+          relationship_type: rule.relationshipType,
+          priority: rule.priority || 1,
+          notes: rule.notes || null,
+        }).eq('id', existing[0].id);
+      } else {
+        await client.from('mosque_imam_rules').insert({
+          mosque_id: rule.mosqueId,
+          imam_id: rule.imamId,
+          relationship_type: rule.relationshipType,
+          priority: rule.priority || 1,
+          notes: rule.notes || null,
+        });
+      }
+    } catch (err) {
+      console.warn('Direct Supabase rule upsert failed:', err);
+    }
+  }
+
+  // Also notify backend API
+  try {
+    await fetchApi(`/api/mosques/${rule.mosqueId}/rules`, {
+      method: 'POST',
+      body: JSON.stringify(rule),
+    });
+  } catch (err) {
+    console.warn('API upsert rule notification error:', err);
+  }
+}
+
+export async function directDeleteRule(mosqueId: number, ruleId: number): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    try {
+      await client.from('mosque_imam_rules').delete().eq('id', ruleId);
+    } catch (err) {
+      console.warn('Direct Supabase rule delete failed:', err);
+    }
+  }
+
+  // Also notify backend API
+  try {
+    await fetchApi(`/api/mosques/${mosqueId}/rules/${ruleId}`, {
+      method: 'DELETE',
+    });
+  } catch (err) {
+    console.warn('API delete rule notification error:', err);
+  }
 }
