@@ -39,6 +39,17 @@ let memoryConflicts = [...(seedData.conflicts || [])];
 let memoryOverrides = [...(seedData.overrides || [])];
 let memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
 let memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+let memoryAuditLogs: any[] = [
+  {
+    id: 1,
+    userEmail: 'admin@aljameya.org',
+    action: 'INITIAL_SEED',
+    entityType: 'SYSTEM',
+    entityId: 1,
+    detailsJson: JSON.stringify({ message: 'تهيئة البيانات المعتمدة لمنظّم الجمعة' }),
+    createdAt: new Date().toISOString(),
+  },
+];
 
 export const memoryStore = {
   reset() {
@@ -52,6 +63,17 @@ export const memoryStore = {
     memoryOverrides = [...(seedData.overrides || [])];
     memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
     memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+    memoryAuditLogs = [
+      {
+        id: 1,
+        userEmail: 'admin@aljameya.org',
+        action: 'INITIAL_SEED',
+        entityType: 'SYSTEM',
+        entityId: 1,
+        detailsJson: JSON.stringify({ message: 'تهيئة البيانات المعتمدة لمنظّم الجمعة' }),
+        createdAt: new Date().toISOString(),
+      },
+    ];
   },
 
   hydrate(data: {
@@ -777,17 +799,17 @@ export const memoryStore = {
   },
 
   getAuditLogs() {
-    return [
-      {
-        id: 1,
-        userEmail: 'admin@aljameya.org',
-        action: 'INITIAL_SEED',
-        entityType: 'SYSTEM',
-        entityId: 1,
-        detailsJson: JSON.stringify({ message: 'تهيئة البيانات المعتمدة لمنظّم الجمعة' }),
-        createdAt: new Date().toISOString(),
-      },
-    ];
+    return memoryAuditLogs;
+  },
+
+  recordAuditLog(log: any) {
+    const entry = {
+      id: memoryAuditLogs.length + 1,
+      createdAt: new Date().toISOString(),
+      ...log,
+    };
+    memoryAuditLogs.unshift(entry);
+    return entry;
   },
 
   updateAssignment(scheduleId: number, assignmentId: number, imamId: number | null, reason?: string) {

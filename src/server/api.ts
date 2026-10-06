@@ -73,18 +73,35 @@ CalendarService.configureDefaults(
 
 // Helper for audit logging
 async function logAudit(req: AuthRequest, action: string, entityType: string, entityId?: number, details?: any) {
+  const detailsStr = details ? (typeof details === 'string' ? details : JSON.stringify(details)) : null;
+  const userEmail = req.user?.email || 'admin@aljameya.org';
   try {
     if (isDatabaseAvailable()) {
       await db.insert(auditLogs).values({
-        userEmail: req.user?.email || 'admin@aljameya.org',
+        userEmail,
         action,
         entityType,
         entityId,
-        detailsJson: details ? JSON.stringify(details) : null,
+        detailsJson: detailsStr,
+      });
+    } else {
+      memoryStore.recordAuditLog({
+        userEmail,
+        action,
+        entityType,
+        entityId,
+        detailsJson: detailsStr,
       });
     }
   } catch (err) {
-    // Audit logging is non-blocking
+    // Non-blocking fallback to memoryStore
+    memoryStore.recordAuditLog({
+      userEmail,
+      action,
+      entityType,
+      entityId,
+      detailsJson: detailsStr,
+    });
   }
 }
 
@@ -3690,8 +3707,11 @@ api.get('/reports/summary', async (req: Request, res: Response) => {
 
 api.get('/audit-logs', async (_req: Request, res: Response) => {
   try {
-    const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
-    res.json(logs);
+    if (isDatabaseAvailable()) {
+      const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
+      return res.json(logs);
+    }
+    res.json(memoryStore.getAuditLogs());
   } catch (error: any) {
     console.warn('DB fetch for audit-logs failed, falling back to memory store:', error?.message);
     res.json(memoryStore.getAuditLogs());

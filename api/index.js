@@ -133929,6 +133929,17 @@ var memoryConflicts = [...seedData.conflicts || []];
 var memoryOverrides = [...seedData.overrides || []];
 var memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
 var memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+var memoryAuditLogs = [
+  {
+    id: 1,
+    userEmail: "admin@aljameya.org",
+    action: "INITIAL_SEED",
+    entityType: "SYSTEM",
+    entityId: 1,
+    detailsJson: JSON.stringify({ message: "\u062A\u0647\u064A\u0626\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0645\u0646\u0638\u0651\u0645 \u0627\u0644\u062C\u0645\u0639\u0629" }),
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  }
+];
 var memoryStore = {
   reset() {
     memoryMosques = [...seedData.mosques || []];
@@ -133941,6 +133952,17 @@ var memoryStore = {
     memoryOverrides = [...seedData.overrides || []];
     memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
     memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+    memoryAuditLogs = [
+      {
+        id: 1,
+        userEmail: "admin@aljameya.org",
+        action: "INITIAL_SEED",
+        entityType: "SYSTEM",
+        entityId: 1,
+        detailsJson: JSON.stringify({ message: "\u062A\u0647\u064A\u0626\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0645\u0646\u0638\u0651\u0645 \u0627\u0644\u062C\u0645\u0639\u0629" }),
+        createdAt: (/* @__PURE__ */ new Date()).toISOString()
+      }
+    ];
   },
   hydrate(data) {
     if (data.mosques && data.mosques.length > 0) memoryMosques = [...data.mosques];
@@ -134554,17 +134576,16 @@ var memoryStore = {
     };
   },
   getAuditLogs() {
-    return [
-      {
-        id: 1,
-        userEmail: "admin@aljameya.org",
-        action: "INITIAL_SEED",
-        entityType: "SYSTEM",
-        entityId: 1,
-        detailsJson: JSON.stringify({ message: "\u062A\u0647\u064A\u0626\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629 \u0644\u0645\u0646\u0638\u0651\u0645 \u0627\u0644\u062C\u0645\u0639\u0629" }),
-        createdAt: (/* @__PURE__ */ new Date()).toISOString()
-      }
-    ];
+    return memoryAuditLogs;
+  },
+  recordAuditLog(log) {
+    const entry = {
+      id: memoryAuditLogs.length + 1,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      ...log
+    };
+    memoryAuditLogs.unshift(entry);
+    return entry;
   },
   updateAssignment(scheduleId, assignmentId, imamId, reason) {
     const assign = memoryAssignments.find((a) => a.id === assignmentId && a.scheduleId === scheduleId);
@@ -136058,17 +136079,34 @@ CalendarService.configureDefaults(
   cachedOrganizationSettings.timezone || "Africa/Cairo"
 );
 async function logAudit(req, action, entityType, entityId, details) {
+  const detailsStr = details ? typeof details === "string" ? details : JSON.stringify(details) : null;
+  const userEmail = req.user?.email || "admin@aljameya.org";
   try {
     if (isDatabaseAvailable()) {
       await db.insert(auditLogs).values({
-        userEmail: req.user?.email || "admin@aljameya.org",
+        userEmail,
         action,
         entityType,
         entityId,
-        detailsJson: details ? JSON.stringify(details) : null
+        detailsJson: detailsStr
+      });
+    } else {
+      memoryStore.recordAuditLog({
+        userEmail,
+        action,
+        entityType,
+        entityId,
+        detailsJson: detailsStr
       });
     }
   } catch (err) {
+    memoryStore.recordAuditLog({
+      userEmail,
+      action,
+      entityType,
+      entityId,
+      detailsJson: detailsStr
+    });
   }
 }
 api.get("/health", async (_req, res) => {
@@ -139113,8 +139151,11 @@ api.get("/reports/summary", async (req, res) => {
 });
 api.get("/audit-logs", async (_req, res) => {
   try {
-    const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
-    res.json(logs);
+    if (isDatabaseAvailable()) {
+      const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
+      return res.json(logs);
+    }
+    res.json(memoryStore.getAuditLogs());
   } catch (error) {
     console.warn("DB fetch for audit-logs failed, falling back to memory store:", error?.message);
     res.json(memoryStore.getAuditLogs());

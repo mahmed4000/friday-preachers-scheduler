@@ -169,6 +169,19 @@ server.listen(0, async () => {
     console.log('✅ [PASS] 4. تحديث واسترجاع إعدادات الجمعية وتأكيد استمراريتها');
 
     // -------------------------------------------------------------
+    // 4.1 التحقق من تسجيل العمليات في سجل التدقيق (Audit Logs Verification)
+    // -------------------------------------------------------------
+    const auditRes = await fetch(`${baseUrl}/audit-logs`);
+    assert.strictEqual(auditRes.status, 200, 'GET /api/audit-logs must return 200 OK');
+    const logs = await auditRes.json();
+    assert.ok(Array.isArray(logs), 'Audit logs response must be an array');
+    const mosqueLog = logs.find((l: any) => l.action === 'CREATE_MOSQUE' && l.entityId === createdMosque.id);
+    const imamLog = logs.find((l: any) => l.action === 'CREATE_IMAM' && l.entityId === createdImam.id);
+    assert.ok(mosqueLog, 'Audit log must record CREATE_MOSQUE with entityId');
+    assert.ok(imamLog, 'Audit log must record CREATE_IMAM with entityId');
+    console.log('✅ [PASS] 4.1 التحقق من تسجيل العمليات في سجل الرقابة والتدقيق الإداري بنجاح');
+
+    // -------------------------------------------------------------
     // 5. تنظيف الكيانات الاختبارية (Cleanup)
     // -------------------------------------------------------------
     const delMosqueRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}`, { method: 'DELETE' });
