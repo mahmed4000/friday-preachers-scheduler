@@ -12,7 +12,7 @@ import {
   Layers,
   MapPin,
 } from 'lucide-react';
-import { fetchApi } from '../../lib/api.ts';
+import { fetchApi, getAuthToken } from '../../lib/api.ts';
 import { ImportExportEntityType, ImportExportFormat } from '../../types/importExport.ts';
 import { Button } from '../ui/Button.tsx';
 
@@ -83,9 +83,16 @@ export function ExportModal({
     setExporting(true);
     setErrorMsg(null);
     try {
+      const token = getAuthToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+
       const response = await fetch('/api/import-export/export', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        headers,
         body: JSON.stringify({
           entityType,
           format,

@@ -154,6 +154,7 @@ export function ImportWizardModal({
     try {
       const res = await fetchApi<ImportPreviewResult>('/api/import-export/preview', {
         method: 'POST',
+        timeoutMs: 90000,
         body: JSON.stringify({
           entityType,
           rawRows: rows,
@@ -184,6 +185,7 @@ export function ImportWizardModal({
     try {
       const res = await fetchApi<ImportExecuteResult>('/api/import-export/execute', {
         method: 'POST',
+        timeoutMs: 120000,
         body: JSON.stringify({
           batchId: previewResult.batchId,
           entityType: previewResult.entityType || entityType,

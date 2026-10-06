@@ -1,3 +1,5 @@
+import { getAuthToken } from './api.ts';
+
 /**
  * Helper utility to trigger programmatic blob downloads for Excel templates.
  * Avoids direct anchor href navigation issues inside iframes or SPA routers.
@@ -7,7 +9,16 @@ export async function downloadImportTemplate(
 ): Promise<void> {
   try {
     const rawType = type === 'imams' ? 'preachers' : type;
-    const response = await fetch(`/api/import-export/templates/${rawType}`);
+    const token = getAuthToken();
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(`/api/import-export/templates/${rawType}`, {
+      credentials: 'same-origin',
+      headers,
+    });
 
     if (!response.ok) {
       const errJson = await response.json().catch(() => ({}));

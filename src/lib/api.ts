@@ -8,7 +8,11 @@ export function getAuthToken(): string | null {
   return inMemoryToken;
 }
 
-export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export interface FetchApiOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+export async function fetchApi<T>(endpoint: string, options: FetchApiOptions = {}): Promise<T> {
   const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   
   const headers = new Headers(options.headers || {});
@@ -21,7 +25,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   }
 
   const controller = new AbortController();
-  const timeoutMs = 6000;
+  const timeoutMs = options.timeoutMs ?? 30000;
   const timer = setTimeout(() => {
     controller.abort();
   }, timeoutMs);

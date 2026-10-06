@@ -3776,129 +3776,228 @@ api.post('/import-export/execute', requireAdmin, async (req: AuthRequest, res: R
     let errorCount = 0;
     const errorReport: any[] = [];
 
-    // 2. Process rows
-    for (const row of rows) {
-      // If row has critical validation errors, log to errorReport
-      if (row.status === 'ERROR' || (row.errors && row.errors.length > 0)) {
-        errorCount++;
-        errorReport.push({
-          rowNumber: row.rowNumber,
-          code: row.entityCode,
-          name: row.displayName,
-          field: 'validation',
-          rawValue: JSON.stringify(row.raw),
-          errorMessage: row.errors.join(' · '),
-        });
-        continue;
-      }
+    const cleanPhone = (val: any) => typeof val === 'string' ? val.replace(/^'/, '').trim() : (val ? String(val) : '');
 
-      // Check Import Mode constraints
-      if (mode === 'INSERT_ONLY' && row.status === 'UPDATE') {
-        skippedCount++;
-        continue;
-      }
-      if (mode === 'UPDATE_ONLY' && (row.status === 'NEW' || row.status === 'NEEDS_REVIEW')) {
-        skippedCount++;
-        continue;
-      }
+    // 2. Partition rows into valid updates, inserts, or errors
+    if (entityType === 'MOSQUES') {
+      const existingMosques = await db.select({ id: mosques.id, code: mosques.code }).from(mosques);
+      const existingCodes = new Set(existingMosques.map((m) => (m.code || '').toLowerCase()));
 
-      try {
-        if (entityType === 'MOSQUES') {
-          const d = row.data;
-          if (row.targetId && (row.status === 'UPDATE' || mode === 'UPDATE_ONLY')) {
-            // Update existing (Blank != Delete)
-            const [existing] = await db.select().from(mosques).where(eq(mosques.id, row.targetId));
-            if (existing) {
-              const patchPayload: Record<string, any> = {};
-              if (d.name) patchPayload.name = d.name;
-              if (d.phone !== undefined && d.phone !== '') patchPayload.phone = d.phone;
-              if (d.whatsapp !== undefined && d.whatsapp !== '') patchPayload.whatsapp = d.whatsapp;
-              if (d.managerName !== undefined && d.managerName !== '') patchPayload.managerName = d.managerName;
-              if (d.region) patchPayload.region = d.region;
-              const fullAddress = d.formattedAddress || d.address;
-              if (fullAddress) patchPayload.address = fullAddress;
-              if (d.isActive !== undefined) patchPayload.isActive = Boolean(d.isActive);
-              if (d.notes) patchPayload.notes = d.notes;
-              patchPayload.updatedAt = new Date();
+      const newMosqueItems: Array<{ row: any; values: any }> = [];
+      const updateMosqueItems: Array<{ row: any; targetId: number; patchPayload: any }> = [];
 
-              await db.update(mosques).set(patchPayload).where(eq(mosques.id, row.targetId));
-              updatedCount++;
-            } else {
-              skippedCount++;
-            }
-          } else {
-            // Insert New Mosque
-            // Ensure unique code
-            let finalCode = d.code || `MOS-${Math.floor(100 + Math.random() * 900)}`;
-            const duplicateCode = await db.select().from(mosques).where(eq(mosques.code, finalCode));
-            if (duplicateCode.length > 0) {
-              finalCode = `${finalCode}-${Math.floor(10 + Math.random() * 90)}`;
-            }
+      for (const row of rows) {
+        if (row.status === 'ERROR' || (row.errors && row.errors.length > 0)) {
+          errorCount++;
+          errorReport.push({
+            rowNumber: row.rowNumber,
+            code: row.entityCode,
+            name: row.displayName,
+            field: 'validation',
+            rawValue: JSON.stringify(row.raw),
+            errorMessage: row.errors?.join(' · ') || 'خطأ في التحقق من الحقول',
+          });
+          continue;
+        }
 
-            await db.insert(mosques).values({
+        if (mode === 'INSERT_ONLY' && row.status === 'UPDATE') {
+          skippedCount++;
+          continue;
+        }
+        if (mode === 'UPDATE_ONLY' && (row.status === 'NEW' || row.status === 'NEEDS_REVIEW')) {
+          skippedCount++;
+          continue;
+        }
+
+        const d = row.data || {};
+
+        if (row.targetId && (row.status === 'UPDATE' || mode === 'UPDATE_ONLY')) {
+          const patchPayload: Record<string, any> = {};
+          if (d.name) patchPayload.name = d.name;
+          if (d.phone !== undefined && d.phone !== '') patchPayload.phone = cleanPhone(d.phone);
+          if (d.whatsapp !== undefined && d.whatsapp !== '') patchPayload.whatsapp = cleanPhone(d.whatsapp);
+          if (d.managerName !== undefined && d.managerName !== '') patchPayload.managerName = d.managerName;
+          if (d.region) patchPayload.region = d.region;
+          const fullAddress = d.formattedAddress || d.address;
+          if (fullAddress) patchPayload.address = fullAddress;
+          if (d.isActive !== undefined) patchPayload.isActive = Boolean(d.isActive);
+          if (d.notes) patchPayload.notes = d.notes;
+          patchPayload.updatedAt = new Date();
+
+          updateMosqueItems.push({ row, targetId: row.targetId, patchPayload });
+        } else {
+          let finalCode = d.code || `MOS-${Math.floor(100 + Math.random() * 900)}`;
+          while (existingCodes.has(finalCode.toLowerCase())) {
+            finalCode = `${d.code || 'MOS'}-${Math.floor(100 + Math.random() * 900)}`;
+          }
+          existingCodes.add(finalCode.toLowerCase());
+
+          newMosqueItems.push({
+            row,
+            values: {
               name: d.name,
               code: finalCode,
               region: d.region || 'منشأة البكاري',
               address: d.formattedAddress || d.address || 'منشأة البكاري، حي الهرم، الجيزة',
               managerName: d.managerName || '',
-              phone: d.phone || '',
-              whatsapp: d.whatsapp || '',
+              phone: cleanPhone(d.phone),
+              whatsapp: cleanPhone(d.whatsapp),
               isActive: d.isActive !== undefined ? Boolean(d.isActive) : true,
               notes: d.notes || '',
-            });
-            createdCount++;
-          }
-        } else {
-          // PREACHERS (IMAMS)
-          const d = row.data;
-          if (row.targetId && (row.status === 'UPDATE' || mode === 'UPDATE_ONLY')) {
-            const [existing] = await db.select().from(imams).where(eq(imams.id, row.targetId));
-            if (existing) {
-              const patchPayload: Record<string, any> = {};
-              if (d.name) patchPayload.name = d.name;
-              if (d.phone !== undefined && d.phone !== '') patchPayload.phone = d.phone;
-              if (d.whatsapp !== undefined && d.whatsapp !== '') patchPayload.whatsapp = d.whatsapp;
-              if (d.type) patchPayload.type = d.type;
-              if (d.minFridays !== undefined) patchPayload.minFridays = Number(d.minFridays);
-              if (d.targetFridays !== undefined) patchPayload.targetFridays = Number(d.targetFridays);
-              if (d.maxFridays !== undefined) patchPayload.maxFridays = Number(d.maxFridays);
-              if (d.region) patchPayload.region = d.region;
-              if (d.isActive !== undefined) patchPayload.isActive = Boolean(d.isActive);
-              if (d.notes) patchPayload.notes = d.notes;
-              patchPayload.updatedAt = new Date();
+            },
+          });
+        }
+      }
 
-              await db.update(imams).set(patchPayload).where(eq(imams.id, row.targetId));
-              updatedCount++;
-            } else {
-              skippedCount++;
+      // Batch insert new mosques in chunks of 25
+      for (let i = 0; i < newMosqueItems.length; i += 25) {
+        const chunk = newMosqueItems.slice(i, i + 25);
+        try {
+          await db.insert(mosques).values(chunk.map((c) => c.values));
+          createdCount += chunk.length;
+        } catch {
+          for (const item of chunk) {
+            try {
+              await db.insert(mosques).values(item.values);
+              createdCount++;
+            } catch (err: any) {
+              errorCount++;
+              errorReport.push({
+                rowNumber: item.row.rowNumber,
+                code: item.row.entityCode,
+                name: item.row.displayName,
+                field: 'execution',
+                rawValue: JSON.stringify(item.row.data),
+                errorMessage: err.message || 'خطأ أثناء الحفظ في قاعدة البيانات',
+              });
             }
-          } else {
-            // Insert New Imam
-            await db.insert(imams).values({
+          }
+        }
+      }
+
+      // Process updates
+      for (const item of updateMosqueItems) {
+        try {
+          await db.update(mosques).set(item.patchPayload).where(eq(mosques.id, item.targetId));
+          updatedCount++;
+        } catch (err: any) {
+          errorCount++;
+          errorReport.push({
+            rowNumber: item.row.rowNumber,
+            code: item.row.entityCode,
+            name: item.row.displayName,
+            field: 'execution',
+            rawValue: JSON.stringify(item.row.data),
+            errorMessage: err.message || 'خطأ أثناء التحديث في قاعدة البيانات',
+          });
+        }
+      }
+    } else {
+      // PREACHERS (IMAMS)
+      const newImamItems: Array<{ row: any; values: any }> = [];
+      const updateImamItems: Array<{ row: any; targetId: number; patchPayload: any }> = [];
+
+      for (const row of rows) {
+        if (row.status === 'ERROR' || (row.errors && row.errors.length > 0)) {
+          errorCount++;
+          errorReport.push({
+            rowNumber: row.rowNumber,
+            code: row.entityCode,
+            name: row.displayName,
+            field: 'validation',
+            rawValue: JSON.stringify(row.raw),
+            errorMessage: row.errors?.join(' · ') || 'خطأ في التحقق من الحقول',
+          });
+          continue;
+        }
+
+        if (mode === 'INSERT_ONLY' && row.status === 'UPDATE') {
+          skippedCount++;
+          continue;
+        }
+        if (mode === 'UPDATE_ONLY' && (row.status === 'NEW' || row.status === 'NEEDS_REVIEW')) {
+          skippedCount++;
+          continue;
+        }
+
+        const d = row.data || {};
+
+        if (row.targetId && (row.status === 'UPDATE' || mode === 'UPDATE_ONLY')) {
+          const patchPayload: Record<string, any> = {};
+          if (d.name) patchPayload.name = d.name;
+          if (d.phone !== undefined && d.phone !== '') patchPayload.phone = cleanPhone(d.phone);
+          if (d.whatsapp !== undefined && d.whatsapp !== '') patchPayload.whatsapp = cleanPhone(d.whatsapp);
+          if (d.type) patchPayload.type = d.type;
+          if (d.minFridays !== undefined) patchPayload.minFridays = Number(d.minFridays);
+          if (d.targetFridays !== undefined) patchPayload.targetFridays = Number(d.targetFridays);
+          if (d.maxFridays !== undefined) patchPayload.maxFridays = Number(d.maxFridays);
+          if (d.region) patchPayload.region = d.region;
+          if (d.isActive !== undefined) patchPayload.isActive = Boolean(d.isActive);
+          if (d.notes) patchPayload.notes = d.notes;
+          patchPayload.updatedAt = new Date();
+
+          updateImamItems.push({ row, targetId: row.targetId, patchPayload });
+        } else {
+          newImamItems.push({
+            row,
+            values: {
               name: d.name,
-              type: d.type || 'FLEXIBLE',
+              type: (d.type && ['FIXED', 'ROTATING', 'OFFICIAL', 'VOLUNTEER', 'FLEXIBLE'].includes(d.type) ? d.type : 'FLEXIBLE') as any,
               minFridays: d.minFridays ? Number(d.minFridays) : 1,
               targetFridays: d.targetFridays ? Number(d.targetFridays) : 4,
               maxFridays: d.maxFridays ? Number(d.maxFridays) : 5,
-              phone: d.phone || '',
-              whatsapp: d.whatsapp || '',
+              phone: cleanPhone(d.phone),
+              whatsapp: cleanPhone(d.whatsapp),
               region: d.region || 'منشأة البكاري',
               isActive: d.isActive !== undefined ? Boolean(d.isActive) : true,
               notes: d.notes || '',
-            });
-            createdCount++;
+            },
+          });
+        }
+      }
+
+      // Batch insert new imams in chunks of 25
+      for (let i = 0; i < newImamItems.length; i += 25) {
+        const chunk = newImamItems.slice(i, i + 25);
+        try {
+          await db.insert(imams).values(chunk.map((c) => c.values));
+          createdCount += chunk.length;
+        } catch {
+          for (const item of chunk) {
+            try {
+              await db.insert(imams).values(item.values);
+              createdCount++;
+            } catch (err: any) {
+              errorCount++;
+              errorReport.push({
+                rowNumber: item.row.rowNumber,
+                code: item.row.entityCode,
+                name: item.row.displayName,
+                field: 'execution',
+                rawValue: JSON.stringify(item.row.data),
+                errorMessage: err.message || 'خطأ أثناء الحفظ في قاعدة البيانات',
+              });
+            }
           }
         }
-      } catch (rowErr: any) {
-        errorCount++;
-        errorReport.push({
-          rowNumber: row.rowNumber,
-          code: row.entityCode,
-          name: row.displayName,
-          field: 'execution',
-          rawValue: JSON.stringify(row.data),
-          errorMessage: rowErr.message || 'خطأ أثناء الحفظ في قاعدة البيانات',
-        });
+      }
+
+      // Process updates
+      for (const item of updateImamItems) {
+        try {
+          await db.update(imams).set(item.patchPayload).where(eq(imams.id, item.targetId));
+          updatedCount++;
+        } catch (err: any) {
+          errorCount++;
+          errorReport.push({
+            rowNumber: item.row.rowNumber,
+            code: item.row.entityCode,
+            name: item.row.displayName,
+            field: 'execution',
+            rawValue: JSON.stringify(item.row.data),
+            errorMessage: err.message || 'خطأ أثناء التحديث في قاعدة البيانات',
+          });
+        }
       }
     }
 
