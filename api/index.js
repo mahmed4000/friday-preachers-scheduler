@@ -124359,11 +124359,14 @@ function getSystemAccounts() {
     }
   ];
 }
-function authenticateCredentials(email, password) {
-  if (!email || !password) return null;
-  const normalizedEmail = email.trim().toLowerCase();
+function authenticateCredentials(emailOrUsername, password) {
+  if (!emailOrUsername || !password) return null;
+  let normalized = emailOrUsername.trim().toLowerCase();
+  if (!normalized.includes("@")) {
+    normalized = `${normalized}@aljameya.org`;
+  }
   const accounts = getSystemAccounts();
-  const found = accounts.find((a) => a.email.toLowerCase() === normalizedEmail);
+  const found = accounts.find((a) => a.email.toLowerCase() === normalized);
   if (!found) return null;
   const isValid = verifyPassword(password, SYSTEM_SALT, found.passwordHash) || (found.fallbackPasswordHash ? verifyPassword(password, SYSTEM_SALT, found.fallbackPasswordHash) : false);
   if (!isValid) return null;
@@ -136576,13 +136579,14 @@ api.get("/health", async (_req, res) => {
   res.json({ status: "ok", version: "supabase-v1", serverTime: (/* @__PURE__ */ new Date()).toISOString() });
 });
 api.post("/auth/login", async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
+  const { email, username, password } = req.body || {};
+  const identifier = email || username;
+  if (!identifier || !password) {
+    return res.status(400).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u0623\u0648 \u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
   }
-  const user = authenticateCredentials(email, password);
+  const user = authenticateCredentials(identifier, password);
   if (!user) {
-    return res.status(401).json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0623\u0648 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" });
+    return res.status(401).json({ error: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062A\u062E\u062F\u0645 \u0623\u0648 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" });
   }
   const token = createSessionToken(user);
   res.cookie("auth_token", token, {

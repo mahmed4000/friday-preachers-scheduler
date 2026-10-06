@@ -24,6 +24,8 @@ import { AuditLogsView } from './components/audit/AuditLogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { SupabaseCloudSettings } from './components/settings/SupabaseCloudSettings.tsx';
 import { LoginModal } from './components/auth/LoginModal.tsx';
+import { LoginPage } from './components/auth/LoginPage.tsx';
+import { useAuth } from './context/AuthContext.tsx';
 import { MosqueProfileView, clearMosqueProfileCache } from './components/profiles/MosqueProfileView.tsx';
 import { ImamProfileView } from './components/profiles/ImamProfileView.tsx';
 import { ProfileNavigationContext } from './context/ProfileNavigationContext.tsx';
@@ -54,6 +56,7 @@ import initialSeed from './db/initialSeed.json';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [loading, setLoading] = useState<boolean>(() => {
@@ -542,6 +545,22 @@ export default function App() {
   };
 
   const headerInfo = getHeaderInfo();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full flex flex-col items-center justify-center bg-gradient-to-br from-[#021f18] via-[#032b21] to-[#043328] text-white p-4" dir="rtl">
+        <div className="w-20 h-20 rounded-2xl bg-white/10 p-2 border border-white/20 shadow-2xl flex items-center justify-center mb-4 animate-pulse">
+          <img src={DEFAULT_SHARIA_LOGO} alt="شعار الجمعية الشرعية" className="w-full h-full object-contain" />
+        </div>
+        <h2 className="text-lg font-bold font-heading text-amber-300">الجمعية الشرعية لقطاع منشأة البكاري</h2>
+        <p className="text-xs text-emerald-200 mt-1">برنامج منظّم الجمعة — جارٍ التحقق من جلسة الدخول...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   return (
     <ProfileNavigationContext.Provider

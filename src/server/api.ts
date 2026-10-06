@@ -136,14 +136,15 @@ api.get('/health', async (_req: Request, res: Response) => {
 // Authentication & Session Endpoints
 // -------------------------------------------------------------
 api.post('/auth/login', async (req: Request, res: Response) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) {
-    return res.status(400).json({ error: 'البريد الإلكتروني وكلمة المرور مطلوبان' });
+  const { email, username, password } = req.body || {};
+  const identifier = email || username;
+  if (!identifier || !password) {
+    return res.status(400).json({ error: 'اسم المستخدم أو البريد الإلكتروني وكلمة المرور مطلوبان' });
   }
 
-  const user = authenticateCredentials(email, password);
+  const user = authenticateCredentials(identifier, password);
   if (!user) {
-    return res.status(401).json({ error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' });
+    return res.status(401).json({ error: 'اسم المستخدم أو كلمة المرور غير صحيحة' });
   }
 
   const token = createSessionToken(user);

@@ -120,14 +120,17 @@ function getSystemAccounts(): StoredAccount[] {
  * Authenticates user credentials server-side
  */
 export function authenticateCredentials(
-  email: string,
+  emailOrUsername: string,
   password: string
 ): AuthUser | null {
-  if (!email || !password) return null;
+  if (!emailOrUsername || !password) return null;
 
-  const normalizedEmail = email.trim().toLowerCase();
+  let normalized = emailOrUsername.trim().toLowerCase();
+  if (!normalized.includes('@')) {
+    normalized = `${normalized}@aljameya.org`;
+  }
   const accounts = getSystemAccounts();
-  const found = accounts.find((a) => a.email.toLowerCase() === normalizedEmail);
+  const found = accounts.find((a) => a.email.toLowerCase() === normalized);
 
   if (!found) return null;
 
