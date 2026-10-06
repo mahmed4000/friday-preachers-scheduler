@@ -135555,7 +135555,24 @@ var SupabaseDataService = {
         console.warn("Supabase updateMosque error, using memoryStore data:", error.message);
         return memoryStore.getMosqueDetails(id);
       }
-      return mapDbMosque(updated);
+      const mapped = mapDbMosque(updated);
+      if (!mapped) return memoryStore.getMosqueDetails(id);
+      let fixedImamName = null;
+      if (mapped.fixedImamId) {
+        const { data: im } = await client.from("imams").select("name").eq("id", mapped.fixedImamId).maybeSingle();
+        fixedImamName = im?.name || null;
+      }
+      const { data: rules } = await client.from("mosque_imam_rules").select("relationship_type").eq("mosque_id", id);
+      const preferencesCount = (rules || []).filter((r2) => r2.relationship_type === "PREFERRED").length;
+      const forbiddenCount = (rules || []).filter((r2) => r2.relationship_type === "FORBIDDEN").length;
+      const fullMosque = {
+        ...mapped,
+        fixedImamName,
+        preferencesCount,
+        forbiddenCount
+      };
+      memoryStore.updateMosque(id, fullMosque);
+      return fullMosque;
     } catch (err) {
       console.warn("Supabase updateMosque error:", err.message);
       return memoryStore.getMosqueDetails(id);
@@ -136001,15 +136018,16 @@ CalendarService.configureDefaults(
 );
 async function logAudit(req, action, entityType, entityId, details) {
   try {
-    await db.insert(auditLogs).values({
-      userEmail: req.user?.email || "admin@aljameya.org",
-      action,
-      entityType,
-      entityId,
-      detailsJson: details ? JSON.stringify(details) : null
-    });
+    if (isDatabaseAvailable()) {
+      await db.insert(auditLogs).values({
+        userEmail: req.user?.email || "admin@aljameya.org",
+        action,
+        entityType,
+        entityId,
+        detailsJson: details ? JSON.stringify(details) : null
+      });
+    }
   } catch (err) {
-    console.error("Audit log write failed:", err);
   }
 }
 api.get("/health", async (_req, res) => {
@@ -137073,7 +137091,16 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
     return res.status(400).json({ error: "\u0627\u0644\u0633\u0646\u0629 \u0627\u0644\u0647\u062C\u0631\u064A\u0629 \u0648\u0627\u0644\u0634\u0647\u0631 \u0648\u0646\u0648\u0639 \u0627\u0644\u0646\u0645\u0637 \u0648\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0645\u0637\u0644\u0648\u0628\u0629" });
   }
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      if (patternType === "SAME_ALL" && items[0]?.imamId) {
+        await SupabaseDataService.updateMosque(mosqueId, {
+          fixedImamId: Number(items[0].imamId),
+          fixedPattern: "ALL"
+        });
+      }
+    }
     const fallbackResult = memoryStore.saveFixedPattern(mosqueId, req.body);
+    await logAudit(req, "SAVE_FIXED_PATTERN", "MOSQUE", mosqueId, { hijriYear, patternType });
     return res.json(fallbackResult);
   }
   try {
@@ -137304,14 +137331,28 @@ api.post("/mosques/:id/fixed-patterns/copy", async (req, res) => {
   }
 });
 api.delete("/mosques/:id/fixed-patterns/:patternId", async (req, res) => {
+  const mosqueId = Number(req.params.id);
   const patternId = Number(req.params.patternId);
   try {
-    await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
-    await logAudit(req, "DELETE_FIXED_PATTERN", "MOSQUE", Number(req.params.id), { patternId });
+    if (isDatabaseAvailable()) {
+      await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
+      await db.update(mosques).set({ fixedImamId: null, fixedPattern: null }).where(eq(mosques.id, mosqueId));
+    }
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
+    }
+    memoryStore.deleteFixedPattern(patternId);
+    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
+    await logAudit(req, "DELETE_FIXED_PATTERN", "MOSQUE", mosqueId, { patternId });
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
     console.warn("DB error deleting fixed pattern, falling back to memoryStore:", error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null }).catch(() => {
+      });
+    }
     memoryStore.deleteFixedPattern(patternId);
+    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
   }
 });

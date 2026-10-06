@@ -195,6 +195,8 @@ export function MosqueProfileModal({
   };
 
   useEffect(() => {
+    let isCancelled = false;
+
     if (mosque) {
       setName(mosque.name);
       setCode(mosque.code);
@@ -224,7 +226,7 @@ export function MosqueProfileModal({
       setPatternType(mosque.fixedPattern === 'SPECIFIC_FRIDAYS' ? 'SPECIFIC_FRIDAYS' : 'SAME_ALL');
       setExistingPatternId(null);
 
-      const initialSlots = [];
+      const initialSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [];
       for (let f = 1; f <= actualFridaysCount; f++) {
         initialSlots.push({ fridayIndex: f, imamId: mosque.fixedImamId ? Number(mosque.fixedImamId) : '' });
       }
@@ -240,6 +242,7 @@ export function MosqueProfileModal({
       // Load rules for this mosque
       fetchApi<any>(`/api/mosques/${mosque.id}`)
         .then((res) => {
+          if (isCancelled) return;
           if (Array.isArray(res.rules)) {
             setRules(res.rules);
           } else if (res.rules && typeof res.rules === 'object') {
@@ -291,6 +294,10 @@ export function MosqueProfileModal({
     setActiveTab('info');
     setFeedback(null);
     setErrorMessage(null);
+
+    return () => {
+      isCancelled = true;
+    };
   }, [mosque?.id, isOpen]);
 
   // When pattern type or singleImamId changes, keep slots synchronized
@@ -385,48 +392,6 @@ export function MosqueProfileModal({
     setSaving(true);
     setFeedback(null);
 
-    // 1. Build Instant Optimistic Mosque object (0ms UI latency)
-    const selectedFixedImam = hasFixedPattern && singleImamId
-      ? imams.find((i) => i.id === Number(singleImamId))
-      : null;
-
-    const optimisticMosque: Mosque = {
-      ...(mosque || { id: Date.now(), preferencesCount: 0, forbiddenCount: 0 }),
-      name,
-      code,
-      region: region || 'منشأة البكاري',
-      address: formattedAddress || address,
-      countryId,
-      governorateId,
-      districtId,
-      areaId,
-      street,
-      buildingNumber,
-      landmark,
-      formattedAddress: formattedAddress || address,
-      latitude,
-      longitude,
-      managerName,
-      phone,
-      whatsapp,
-      isActive,
-      notes,
-      fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
-      fixedImamName: selectedFixedImam ? selectedFixedImam.name : (hasFixedPattern ? mosque?.fixedImamName : null),
-      fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
-      fixedCount: hasFixedPattern ? actualFridaysCount : 0,
-    };
-
-    // 2. Trigger instant UI update in parent view immediately
-    onSaved(optimisticMosque);
-    setFeedback('تم حفظ بيانات المسجد ونمط التثبيت بنجاح ✓');
-
-    // 3. Smoothly close modal for both new and edited mosques
-    setTimeout(() => {
-      onClose();
-    }, 350);
-
-    // 4. Background Server Persistence
     try {
       const payload = {
         name,
@@ -453,19 +418,20 @@ export function MosqueProfileModal({
         fixedCount: hasFixedPattern ? actualFridaysCount : 0,
       };
 
+      let savedMosqueRes: any;
       let savedMosqueId = mosque?.id;
 
       if (mosque) {
-        await fetchApi(`/api/mosques/${mosque.id}`, {
+        savedMosqueRes = await fetchApi(`/api/mosques/${mosque.id}`, {
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
       } else {
-        const created: any = await fetchApi('/api/mosques', {
+        savedMosqueRes = await fetchApi('/api/mosques', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        savedMosqueId = created.id;
+        savedMosqueId = savedMosqueRes?.id;
       }
 
       // If Fixed Pattern is active, save pattern items for the selected month
@@ -511,12 +477,39 @@ export function MosqueProfileModal({
           }),
         });
 
-        if (patternSaveRes.patternId) {
+        if (patternSaveRes?.patternId) {
           setExistingPatternId(patternSaveRes.patternId);
         }
       }
+
+      const selectedFixedImam = hasFixedPattern && singleImamId
+        ? imams.find((i) => i.id === Number(singleImamId))
+        : null;
+
+      const fullSavedMosque: Mosque = {
+        ...(mosque || {}),
+        ...savedMosqueRes,
+        id: savedMosqueId || Date.now(),
+        name,
+        code,
+        region: region || 'منشأة البكاري',
+        address: formattedAddress || address,
+        fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
+        fixedImamName: selectedFixedImam ? selectedFixedImam.name : null,
+        fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
+        fixedCount: hasFixedPattern ? actualFridaysCount : 0,
+        preferencesCount: rules.filter((r) => r.relationshipType === 'PREFERRED').length,
+        forbiddenCount: rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length,
+      };
+
+      onSaved(fullSavedMosque);
+      setFeedback('تم حفظ بيانات المسجد ونمط التثبيت بنجاح ✓');
+      setTimeout(() => {
+        onClose();
+      }, 400);
     } catch (err: any) {
-      console.warn('Background mosque save warning:', err);
+      console.error('Mosque save error:', err);
+      setErrorMessage(err.message || 'تعذر حفظ بيانات المسجد');
     } finally {
       setSaving(false);
     }
@@ -586,8 +579,15 @@ export function MosqueProfileModal({
         }),
       });
 
+      const targetImam = imams.find((i) => i.id === Number(targetImamId));
+      const enrichedSavedRule: MosqueImamRule = {
+        ...savedRule,
+        imamId: Number(targetImamId),
+        imam: targetImam,
+      };
+
       // Optimistic update: preserve all other rules, replace or add this imam's rule
-      const nextRules = [...rules.filter((r) => r.imamId !== Number(targetImamId)), savedRule];
+      const nextRules = [...rules.filter((r) => r.imamId !== Number(targetImamId)), enrichedSavedRule];
       setRules(nextRules);
 
       if (type === 'PREFERRED') {

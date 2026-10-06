@@ -26,6 +26,13 @@ import { SupabaseCloudSettings } from './components/settings/SupabaseCloudSettin
 import { MosqueProfileView, clearMosqueProfileCache } from './components/profiles/MosqueProfileView.tsx';
 import { ImamProfileView } from './components/profiles/ImamProfileView.tsx';
 import { ProfileNavigationContext } from './context/ProfileNavigationContext.tsx';
+import {
+  ensureCleanCache,
+  fetchMosquesResilient,
+  fetchImamsResilient,
+  fetchRulesResilient,
+  fetchSchedulesResilient,
+} from './services/clientDataService.ts';
 
 import {
   Mosque,
@@ -270,65 +277,24 @@ export default function App() {
       setLoading(true);
     }
     setError(null);
+    ensureCleanCache();
     try {
-      const [mosquesRes, imamsRes, rulesRes, schedulesRes, dashRes] = await Promise.all([
-        fetchApi<Mosque[]>('/api/mosques'),
-        fetchApi<Imam[]>('/api/imams'),
-        fetchApi<MosqueImamRule[]>('/api/rules'),
-        fetchApi<MonthlySchedule[]>('/api/schedules'),
-        fetchApi<any>('/api/dashboard'),
+      const [mosquesData, imamsData, rulesData, schedulesData] = await Promise.all([
+        fetchMosquesResilient(),
+        fetchImamsResilient(),
+        fetchRulesResilient(),
+        fetchSchedulesResilient(),
       ]);
 
-      if (Array.isArray(mosquesRes) && mosquesRes.length > 0) {
-        setMosques(mosquesRes);
-        try { localStorage.setItem('cached_mosques', JSON.stringify(mosquesRes)); } catch {}
-      } else {
-        const cachedM = localStorage.getItem('cached_mosques');
-        if (cachedM) setMosques(JSON.parse(cachedM));
-        else setMosques((initialSeed.mosques || []) as unknown as Mosque[]);
-      }
+      setMosques(mosquesData);
+      setImams(imamsData);
+      setRules(rulesData);
+      setSchedules(schedulesData);
 
-      if (Array.isArray(imamsRes) && imamsRes.length > 0) {
-        setImams(imamsRes);
-        try { localStorage.setItem('cached_imams', JSON.stringify(imamsRes)); } catch {}
-      } else {
-        const cachedI = localStorage.getItem('cached_imams');
-        if (cachedI) setImams(JSON.parse(cachedI));
-        else setImams((initialSeed.imams || []) as unknown as Imam[]);
-      }
-
-      if (Array.isArray(rulesRes)) {
-        setRules(rulesRes);
-        try { localStorage.setItem('cached_rules', JSON.stringify(rulesRes)); } catch {}
-      } else {
-        const cachedR = localStorage.getItem('cached_rules');
-        if (cachedR) setRules(JSON.parse(cachedR));
-      }
-      
-      let resolvedSchedules: MonthlySchedule[] = [];
-      if (Array.isArray(schedulesRes) && schedulesRes.length > 0) {
-        resolvedSchedules = CalendarService.sortSchedulesChronologically(schedulesRes);
-        try { localStorage.setItem('cached_schedules', JSON.stringify(resolvedSchedules)); } catch {}
-      } else {
-        const cachedS = localStorage.getItem('cached_schedules');
-        if (cachedS) {
-          resolvedSchedules = JSON.parse(cachedS);
-        } else {
-          resolvedSchedules = CalendarService.sortSchedulesChronologically(
-            (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]
-          );
-        }
-      }
-      setSchedules(resolvedSchedules);
-
-      if (dashRes && dashRes.stats) setDashboardStats(dashRes.stats);
-      
       // Default to Current Month schedule
       const currSchedule =
-        resolvedSchedules.find((s: any) => s.isCurrent || s.periodStatus === 'CURRENT') ||
-        dashRes?.schedule ||
-        dashRes?.currentSchedule ||
-        resolvedSchedules[0] ||
+        schedulesData.find((s: any) => s.isCurrent || s.periodStatus === 'CURRENT') ||
+        schedulesData[0] ||
         null;
 
       if (currSchedule) {
@@ -337,9 +303,16 @@ export default function App() {
           setActiveScheduleId(currSchedule.id);
         }
       }
-      if (dashRes?.upcomingSchedule) setUpcomingSchedule(dashRes.upcomingSchedule);
+
+      // Load dashboard stats in background
+      fetchApi<any>('/api/dashboard')
+        .then((dashRes) => {
+          if (dashRes && dashRes.stats) setDashboardStats(dashRes.stats);
+          if (dashRes?.upcomingSchedule) setUpcomingSchedule(dashRes.upcomingSchedule);
+        })
+        .catch(() => {});
     } catch (err: any) {
-      console.warn('API load failed, activating embedded seed fallback:', err?.message || err);
+      console.warn('Resilient load caught error, using embedded seed fallback:', err?.message || err);
       fallbackToSeedData();
     } finally {
       if (showLoading) {
@@ -390,8 +363,6 @@ export default function App() {
       });
     }
     clearMosqueProfileCache();
-    // Silent background sync with server
-    loadInitialData(false);
   };
 
   const handleImamSaved = (updatedImam?: Imam) => {
@@ -405,8 +376,6 @@ export default function App() {
         return next;
       });
     }
-    // Silent background sync with server
-    loadInitialData(false);
   };
 
   useEffect(() => {
@@ -419,41 +388,39 @@ export default function App() {
     const client = getSupabaseClient();
     if (!client) return;
 
+    let syncTimeout: any = null;
+    const triggerDebouncedSync = () => {
+      // If modal is actively open, skip reload so user's current inputs aren't disrupted
+      if (isMosqueModalOpen || isImamModalOpen) return;
+      if (syncTimeout) clearTimeout(syncTimeout);
+      syncTimeout = setTimeout(() => {
+        clearMosqueProfileCache();
+        loadInitialData(false);
+      }, 300);
+    };
+
     const channel = client
       .channel('app-realtime-cross-device-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosques' }, () => {
-        clearMosqueProfileCache();
-        loadInitialData(false);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'imams' }, () => {
-        loadInitialData(false);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosque_imam_rules' }, () => {
-        clearMosqueProfileCache();
-        loadInitialData(false);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => {
-        loadInitialData(false);
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_schedules' }, () => {
-        loadInitialData(false);
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosques' }, triggerDebouncedSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'imams' }, triggerDebouncedSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosque_imam_rules' }, triggerDebouncedSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, triggerDebouncedSync)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_schedules' }, triggerDebouncedSync)
       .subscribe();
 
     return () => {
+      if (syncTimeout) clearTimeout(syncTimeout);
       client.removeChannel(channel);
     };
-  }, []);
+  }, [isMosqueModalOpen, isImamModalOpen]);
 
-  // Safety timer: ensure loading never hangs more than 3.5 seconds
+  // Safety timer: ensure loading spinner never hangs indefinitely
   useEffect(() => {
     const timer = setTimeout(() => {
       if (loading) {
-        console.warn('Initial load safety timeout reached, activating seed fallback');
-        fallbackToSeedData();
         setLoading(false);
       }
-    }, 3500);
+    }, 5000);
     return () => clearTimeout(timer);
   }, [loading]);
 
@@ -817,8 +784,12 @@ export default function App() {
 
       {/* 2. Mosque Profile Modal */}
       <MosqueProfileModal
+        key={editingMosque ? `mosque-${editingMosque.id}` : 'new-mosque'}
         isOpen={isMosqueModalOpen}
-        onClose={() => setIsMosqueModalOpen(false)}
+        onClose={() => {
+          setIsMosqueModalOpen(false);
+          setEditingMosque(null);
+        }}
         mosque={editingMosque}
         imams={imams}
         onSaved={handleMosqueSaved}
@@ -833,8 +804,12 @@ export default function App() {
 
       {/* 4. Imam Profile Modal */}
       <ImamProfileModal
+        key={editingImam ? `imam-${editingImam.id}` : 'new-imam'}
         isOpen={isImamModalOpen}
-        onClose={() => setIsImamModalOpen(false)}
+        onClose={() => {
+          setIsImamModalOpen(false);
+          setEditingImam(null);
+        }}
         imam={editingImam}
         onSaved={handleImamSaved}
       />

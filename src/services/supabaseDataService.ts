@@ -280,7 +280,27 @@ export const SupabaseDataService = {
         return memoryStore.getMosqueDetails(id);
       }
 
-      return mapDbMosque(updated);
+      const mapped = mapDbMosque(updated);
+      if (!mapped) return memoryStore.getMosqueDetails(id);
+
+      let fixedImamName: string | null = null;
+      if (mapped.fixedImamId) {
+        const { data: im } = await client.from('imams').select('name').eq('id', mapped.fixedImamId).maybeSingle();
+        fixedImamName = im?.name || null;
+      }
+      const { data: rules } = await client.from('mosque_imam_rules').select('relationship_type').eq('mosque_id', id);
+      const preferencesCount = (rules || []).filter((r: any) => r.relationship_type === 'PREFERRED').length;
+      const forbiddenCount = (rules || []).filter((r: any) => r.relationship_type === 'FORBIDDEN').length;
+
+      const fullMosque = {
+        ...mapped,
+        fixedImamName,
+        preferencesCount,
+        forbiddenCount,
+      };
+
+      memoryStore.updateMosque(id, fullMosque);
+      return fullMosque;
     } catch (err: any) {
       console.warn('Supabase updateMosque error:', err.message);
       return memoryStore.getMosqueDetails(id);

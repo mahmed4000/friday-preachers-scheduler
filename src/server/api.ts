@@ -73,15 +73,17 @@ CalendarService.configureDefaults(
 // Helper for audit logging
 async function logAudit(req: AuthRequest, action: string, entityType: string, entityId?: number, details?: any) {
   try {
-    await db.insert(auditLogs).values({
-      userEmail: req.user?.email || 'admin@aljameya.org',
-      action,
-      entityType,
-      entityId,
-      detailsJson: details ? JSON.stringify(details) : null,
-    });
+    if (isDatabaseAvailable()) {
+      await db.insert(auditLogs).values({
+        userEmail: req.user?.email || 'admin@aljameya.org',
+        action,
+        entityType,
+        entityId,
+        detailsJson: details ? JSON.stringify(details) : null,
+      });
+    }
   } catch (err) {
-    console.error('Audit log write failed:', err);
+    // Audit logging is non-blocking
   }
 }
 
@@ -1330,7 +1332,16 @@ api.post('/mosques/:id/fixed-patterns', async (req: AuthRequest, res: Response) 
   }
 
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      if (patternType === 'SAME_ALL' && items[0]?.imamId) {
+        await SupabaseDataService.updateMosque(mosqueId, {
+          fixedImamId: Number(items[0].imamId),
+          fixedPattern: 'ALL',
+        });
+      }
+    }
     const fallbackResult = memoryStore.saveFixedPattern(mosqueId, req.body);
+    await logAudit(req, 'SAVE_FIXED_PATTERN', 'MOSQUE', mosqueId, { hijriYear, patternType });
     return res.json(fallbackResult);
   }
 
@@ -1608,14 +1619,27 @@ api.post('/mosques/:id/fixed-patterns/copy', async (req: AuthRequest, res: Respo
 });
 
 api.delete('/mosques/:id/fixed-patterns/:patternId', async (req: AuthRequest, res: Response) => {
+  const mosqueId = Number(req.params.id);
   const patternId = Number(req.params.patternId);
   try {
-    await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
-    await logAudit(req, 'DELETE_FIXED_PATTERN', 'MOSQUE', Number(req.params.id), { patternId });
+    if (isDatabaseAvailable()) {
+      await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
+      await db.update(mosques).set({ fixedImamId: null as any, fixedPattern: null as any }).where(eq(mosques.id, mosqueId));
+    }
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
+    }
+    memoryStore.deleteFixedPattern(patternId);
+    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
+    await logAudit(req, 'DELETE_FIXED_PATTERN', 'MOSQUE', mosqueId, { patternId });
     res.json({ success: true, message: 'تم حذف نمط التثبيت بنجاح' });
   } catch (error: any) {
     console.warn('DB error deleting fixed pattern, falling back to memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null }).catch(() => {});
+    }
     memoryStore.deleteFixedPattern(patternId);
+    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
     res.json({ success: true, message: 'تم حذف نمط التثبيت بنجاح' });
   }
 });
