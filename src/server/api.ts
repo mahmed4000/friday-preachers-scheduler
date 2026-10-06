@@ -3411,6 +3411,30 @@ api.get('/audit-logs', requireAdmin, async (_req: AuthRequest, res: Response) =>
 // 7. Advanced Import / Export Engine & Management Center
 // -------------------------------------------------------------
 
+interface InMemoryImportExportLog {
+  id: number;
+  batchId: string;
+  operationType: string;
+  entityType: string;
+  fileName: string;
+  fileFormat: string;
+  userEmail: string;
+  mode: string;
+  status: string;
+  totalRows: number;
+  createdRows: number;
+  updatedRows: number;
+  skippedRows: number;
+  errorRows: number;
+  summaryJson: string;
+  errorReportJson: string | null;
+  completedAt: Date;
+}
+
+const inMemoryImportExportLogs: InMemoryImportExportLog[] = [];
+let nextImportExportLogId = 1;
+const inMemoryImportSnapshots: any[] = [];
+
 // 7.1 Import Preview & Validation Endpoint
 api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
@@ -3427,7 +3451,7 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
     }
 
     const batchId = `IMPORT-${new Date().getFullYear()}-${String(Math.floor(10000 + Math.random() * 90000))}`;
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
     const fileHeaders = Object.keys(rawRows[0] || {});
 
     // Compute column mappings and auto-detect entity type
@@ -3725,11 +3749,22 @@ api.post('/import-export/execute', requireAdmin, async (req: AuthRequest, res: R
         ? await db.select().from(mosques)
         : await db.select().from(imams);
 
-      await db.insert(importSnapshots).values({
+      inMemoryImportSnapshots.push({
         batchId: batchId || `BATCH-${Date.now()}`,
         entityType,
         snapshotJson: JSON.stringify(currentSnapshot),
+        createdAt: new Date(),
       });
+
+      try {
+        await db.insert(importSnapshots).values({
+          batchId: batchId || `BATCH-${Date.now()}`,
+          entityType,
+          snapshotJson: JSON.stringify(currentSnapshot),
+        });
+      } catch {
+        // Non-fatal if auxiliary table does not exist in DB
+      }
     } catch (snapErr) {
       console.warn('Could not store import snapshot:', snapErr);
     }
@@ -3793,10 +3828,10 @@ api.post('/import-export/execute', requireAdmin, async (req: AuthRequest, res: R
           } else {
             // Insert New Mosque
             // Ensure unique code
-            let finalCode = d.code;
+            let finalCode = d.code || `MOS-${Math.floor(100 + Math.random() * 900)}`;
             const duplicateCode = await db.select().from(mosques).where(eq(mosques.code, finalCode));
             if (duplicateCode.length > 0) {
-              finalCode = `${d.code}-${Math.floor(10 + Math.random() * 90)}`;
+              finalCode = `${finalCode}-${Math.floor(10 + Math.random() * 90)}`;
             }
 
             await db.insert(mosques).values({
@@ -3869,7 +3904,8 @@ api.post('/import-export/execute', requireAdmin, async (req: AuthRequest, res: R
     const logStatus = errorCount === 0 ? 'COMPLETED' : createdCount + updatedCount > 0 ? 'COMPLETED_WITH_WARNINGS' : 'FAILED';
 
     // 3. Store in Import/Export Log
-    await db.insert(importExportLogs).values({
+    const logItem: InMemoryImportExportLog = {
+      id: nextImportExportLogId++,
       batchId: batchId || `BATCH-${Date.now()}`,
       operationType: 'IMPORT',
       entityType,
@@ -3886,7 +3922,14 @@ api.post('/import-export/execute', requireAdmin, async (req: AuthRequest, res: R
       summaryJson: JSON.stringify({ created: createdCount, updated: updatedCount, skipped: skippedCount, errors: errorCount }),
       errorReportJson: errorReport.length > 0 ? JSON.stringify(errorReport) : null,
       completedAt: new Date(),
-    } as any);
+    };
+    inMemoryImportExportLogs.unshift(logItem);
+
+    try {
+      await db.insert(importExportLogs).values(logItem as any);
+    } catch (logDbErr) {
+      console.warn('Could not store import log in DB (using memory fallback):', logDbErr);
+    }
 
     await logAudit(req, 'EXECUTE_IMPORT', entityType, undefined, {
       batchId,
@@ -3928,7 +3971,7 @@ api.post('/import-export/export', requireAuth, async (req: AuthRequest, res: Res
       singleEntityId,
     } = req.body;
 
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
     const unitMap = new Map(allUnits.map((u) => [u.id, u]));
 
     if (entityType === 'MOSQUES') {
@@ -3991,7 +4034,7 @@ api.post('/import-export/export', requireAuth, async (req: AuthRequest, res: Res
             data: allUnits.map((u) => ({
               'كود الوحدة': u.id,
               'الاسم بالعربية': u.nameAr,
-              'النوع': (u as any).type || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
+              'النوع': EgyptAdministrativeProvider.getTypeLabelArabic(u.type as any) || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
               'المستوى': u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة',
               'الكود الإداري': (u as any).code || '',
             })),
@@ -4143,7 +4186,7 @@ api.post('/import-export/export', requireAuth, async (req: AuthRequest, res: Res
 api.get('/import-export/templates/:type', async (req: Request, res: Response) => {
   try {
     const rawType = String(req.params.type || '').toLowerCase();
-    const allUnits = await db.select().from(administrativeUnits);
+    const allUnits = EgyptAdministrativeProvider.getAllUnits();
 
     if (rawType === 'mosques') {
       const sampleMosques = [
@@ -4223,7 +4266,7 @@ api.get('/import-export/templates/:type', async (req: Request, res: Response) =>
           name: 'دليل الوحدات الإدارية المعتمدة',
           data: allUnits.slice(0, 100).map((u) => ({
             'المحافظة / الوحدة': u.nameAr,
-            'النوع': (u as any).type || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
+            'النوع': EgyptAdministrativeProvider.getTypeLabelArabic(u.type as any) || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
             'المستوى': u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة',
             'الكود': u.id,
           })),
@@ -4300,7 +4343,7 @@ api.get('/import-export/templates/:type', async (req: Request, res: Response) =>
           name: 'دليل الوحدات الإدارية المعتمدة',
           data: allUnits.slice(0, 100).map((u) => ({
             'المحافظة / الوحدة': u.nameAr,
-            'النوع': (u as any).type || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
+            'النوع': EgyptAdministrativeProvider.getTypeLabelArabic(u.type as any) || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
             'المستوى': u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة',
             'الكود': u.id,
           })),
@@ -4348,7 +4391,7 @@ api.get('/import-export/templates/:type', async (req: Request, res: Response) =>
           name: 'دليل الوحدات الإدارية المصرية',
           data: allUnits.slice(0, 100).map((u) => ({
             'الوحدة': u.nameAr,
-            'النوع': (u as any).type || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
+            'النوع': EgyptAdministrativeProvider.getTypeLabelArabic(u.type as any) || (u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة'),
             'المستوى': u.level === 1 ? 'محافظة' : u.level === 2 ? 'قسم / حي' : 'شياخة / منطقة',
             'الكود': u.id,
           })),
@@ -4369,9 +4412,9 @@ api.get('/import-export/templates/:type', async (req: Request, res: Response) =>
 api.get('/import-export/logs', requireAdmin, async (_req: AuthRequest, res: Response) => {
   try {
     const logs = await db.select().from(importExportLogs).orderBy(desc(importExportLogs.id)).limit(50);
-    res.json(logs);
-  } catch (error: any) {
-    res.status(500).json({ error: 'تعذر جلب سجل العمليات', details: error.message });
+    return res.json(logs);
+  } catch {
+    return res.json(inMemoryImportExportLogs.slice(0, 50));
   }
 });
 
@@ -4379,7 +4422,16 @@ api.get('/import-export/logs', requireAdmin, async (_req: AuthRequest, res: Resp
 api.get('/import-export/logs/:id/error-report', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const logId = Number(req.params.id);
-    const [log] = await db.select().from(importExportLogs).where(eq(importExportLogs.id, logId));
+    let log: any = null;
+    try {
+      const [dbLog] = await db.select().from(importExportLogs).where(eq(importExportLogs.id, logId));
+      log = dbLog;
+    } catch {
+      log = inMemoryImportExportLogs.find((l) => l.id === logId);
+    }
+    if (!log) {
+      log = inMemoryImportExportLogs.find((l) => l.id === logId);
+    }
     if (!log || !(log as any).errorReportJson) {
       return res.status(404).json({ error: 'لا يوجد تقرير أخطاء لهذه العملية' });
     }

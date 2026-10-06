@@ -41,6 +41,13 @@ export class EgyptAdministrativeProvider {
   }
 
   /**
+   * قائمة جميع الوحدات الإدارية والمحافظات المصرية المعتمدة
+   */
+  public static getAllUnits(): AdministrativeUnit[] {
+    return Array.from(this.allUnitsMap.values());
+  }
+
+  /**
    * قائمة الدول المدعومة (افتراضياً: جمهورية مصر العربية)
    */
   public static getCountries(): Country[] {
