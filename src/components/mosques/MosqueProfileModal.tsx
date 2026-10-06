@@ -169,16 +169,24 @@ export function MosqueProfileModal({
           setFridaySlots(loadedSlots.sort((a: any, b: any) => a.fridayIndex - b.fridayIndex));
         }
       } else {
-        setHasFixedPattern(Boolean(mosque?.fixedImamId));
+        const isFixed = Boolean(mosque?.fixedImamId);
+        setHasFixedPattern(isFixed);
         setExistingPatternId(null);
         if (mosque?.fixedImamId) {
-          setSingleImamId(mosque.fixedImamId);
+          setSingleImamId(Number(mosque.fixedImamId));
           setPatternType('SAME_ALL');
           const defSlots = [];
           for (let f = 1; f <= actualFridaysCount; f++) {
-            defSlots.push({ fridayIndex: f, imamId: mosque.fixedImamId });
+            defSlots.push({ fridayIndex: f, imamId: Number(mosque.fixedImamId) });
           }
           setFridaySlots(defSlots);
+        } else {
+          setSingleImamId('');
+          setFridaySlots([]);
+          setSplitGroups([
+            { id: 'grp-1', imamId: '', count: 2 },
+            { id: 'grp-2', imamId: '', count: Math.max(1, actualFridaysCount - 2) },
+          ]);
         }
       }
     } catch {
@@ -208,6 +216,24 @@ export function MosqueProfileModal({
       setWhatsapp(mosque.whatsapp || '');
       setIsActive(mosque.isActive);
       setNotes(mosque.notes || '');
+
+      // Cleanly reset and initialize fixed pattern states for this specific mosque
+      const isFixed = Boolean(mosque.fixedImamId);
+      setHasFixedPattern(isFixed);
+      setSingleImamId(mosque.fixedImamId ? Number(mosque.fixedImamId) : '');
+      setPatternType(mosque.fixedPattern === 'SPECIFIC_FRIDAYS' ? 'SPECIFIC_FRIDAYS' : 'SAME_ALL');
+      setExistingPatternId(null);
+
+      const initialSlots = [];
+      for (let f = 1; f <= actualFridaysCount; f++) {
+        initialSlots.push({ fridayIndex: f, imamId: mosque.fixedImamId ? Number(mosque.fixedImamId) : '' });
+      }
+      setFridaySlots(initialSlots);
+
+      setSplitGroups([
+        { id: 'grp-1', imamId: mosque.fixedImamId ? Number(mosque.fixedImamId) : '', count: 2 },
+        { id: 'grp-2', imamId: '', count: Math.max(1, actualFridaysCount - 2) },
+      ]);
 
       loadFixedPattern(mosque.id, patternYear, patternMonth);
 
@@ -252,7 +278,12 @@ export function MosqueProfileModal({
       setHasFixedPattern(false);
       setSingleImamId('');
       setPatternType('SAME_ALL');
+      setExistingPatternId(null);
       setFridaySlots([]);
+      setSplitGroups([
+        { id: 'grp-1', imamId: '', count: 2 },
+        { id: 'grp-2', imamId: '', count: 2 },
+      ]);
       setRules([]);
     }
     setSelectedPreferredImam('');
@@ -260,7 +291,7 @@ export function MosqueProfileModal({
     setActiveTab('info');
     setFeedback(null);
     setErrorMessage(null);
-  }, [mosque, isOpen]);
+  }, [mosque?.id, isOpen]);
 
   // When pattern type or singleImamId changes, keep slots synchronized
   const handleSingleImamChange = (imId: number | '') => {
@@ -798,13 +829,13 @@ export function MosqueProfileModal({
                     type="checkbox"
                     checked={hasFixedPattern}
                     onChange={(e) => {
-                      setHasFixedPattern(e.target.checked);
-                      if (e.target.checked && fridaySlots.length === 0) {
-                        const def: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [];
-                        for (let f = 1; f <= actualFridaysCount; f++) {
-                          def.push({ fridayIndex: f, imamId: singleImamId || '' });
-                        }
-                        setFridaySlots(def);
+                      const checked = e.target.checked;
+                      setHasFixedPattern(checked);
+                      if (!checked) {
+                        setSingleImamId('');
+                        setFridaySlots((prev) => prev.map((s) => ({ ...s, imamId: '' })));
+                      } else if (!singleImamId && mosque?.fixedImamId) {
+                        setSingleImamId(Number(mosque.fixedImamId));
                       }
                     }}
                     className="w-4 h-4 text-emerald-600 rounded border-slate-300"

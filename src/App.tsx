@@ -41,6 +41,7 @@ import {
 import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from './lib/defaultLogo.ts';
 import { CalendarService } from './services/calendar/calendarService.ts';
 import { fetchApi } from './lib/api.ts';
+import { getSupabaseClient } from './lib/supabaseClient.ts';
 import initialSeed from './db/initialSeed.json';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
@@ -411,6 +412,37 @@ export default function App() {
   useEffect(() => {
     const hasCache = Boolean(localStorage.getItem('cached_mosques'));
     loadInitialData(!hasCache);
+  }, []);
+
+  // Realtime multi-device sync via Supabase Realtime
+  useEffect(() => {
+    const client = getSupabaseClient();
+    if (!client) return;
+
+    const channel = client
+      .channel('app-realtime-cross-device-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosques' }, () => {
+        clearMosqueProfileCache();
+        loadInitialData(false);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'imams' }, () => {
+        loadInitialData(false);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mosque_imam_rules' }, () => {
+        clearMosqueProfileCache();
+        loadInitialData(false);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, () => {
+        loadInitialData(false);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'monthly_schedules' }, () => {
+        loadInitialData(false);
+      })
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
   }, []);
 
   // Safety timer: ensure loading never hangs more than 3.5 seconds
