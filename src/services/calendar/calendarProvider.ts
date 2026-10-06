@@ -241,12 +241,19 @@ export class UmmAlQuraCalendarProvider implements ICalendarProvider {
       return { year: y, month: m, day: d };
     };
 
-    // Scan window: start ~1 month before estimated month
+    // Targeted search window using astronomical lunar cycle (~29.530588 days/month)
+    // Anchor: 1445-01-01 AH was 2023-07-19 CE
+    const monthsElapsed = (hijriYear - 1445) * 12 + (hijriMonth - 1);
+    const approxDays = Math.round(monthsElapsed * 29.530588);
+    const anchorMs = Date.UTC(2023, 6, 19, 12, 0, 0);
+    const estimatedStartMs = anchorMs + approxDays * 86400000;
+
     let startDate: Date | null = null;
     let endDate: Date | null = null;
-    const scanner = new Date(Date.UTC(approxGregYear - 1, Math.max(0, hijriMonth - 2), 1, 12, 0, 0));
+    // Scan ±5 days around estimated start date, then through the month (max 42 steps)
+    const scanner = new Date(estimatedStartMs - 5 * 86400000);
 
-    for (let step = 0; step < 950; step++) {
+    for (let step = 0; step < 45; step++) {
       const h = getH(scanner);
       if (h.year === hijriYear && h.month === hijriMonth) {
         if (!startDate) startDate = new Date(scanner.getTime());
