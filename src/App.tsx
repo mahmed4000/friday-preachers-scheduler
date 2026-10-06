@@ -23,7 +23,7 @@ import { ReportsView } from './components/reports/ReportsView.tsx';
 import { AuditLogsView } from './components/audit/AuditLogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { SupabaseCloudSettings } from './components/settings/SupabaseCloudSettings.tsx';
-import { MosqueProfileView } from './components/profiles/MosqueProfileView.tsx';
+import { MosqueProfileView, clearMosqueProfileCache } from './components/profiles/MosqueProfileView.tsx';
 import { ImamProfileView } from './components/profiles/ImamProfileView.tsx';
 import { ProfileNavigationContext } from './context/ProfileNavigationContext.tsx';
 
@@ -47,7 +47,13 @@ import { AlertCircle, RefreshCw } from 'lucide-react';
 export default function App() {
   const [currentTab, setCurrentTab] = useState<NavItem>('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem('cached_mosques');
+    } catch {
+      return true;
+    }
+  });
   const [error, setError] = useState<string | null>(null);
 
   // Master Data with local persistent cache
@@ -257,9 +263,11 @@ export default function App() {
     }
   };
 
-  // Fetch all base data
-  const loadInitialData = async () => {
-    setLoading(true);
+  // Fetch all base data (supports silent background sync without blocking screen)
+  const loadInitialData = async (showLoading = false) => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const [mosquesRes, imamsRes, rulesRes, schedulesRes, dashRes] = await Promise.all([
@@ -333,7 +341,9 @@ export default function App() {
       console.warn('API load failed, activating embedded seed fallback:', err?.message || err);
       fallbackToSeedData();
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   };
 
@@ -367,8 +377,40 @@ export default function App() {
     }
   };
 
+  const handleMosqueSaved = (updatedMosque?: Mosque) => {
+    if (updatedMosque) {
+      setMosques((prev) => {
+        const exists = prev.some((m) => m.id === updatedMosque.id);
+        const next = exists
+          ? prev.map((m) => (m.id === updatedMosque.id ? { ...m, ...updatedMosque } : m))
+          : [updatedMosque, ...prev];
+        try { localStorage.setItem('cached_mosques', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+    clearMosqueProfileCache();
+    // Silent background sync with server
+    loadInitialData(false);
+  };
+
+  const handleImamSaved = (updatedImam?: Imam) => {
+    if (updatedImam) {
+      setImams((prev) => {
+        const exists = prev.some((i) => i.id === updatedImam.id);
+        const next = exists
+          ? prev.map((i) => (i.id === updatedImam.id ? { ...i, ...updatedImam } : i))
+          : [updatedImam, ...prev];
+        try { localStorage.setItem('cached_imams', JSON.stringify(next)); } catch {}
+        return next;
+      });
+    }
+    // Silent background sync with server
+    loadInitialData(false);
+  };
+
   useEffect(() => {
-    loadInitialData();
+    const hasCache = Boolean(localStorage.getItem('cached_mosques'));
+    loadInitialData(!hasCache);
   }, []);
 
   // Safety timer: ensure loading never hangs more than 3.5 seconds
@@ -747,14 +789,14 @@ export default function App() {
         onClose={() => setIsMosqueModalOpen(false)}
         mosque={editingMosque}
         imams={imams}
-        onSaved={loadInitialData}
+        onSaved={handleMosqueSaved}
       />
 
       {/* 3. Excel Import Modal */}
       <ExcelImportModal
         isOpen={isExcelImportOpen}
         onClose={() => setIsExcelImportOpen(false)}
-        onSuccess={loadInitialData}
+        onSuccess={() => loadInitialData(false)}
       />
 
       {/* 4. Imam Profile Modal */}
@@ -762,7 +804,7 @@ export default function App() {
         isOpen={isImamModalOpen}
         onClose={() => setIsImamModalOpen(false)}
         imam={editingImam}
-        onSaved={loadInitialData}
+        onSaved={handleImamSaved}
       />
     </div>
     </ProfileNavigationContext.Provider>

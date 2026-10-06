@@ -50,7 +50,11 @@ interface MosqueProfileViewProps {
   onOpenImamProfile: (imamId: number) => void;
 }
 
-const mosqueProfileCache = new Map<string, MosqueProfileData>();
+export const mosqueProfileCache = new Map<string, MosqueProfileData>();
+
+export const clearMosqueProfileCache = () => {
+  mosqueProfileCache.clear();
+};
 
 const normalizeMosqueProfileData = (profile: MosqueProfileData): MosqueProfileData => {
   const normAssignments = (profile.assignments || []).map((a) => ({

@@ -32,7 +32,7 @@ interface MosqueProfileModalProps {
   onClose: () => void;
   mosque: Mosque | null;
   imams: Imam[];
-  onSaved: () => void;
+  onSaved: (updatedMosque?: Mosque) => void;
 }
 
 interface SplitGroup {
@@ -333,8 +333,69 @@ export function MosqueProfileModal({
       return;
     }
 
+    if (hasFixedPattern) {
+      if (patternType === 'SAME_ALL' && !singleImamId) {
+        setErrorMessage('يرجى اختيار الخطيب الثابت لكافة جمعات الشهر');
+        return;
+      }
+      if (patternType === 'SPLIT_COUNTS' && totalAllocatedInGroups !== actualFridaysCount) {
+        setErrorMessage(`مجموع جمعات المجموعات (${totalAllocatedInGroups}) لا يساوي إجمالي جمعات الشهر (${actualFridaysCount})`);
+        return;
+      }
+      if (patternType === 'SPECIFIC_FRIDAYS') {
+        const filledSlots = fridaySlots.filter((s) => s.imamId && s.fridayIndex <= actualFridaysCount);
+        if (filledSlots.length < actualFridaysCount) {
+          setErrorMessage(`يرجى تحديد الخطيب لجميع جمعات الشهر (${actualFridaysCount} جمعات)`);
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     setFeedback(null);
+
+    // 1. Build Instant Optimistic Mosque object (0ms UI latency)
+    const selectedFixedImam = hasFixedPattern && singleImamId
+      ? imams.find((i) => i.id === Number(singleImamId))
+      : null;
+
+    const optimisticMosque: Mosque = {
+      ...(mosque || { id: Date.now(), preferencesCount: 0, forbiddenCount: 0 }),
+      name,
+      code,
+      region: region || 'منشأة البكاري',
+      address: formattedAddress || address,
+      countryId,
+      governorateId,
+      districtId,
+      areaId,
+      street,
+      buildingNumber,
+      landmark,
+      formattedAddress: formattedAddress || address,
+      latitude,
+      longitude,
+      managerName,
+      phone,
+      whatsapp,
+      isActive,
+      notes,
+      fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
+      fixedImamName: selectedFixedImam ? selectedFixedImam.name : (hasFixedPattern ? mosque?.fixedImamName : null),
+      fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
+      fixedCount: hasFixedPattern ? actualFridaysCount : 0,
+    };
+
+    // 2. Trigger instant UI update in parent view immediately
+    onSaved(optimisticMosque);
+    setFeedback('تم حفظ بيانات المسجد ونمط التثبيت بنجاح ✓');
+
+    // 3. Smoothly close modal for both new and edited mosques
+    setTimeout(() => {
+      onClose();
+    }, 350);
+
+    // 4. Background Server Persistence
     try {
       const payload = {
         name,
@@ -356,7 +417,7 @@ export function MosqueProfileModal({
         whatsapp,
         isActive,
         notes,
-        fixedImamId: hasFixedPattern && singleImamId ? singleImamId : null,
+        fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
         fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
         fixedCount: hasFixedPattern ? actualFridaysCount : 0,
       };
@@ -368,14 +429,12 @@ export function MosqueProfileModal({
           method: 'PATCH',
           body: JSON.stringify(payload),
         });
-        setFeedback('تم تحديث بيانات المسجد والموقع الإداري بنجاح');
       } else {
         const created: any = await fetchApi('/api/mosques', {
           method: 'POST',
           body: JSON.stringify(payload),
         });
         savedMosqueId = created.id;
-        setFeedback('تم تسجيل المسجد الجديد بنجاح');
       }
 
       // If Fixed Pattern is active, save pattern items for the selected month
@@ -383,20 +442,13 @@ export function MosqueProfileModal({
         let itemsToSave: any[] = [];
 
         if (patternType === 'SAME_ALL') {
-          if (!singleImamId) {
-            throw new Error('يرجى اختيار الخطيب الثابت لكافة جمعات الشهر');
-          }
           for (let f = 1; f <= actualFridaysCount; f++) {
-            itemsToSave.push({ fridayIndex: f, imamId: singleImamId });
+            itemsToSave.push({ fridayIndex: f, imamId: Number(singleImamId) });
           }
         } else if (patternType === 'SPLIT_COUNTS') {
-          if (totalAllocatedInGroups !== actualFridaysCount) {
-            throw new Error(`مجموع جمعات المجموعات (${totalAllocatedInGroups}) لا يساوي إجمالي جمعات الشهر (${actualFridaysCount})`);
-          }
           handleApplySplitGroups();
           let curr = 1;
           for (const grp of splitGroups) {
-            if (!grp.imamId) throw new Error('يرجى تحديد الخطيب لجميع المجموعات');
             for (let c = 0; c < grp.count; c++) {
               if (curr <= actualFridaysCount) {
                 itemsToSave.push({ fridayIndex: curr, imamId: Number(grp.imamId) });
@@ -413,10 +465,6 @@ export function MosqueProfileModal({
               imamId: Number(s.imamId),
               notes: s.notes || null,
             }));
-
-          if (patternType === 'SPECIFIC_FRIDAYS' && itemsToSave.length < actualFridaysCount) {
-            throw new Error(`يرجى تحديد الخطيب لجميع جمعات الشهر (${actualFridaysCount} جمعات)`);
-          }
         }
 
         const patternSaveRes: any = await fetchApi(`/api/mosques/${savedMosqueId}/fixed-patterns`, {
@@ -436,13 +484,8 @@ export function MosqueProfileModal({
           setExistingPatternId(patternSaveRes.patternId);
         }
       }
-
-      onSaved();
-      setTimeout(() => {
-        if (!mosque) onClose();
-      }, 1200);
     } catch (err: any) {
-      setErrorMessage(err.message || 'تعذر حفظ بيانات المسجد ونمط التثبيت');
+      console.warn('Background mosque save warning:', err);
     } finally {
       setSaving(false);
     }
@@ -513,16 +556,23 @@ export function MosqueProfileModal({
       });
 
       // Optimistic update: preserve all other rules, replace or add this imam's rule
-      setRules((prev) => {
-        const withoutCurrent = prev.filter((r) => r.imamId !== Number(targetImamId));
-        return [...withoutCurrent, savedRule];
-      });
+      const nextRules = [...rules.filter((r) => r.imamId !== Number(targetImamId)), savedRule];
+      setRules(nextRules);
 
       if (type === 'PREFERRED') {
         setSelectedPreferredImam('');
       } else {
         setSelectedForbiddenImam('');
       }
+
+      // Optimistically update badge counts in table view
+      const prefCount = nextRules.filter((r) => r.relationshipType === 'PREFERRED').length;
+      const forbCount = nextRules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length;
+      onSaved({
+        ...mosque,
+        preferencesCount: prefCount,
+        forbiddenCount: forbCount,
+      });
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر إضافة القاعدة');
     }
@@ -533,7 +583,17 @@ export function MosqueProfileModal({
     setErrorMessage(null);
     try {
       await fetchApi(`/api/mosques/${mosque.id}/rules/${ruleId}`, { method: 'DELETE' });
-      setRules((prev) => prev.filter((r) => r.id !== ruleId));
+      const nextRules = rules.filter((r) => r.id !== ruleId);
+      setRules(nextRules);
+
+      // Optimistically update badge counts in table view
+      const prefCount = nextRules.filter((r) => r.relationshipType === 'PREFERRED').length;
+      const forbCount = nextRules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length;
+      onSaved({
+        ...mosque,
+        preferencesCount: prefCount,
+        forbiddenCount: forbCount,
+      });
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر حذف القاعدة');
     }

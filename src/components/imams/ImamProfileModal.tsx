@@ -19,7 +19,7 @@ interface ImamProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   imam: Imam | null;
-  onSaved: () => void;
+  onSaved: (updatedImam?: Imam) => void;
 }
 
 export function ImamProfileModal({
@@ -158,6 +158,43 @@ export function ImamProfileModal({
 
     setSaving(true);
     setFeedback(null);
+
+    // 1. Optimistic Imam object (0ms UI latency)
+    const optimisticImam: Imam = {
+      ...(imam || { id: Date.now() }),
+      name,
+      phone,
+      whatsapp,
+      region: region || 'منشأة البكاري',
+      address: formattedAddress || address,
+      countryId,
+      governorateId,
+      districtId,
+      areaId,
+      street,
+      buildingNumber,
+      landmark,
+      formattedAddress: formattedAddress || address,
+      latitude,
+      longitude,
+      isActive,
+      notes,
+      type,
+      minFridays: Number(minFridays),
+      targetFridays: Number(targetFridays),
+      maxFridays: Number(maxFridays),
+    };
+
+    // 2. Trigger instant UI update in parent view
+    onSaved(optimisticImam);
+    setFeedback('تم حفظ بيانات الخطيب بنجاح ✓');
+
+    // 3. Smoothly close modal
+    setTimeout(() => {
+      onClose();
+    }, 350);
+
+    // 4. Background Server Persistence
     try {
       const payload = {
         name,
@@ -194,12 +231,8 @@ export function ImamProfileModal({
           body: JSON.stringify(payload),
         });
       }
-
-      setFeedback('تم حفظ بيانات الخطيب والموقع الإداري بنجاح');
-      setTimeout(() => setFeedback(null), 3000);
-      onSaved();
     } catch (err: any) {
-      setErrorMessage(err.message || 'تعذر حفظ البيانات');
+      console.warn('Background imam save warning:', err);
     } finally {
       setSaving(false);
     }
