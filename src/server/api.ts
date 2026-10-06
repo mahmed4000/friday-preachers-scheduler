@@ -762,7 +762,7 @@ api.get('/mosques/:id/profile', async (req: Request, res: Response) => {
         s?.hijriYear || 1448,
         s?.hijriMonth || 1,
         a.fridayIndex,
-        s?.periodStatus
+        (s as any)?.periodStatus
       );
 
       return {
@@ -1923,7 +1923,7 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
         s?.hijriYear || 1448,
         s?.hijriMonth || 1,
         a.fridayIndex,
-        s?.periodStatus
+        (s as any)?.periodStatus
       );
 
       return {

@@ -12,7 +12,7 @@ import {
   Upload,
   CheckSquare,
 } from 'lucide-react';
-import { Imam, Mosque, MonthlyScheduleData, Assignment, Friday, MonthlySchedule } from '../../types/index.ts';
+import { Imam, Mosque, MonthlyScheduleData, Assignment, Friday, MonthlySchedule, ProfileAssignmentItem } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { Badge } from '../common/Badge.tsx';
 import { ClickableImam } from '../../context/ProfileNavigationContext.tsx';
@@ -50,7 +50,7 @@ export function ImamsView({
   const [batchPdfModalOpen, setBatchPdfModalOpen] = useState(false);
   const [smartCardData, setSmartCardData] = useState<{
     imam: Imam;
-    assignment?: Assignment | null;
+    assignment?: Assignment | ProfileAssignmentItem | null;
     mosque?: Mosque | null;
     friday?: Friday | null;
     schedule?: MonthlySchedule | null;

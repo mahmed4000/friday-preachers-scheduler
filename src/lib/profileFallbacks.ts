@@ -30,7 +30,7 @@ export function getFallbackImamProfile(
 
   const allAssignments = assignments.filter((a: any) => a.imamId === id);
 
-  const activeSchedule = CalendarService.resolveCanonicalSchedule(schedules, scheduleId);
+  const activeSchedule = CalendarService.resolveCanonicalSchedule<ScheduleSummaryItem>(schedules as any, scheduleId);
 
   const profileAssignments: ProfileAssignmentItem[] = allAssignments.map((a: any) => {
     const f = fridayMap.get(a.fridayId);
@@ -140,6 +140,7 @@ export function getFallbackImamProfile(
       id: s.id,
       monthName: s.monthName,
       hijriYear: s.hijriYear,
+      hijriMonth: s.hijriMonth || 1,
       fridaysCount: s.fridaysCount,
       status: s.status,
     })),
@@ -173,7 +174,7 @@ export function getFallbackMosqueProfile(
   const fixedImam = mosque.fixedImamId ? imamMap.get(mosque.fixedImamId) || null : null;
   const allAssignments = assignments.filter((a: any) => a.mosqueId === id);
 
-  const activeSchedule = CalendarService.resolveCanonicalSchedule(schedules, scheduleId);
+  const activeSchedule = CalendarService.resolveCanonicalSchedule<ScheduleSummaryItem>(schedules as any, scheduleId);
 
   const profileAssignments: ProfileAssignmentItem[] = allAssignments.map((a: any) => {
     const f = fridayMap.get(a.fridayId);
@@ -274,6 +275,7 @@ export function getFallbackMosqueProfile(
       id: s.id,
       monthName: s.monthName,
       hijriYear: s.hijriYear,
+      hijriMonth: s.hijriMonth || 1,
       fridaysCount: s.fridaysCount,
       status: s.status,
     })),

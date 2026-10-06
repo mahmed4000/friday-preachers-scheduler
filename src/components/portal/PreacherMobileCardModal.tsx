@@ -23,7 +23,7 @@ import {
   Edit3,
   Save,
 } from 'lucide-react';
-import { Mosque, Imam, Friday, Assignment, MonthlySchedule } from '../../types/index.ts';
+import { Mosque, Imam, Friday, Assignment, MonthlySchedule, ProfileAssignmentItem, ScheduleSummaryItem } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { buildWhatsAppLink } from '../../lib/whatsapp.ts';
 import { CalendarService } from '../../services/calendar/calendarService.ts';
@@ -34,7 +34,7 @@ import {
 } from '../../services/khutbahTopicsService.ts';
 
 export interface PreacherCardAssignmentItem {
-  assignment: Assignment;
+  assignment: Assignment | ProfileAssignmentItem;
   mosque: Mosque;
   friday: Friday;
 }
@@ -42,11 +42,11 @@ export interface PreacherCardAssignmentItem {
 export interface PreacherMobileCardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  assignment?: Assignment | null;
+  assignment?: Assignment | ProfileAssignmentItem | null;
   mosque?: Mosque | null;
   imam: Imam;
   friday?: Friday | null;
-  schedule?: MonthlySchedule | null;
+  schedule?: MonthlySchedule | ScheduleSummaryItem | null;
   assignmentsList?: PreacherCardAssignmentItem[];
   onStatusUpdated?: () => void;
 }

@@ -61,8 +61,8 @@ export interface Mosque {
   whatsapp?: string | null;
   isActive: boolean;
   fixedImamId?: number | null;
-  fixedPattern: FixedPattern;
-  fixedCount: number;
+  fixedPattern?: FixedPattern | null;
+  fixedCount?: number;
   notes?: string | null;
   fixedImamName?: string | null;
   preferencesCount?: number;
@@ -149,25 +149,40 @@ export interface Friday {
   id: number;
   scheduleId: number;
   fridayIndex: number;
+  ordinalName?: string;
   hijriYear?: number;
   hijriMonth?: number;
   hijriDay?: number;
   hijriDate: string;
   gregorianDate: string;
+  gregorianIso?: string;
   dayOfWeek?: string;
+  periodStatus?: string;
+  isPast?: boolean;
+  isHoliday?: boolean;
+  notes?: string | null;
 }
 
 export interface Assignment {
   id: number;
   scheduleId: number;
-  fridayId: number;
+  fridayId?: number;
   fridayIndex: number;
   mosqueId: number;
   imamId: number | null;
   source: AssignmentSource;
   isLocked: boolean;
+  status?: string;
   notes?: string | null;
   confirmationStatus?: 'PENDING' | 'CONFIRMED' | 'DECLINED';
+}
+
+export interface MonthlyScheduleData {
+  schedule: MonthlySchedule;
+  fridays: Friday[];
+  assignments: Assignment[];
+  conflicts: Conflict[];
+  overrides: OverrideRecord[];
 }
 
 export interface Conflict {
@@ -235,6 +250,7 @@ export interface DashboardAlert {
 }
 
 export interface OrganizationSettings {
+  appName?: string;
   logoUrl: string;
   associationName: string;
   branchName: string;
@@ -298,6 +314,14 @@ export interface ProfileAssignmentItem {
   mosqueName: string;
   mosqueCode: string;
   mosqueRegion: string;
+  region?: string;
+  formattedAddress?: string;
+  address?: string;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  managerName?: string;
+  mosquePhone?: string;
+  phone?: string;
   imamId: number | null;
   imamName?: string;
   imamType?: string;
@@ -305,13 +329,14 @@ export interface ProfileAssignmentItem {
   isLocked: boolean;
   source: string;
   isUpcoming: boolean;
+  confirmationStatus?: string | null;
 }
 
 export interface ScheduleSummaryItem {
   id: number;
   monthName: string;
   hijriYear: number;
-  hijriMonth?: number;
+  hijriMonth: number;
   fridaysCount: number;
   status: string;
 }

@@ -20,6 +20,7 @@ interface SupabaseStatus {
   configured: boolean;
   connected: boolean;
   latencyMs?: number;
+  url?: string;
   message: string;
   error?: string;
   counts?: {

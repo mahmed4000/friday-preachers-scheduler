@@ -1170,6 +1170,10 @@ export function DashboardView({
                               const im = imams.find((item) => item.id === a.imamId) || ({
                                 id: a.imamId || 1,
                                 name: a.imamName,
+                                type: 'FLEXIBLE',
+                                minFridays: 1,
+                                targetFridays: 4,
+                                maxFridays: 4,
                                 phone: a.imamPhone,
                                 email: '',
                                 tier: 'PRIMARY',
@@ -1177,7 +1181,7 @@ export function DashboardView({
                                 forbiddenMosqueIds: [],
                                 maxFridaysPerMonth: 4,
                                 isActive: true,
-                              } as Imam);
+                              } as unknown as Imam);
                               const fr: Friday = {
                                 id: a.fridayIndex,
                                 scheduleId: scheduleData?.id || 1,

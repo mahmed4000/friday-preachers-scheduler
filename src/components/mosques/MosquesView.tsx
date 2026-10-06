@@ -300,7 +300,7 @@ export function MosquesView({
                               className="font-medium text-emerald-800 hover:text-emerald-950"
                             />
                             <span className="block text-[10px] text-slate-500">
-                              نمط: {mosque.fixedPattern} {mosque.fixedCount > 0 ? `(${mosque.fixedCount} جمعات)` : ''}
+                              نمط: {mosque.fixedPattern} {(mosque.fixedCount ?? 0) > 0 ? `(${mosque.fixedCount} جمعات)` : ''}
                             </span>
                           </div>
                         ) : (

@@ -598,7 +598,7 @@ export function MosqueProfileView({
       {/* TAB 1: UPCOMING FRIDAYS */}
       {activeTab === 'upcoming' && (() => {
         const currentDT = CalendarService.getCurrentDateTime();
-        const selectedScheduleObj = availableSchedules.find((s) => s.id === (activeSchedule?.id || selectedScheduleId));
+        const selectedScheduleObj = availableSchedules?.find((s) => s.id === (activeSchedule?.id || selectedScheduleId));
         const activeHijriYear = activeSchedule?.hijriYear || selectedScheduleObj?.hijriYear || currentDT.hijri.year;
         const activeHijriMonth = (activeSchedule as any)?.hijriMonth || selectedScheduleObj?.hijriMonth || currentDT.hijri.month;
 

@@ -5,7 +5,7 @@ const { Pool } = pg;
 import * as schema from './schema.ts';
 
 declare global {
-  var _postgresPool: Pool | undefined;
+  var _postgresPool: PgPool | undefined;
   var _isDbAlive: boolean | undefined;
 }
 
@@ -74,7 +74,7 @@ export const createPool = () => {
 
     global._postgresPool = new Pool(config);
 
-    global._postgresPool.on('error', (err) => {
+    global._postgresPool.on('error', (err: any) => {
       global._isDbAlive = false;
       console.warn('PostgreSQL idle pool notification:', err?.message || err);
     });
@@ -85,7 +85,7 @@ export const createPool = () => {
           global._isDbAlive = true;
           console.log('PostgreSQL database connected successfully.');
         })
-        .catch((err) => {
+        .catch((err: any) => {
           global._isDbAlive = false;
           console.warn('PostgreSQL connection check failed, operating with in-memory store:', err?.message || err);
         });
