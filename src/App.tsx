@@ -570,7 +570,7 @@ export default function App() {
         {/* Main View Area */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden print:overflow-visible relative">
           {/* Top Header */}
-          <div className="no-print">
+          <div className="no-print relative z-40">
             <Header
               activeTitle={headerInfo.title}
               activeSubtitle={headerInfo.subtitle}

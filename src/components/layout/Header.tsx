@@ -62,14 +62,14 @@ export function Header({
 
   return (
     <header
-      className="h-16 border-b border-emerald-900/80 bg-gradient-to-l from-[#043328] via-[#032b21] to-[#021f18] text-slate-100 px-3 sm:px-6 flex items-center justify-between shrink-0 sticky top-0 z-30 select-none shadow-lg relative overflow-hidden backdrop-blur-md"
+      className="h-16 border-b border-emerald-900/80 bg-gradient-to-l from-[#043328] via-[#032b21] to-[#021f18] text-slate-100 px-3 sm:px-6 flex items-center justify-between shrink-0 sticky top-0 z-40 select-none shadow-lg relative backdrop-blur-md"
       dir="rtl"
     >
       {/* Decorative Islamic Geometric Pattern Watermark */}
-      <div className="absolute inset-0 pointer-events-none islamic-pattern opacity-10"></div>
+      <div className="absolute inset-0 pointer-events-none islamic-pattern opacity-10 overflow-hidden"></div>
 
       {/* Golden Separator Accent at Bottom */}
-      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/30 to-transparent"></div>
+      <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-amber-400/30 to-transparent pointer-events-none"></div>
 
       {/* Right Zone: Hamburger + Page Title & Breadcrumb */}
       <div className="relative flex items-center gap-2 sm:gap-3 min-w-0">
@@ -163,7 +163,7 @@ export function Header({
           </button>
 
           {isNotificationsOpen && (
-            <div className="absolute left-0 mt-2 w-72 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 p-3 z-50 text-right animate-in fade-in-50 duration-150">
+            <div className="absolute left-0 top-full mt-2 w-72 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 p-3 z-50 text-right animate-in fade-in-50 duration-150">
               <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
                 <span className="text-xs font-bold font-heading text-slate-900 dark:text-slate-100">
                   التنبيهات والجاهزية
@@ -221,7 +221,10 @@ export function Header({
             </button>
 
             {isUserMenuOpen && (
-              <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-right animate-in fade-in-50 duration-150">
+              <div
+                id="user-menu-dropdown"
+                className="absolute left-0 top-full mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-right animate-in fade-in-50 duration-150"
+              >
                 <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block font-heading truncate">
                     {user?.name}
@@ -236,6 +239,7 @@ export function Header({
 
                 <div className="py-1 text-xs">
                   <button
+                    type="button"
                     onClick={() => {
                       setIsUserMenuOpen(false);
                       onOpenSettings?.();
@@ -249,7 +253,10 @@ export function Header({
 
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-1">
                   <button
-                    onClick={async () => {
+                    type="button"
+                    id="logout-button"
+                    onClick={async (e) => {
+                      e.stopPropagation();
                       setIsUserMenuOpen(false);
                       await logout();
                     }}
