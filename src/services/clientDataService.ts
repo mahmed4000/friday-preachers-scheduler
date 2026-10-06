@@ -58,7 +58,7 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
             whatsapp: m.whatsapp || m.phone || '',
             fixedImamId: m.fixed_imam_id || null,
             fixedImamName: m.fixed_imam_id ? imamMap.get(m.fixed_imam_id) || null : null,
-            fixedPattern: m.fixed_imam_id ? 'ALL' : undefined,
+            fixedPattern: (m.fixed_imam_id ? 'ALL' : undefined) as any,
             fixedCount: m.fixed_imam_id ? 5 : 0,
             preferencesCount: mRules.filter((r: any) => r.relationship_type === 'PREFERRED').length,
             forbiddenCount: mRules.filter((r: any) => r.relationship_type === 'FORBIDDEN').length,

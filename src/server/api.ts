@@ -45,6 +45,7 @@ import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
 import { SupabaseSyncService, SupabaseRealtimeSync } from '../services/supabaseSyncService.ts';
 import { SupabaseDataService } from '../services/supabaseDataService.ts';
+import { getSupabaseClient, isSupabaseConfigured } from '../lib/supabaseClient.ts';
 import { memoryStore } from './memoryStore.ts';
 
 // Trigger initial hydration from Supabase if configured

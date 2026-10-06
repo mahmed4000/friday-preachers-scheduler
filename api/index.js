@@ -133834,12 +133834,12 @@ var dynamicUrl = "";
 var dynamicKey = "";
 var supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || fallbackUrl;
 var supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || fallbackKey;
-var isSupabaseConfigured2 = Boolean(
+var isSupabaseConfigured = Boolean(
   supabaseUrl && supabaseKey && supabaseUrl.startsWith("https://") && !supabaseUrl.includes("placeholder") && !supabaseUrl.includes("your-project")
 );
 var cachedClient = null;
-function getSupabaseClient2() {
-  if (!isSupabaseConfigured2) {
+function getSupabaseClient() {
+  if (!isSupabaseConfigured) {
     return null;
   }
   if (!cachedClient) {
@@ -135010,14 +135010,14 @@ var SupabaseSyncService = {
    * Health-check the Supabase connection
    */
   async checkConnection() {
-    if (!isSupabaseConfigured2) {
+    if (!isSupabaseConfigured) {
       return {
         configured: false,
         connected: false,
         message: "\u0625\u0639\u062F\u0627\u062F\u0627\u062A Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623\u0629 \u0628\u0639\u062F. \u064A\u0639\u0645\u0644 \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0622\u0646 \u0628\u0643\u0641\u0627\u0621\u0629 \u0643\u0627\u0645\u0644\u0629 \u0639\u0644\u0649 \u0627\u0644\u0645\u062D\u0631\u0643 \u0627\u0644\u0645\u062D\u0644\u064A \u0648\u0642\u0631\u0635 \u0627\u0644\u062A\u062E\u0632\u064A\u0646."
       };
     }
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) {
       return {
         configured: false,
@@ -135089,7 +135089,7 @@ var SupabaseSyncService = {
    * Push all current local data (Mosques, Imams, Rules, Schedules, Assignments) to Supabase
    */
   async pushLocalToSupabase() {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) {
       throw new Error("Supabase \u063A\u064A\u0631 \u0645\u0647\u064A\u0623. \u064A\u0631\u062C\u0649 \u0625\u0636\u0627\u0641\u0629 SUPABASE_URL \u0648 SUPABASE_ANON_KEY \u0641\u064A \u0645\u0644\u0641 \u0627\u0644\u0628\u064A\u0626\u0629 .env \u0623\u0648\u0644\u0627\u064B.");
     }
@@ -135215,7 +135215,7 @@ var SupabaseSyncService = {
 var SupabaseRealtimeSync = {
   async syncMosque(mosque) {
     try {
-      const client = getSupabaseClient2();
+      const client = getSupabaseClient();
       if (!client) return;
       await client.from("mosques").upsert(
         {
@@ -135240,7 +135240,7 @@ var SupabaseRealtimeSync = {
   },
   async syncImam(imam) {
     try {
-      const client = getSupabaseClient2();
+      const client = getSupabaseClient();
       if (!client) return;
       await client.from("imams").upsert(
         {
@@ -135265,7 +135265,7 @@ var SupabaseRealtimeSync = {
   },
   async syncRule(rule) {
     try {
-      const client = getSupabaseClient2();
+      const client = getSupabaseClient();
       if (!client) return;
       await client.from("mosque_imam_rules").upsert(
         {
@@ -135284,7 +135284,7 @@ var SupabaseRealtimeSync = {
   },
   async deleteRule(ruleId) {
     try {
-      const client = getSupabaseClient2();
+      const client = getSupabaseClient();
       if (!client) return;
       await client.from("mosque_imam_rules").delete().eq("id", ruleId);
     } catch (err) {
@@ -135293,7 +135293,7 @@ var SupabaseRealtimeSync = {
   },
   async syncAssignment(assignment) {
     try {
-      const client = getSupabaseClient2();
+      const client = getSupabaseClient();
       if (!client) return;
       await client.from("assignments").upsert(
         {
@@ -135374,7 +135374,7 @@ var isHydrated = false;
 var isHydrating = false;
 var SupabaseDataService = {
   isAvailable() {
-    return isSupabaseConfigured2 && Boolean(getSupabaseClient2());
+    return isSupabaseConfigured && Boolean(getSupabaseClient());
   },
   /**
    * Hydrates memoryStore directly from Supabase so any in-memory algorithms
@@ -135382,7 +135382,7 @@ var SupabaseDataService = {
    */
   async hydrateMemoryStore(force = false) {
     if (isHydrated && !force || isHydrating) return true;
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return false;
     isHydrating = true;
     try {
@@ -135456,7 +135456,7 @@ var SupabaseDataService = {
   // MOSQUES OPERATIONS
   // -------------------------------------------------------------
   async getMosques(search = "", region = "") {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getMosques(search, region);
     try {
       let query = client.from("mosques").select("*").order("id", { ascending: true });
@@ -135493,7 +135493,7 @@ var SupabaseDataService = {
     }
   },
   async getMosqueDetails(id) {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getMosqueDetails(id);
     try {
       const [mRes, rRes, iRes] = await Promise.all([
@@ -135529,7 +135529,7 @@ var SupabaseDataService = {
     }
   },
   async updateMosque(id, data) {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     memoryStore.updateMosque(id, data);
     if (!client) return memoryStore.getMosqueDetails(id);
     try {
@@ -135580,7 +135580,7 @@ var SupabaseDataService = {
   },
   async createMosque(data) {
     const createdInMemory = memoryStore.createMosque(data);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return createdInMemory;
     try {
       const dbPayload = {
@@ -135611,7 +135611,7 @@ var SupabaseDataService = {
   },
   async deleteMosque(id) {
     memoryStore.deleteMosque(id);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return true;
     try {
       await client.from("mosques").delete().eq("id", id);
@@ -135623,7 +135623,7 @@ var SupabaseDataService = {
   },
   async bulkDeleteMosques(ids) {
     memoryStore.bulkDeleteMosques(ids);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return ids.length;
     try {
       await client.from("mosques").delete().in("id", ids);
@@ -135637,7 +135637,7 @@ var SupabaseDataService = {
   // RULES OPERATIONS
   // -------------------------------------------------------------
   async getRules(mosqueId) {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) {
       const memRules = memoryStore.getRules();
       return mosqueId ? memRules.filter((r2) => r2.mosqueId === mosqueId) : memRules;
@@ -135691,7 +135691,7 @@ var SupabaseDataService = {
       priority: prio,
       notes: n
     });
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memSaved;
     try {
       const { data: existing } = await client.from("mosque_imam_rules").select("id").eq("mosque_id", mId).eq("imam_id", iId).maybeSingle();
@@ -135736,7 +135736,7 @@ var SupabaseDataService = {
   },
   async deleteRule(id) {
     memoryStore.deleteRule(id);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return true;
     try {
       await client.from("mosque_imam_rules").delete().eq("id", id);
@@ -135750,7 +135750,7 @@ var SupabaseDataService = {
   // IMAMS OPERATIONS
   // -------------------------------------------------------------
   async getImams(search = "", type = "") {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getImams(search, type);
     try {
       let query = client.from("imams").select("*").order("id", { ascending: true });
@@ -135787,7 +135787,7 @@ var SupabaseDataService = {
     }
   },
   async getImamDetails(id) {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getImamDetails(id);
     try {
       const [iRes, rRes, mRes] = await Promise.all([
@@ -135820,7 +135820,7 @@ var SupabaseDataService = {
   },
   async updateImam(id, data) {
     memoryStore.updateImam(id, data);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getImamDetails(id);
     try {
       const dbPayload = {
@@ -135849,7 +135849,7 @@ var SupabaseDataService = {
   },
   async createImam(data) {
     const createdInMemory = memoryStore.createImam(data);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return createdInMemory;
     try {
       const dbPayload = {
@@ -135880,7 +135880,7 @@ var SupabaseDataService = {
   },
   async deleteImam(id) {
     memoryStore.deleteImam(id);
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return true;
     try {
       await client.from("imams").delete().eq("id", id);
@@ -135894,7 +135894,7 @@ var SupabaseDataService = {
   // SCHEDULES OPERATIONS
   // -------------------------------------------------------------
   async getSchedules() {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getSchedules();
     try {
       const { data, error } = await client.from("monthly_schedules").select("*").order("id", { ascending: false });
@@ -135937,7 +135937,7 @@ var SupabaseDataService = {
     }
   },
   async getScheduleDetails(id) {
-    const client = getSupabaseClient2();
+    const client = getSupabaseClient();
     if (!client) return memoryStore.getScheduleDetails(id);
     try {
       const [sRes, fRes, aRes] = await Promise.all([
