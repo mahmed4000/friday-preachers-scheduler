@@ -12,6 +12,7 @@ import {
   Award,
 } from 'lucide-react';
 import { MonthlySchedule, Friday, Assignment, Mosque, Imam } from '../../types/index.ts';
+import { triggerPrintWindow } from '../../lib/pdfExport.ts';
 
 interface OfficialDecreeModalProps {
   isOpen: boolean;
@@ -44,7 +45,18 @@ export function OfficialDecreeModal({
   }
 
   const handlePrint = () => {
-    window.print();
+    if (printAreaRef.current) {
+      const ok = triggerPrintWindow(
+        printAreaRef.current,
+        `محضر التوزيع والاعتماد الرسمي - شهر ${schedule.monthName} ${schedule.hijriYear} هـ`,
+        'landscape'
+      );
+      if (!ok) {
+        window.print();
+      }
+    } else {
+      window.print();
+    }
   };
 
   const activeMosques = mosques.filter((m) => m.isActive);

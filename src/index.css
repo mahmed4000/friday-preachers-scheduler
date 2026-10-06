@@ -70,7 +70,16 @@
 }
 
 /* Print & PDF Export rules */
+@page {
+  size: auto;
+  margin: 8mm 6mm;
+}
+
 @media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
   html, body, main, #root {
     width: 100% !important;
     height: auto !important;

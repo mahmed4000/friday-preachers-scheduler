@@ -124291,10 +124291,14 @@ var UmmAlQuraCalendarProvider = class _UmmAlQuraCalendarProvider {
       }
       return { year: y, month: m2, day: d };
     };
+    const monthsElapsed = (hijriYear - 1445) * 12 + (hijriMonth - 1);
+    const approxDays = Math.round(monthsElapsed * 29.530588);
+    const anchorMs = Date.UTC(2023, 6, 19, 12, 0, 0);
+    const estimatedStartMs = anchorMs + approxDays * 864e5;
     let startDate = null;
     let endDate = null;
-    const scanner = new Date(Date.UTC(approxGregYear - 1, Math.max(0, hijriMonth - 2), 1, 12, 0, 0));
-    for (let step = 0; step < 950; step++) {
+    const scanner = new Date(estimatedStartMs - 5 * 864e5);
+    for (let step = 0; step < 45; step++) {
       const h2 = getH(scanner);
       if (h2.year === hijriYear && h2.month === hijriMonth) {
         if (!startDate) startDate = new Date(scanner.getTime());

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "start": "tsx server.ts",
-    "test": "tsx tests/calendarService.test.ts && tsx tests/schedulingEngine.test.ts && tsx tests/securityHardening.test.ts && tsx tests/crudPersistence.test.ts",
+    "test": "tsx tests/calendarService.test.ts && tsx tests/schedulingEngine.test.ts && tsx tests/securityHardening.test.ts && tsx tests/crudPersistence.test.ts && tsx tests/officialA4Document.test.ts",
     "db:export-seed": "tsx scripts/exportSeed.ts",
     "db:seed": "tsx -e \"import { seedDatabase } from './src/db/seed.ts'; seedDatabase().then(() => process.exit(0));\"",
     "lint": "tsc --noEmit"

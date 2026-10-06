@@ -211,6 +211,12 @@ export function downloadPrintableHtml(
   fileName: string,
   orientation: 'portrait' | 'landscape' = 'portrait'
 ): void {
+  const headStyles = typeof document !== 'undefined'
+    ? Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+        .map((el) => el.outerHTML)
+        .join('\n')
+    : '';
+
   const htmlContent = `<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
@@ -218,7 +224,8 @@ export function downloadPrintableHtml(
   <title>${title}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Tajawal:wght@500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Tajawal:wght@500;700;800&family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
+  ${headStyles}
   <style>
     * { box-sizing: border-box; }
     html, body {
@@ -338,19 +345,25 @@ export function triggerPrintWindow(
       return false;
     }
 
+    const headStyles = typeof document !== 'undefined'
+      ? Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+          .map((el) => el.outerHTML)
+          .join('\n')
+      : '';
+
     printWin.document.write(`<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8">
   <title>${title}</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@500;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=Tajawal:wght@500;700;800&family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  ${headStyles}
   <style>
     * { box-sizing: border-box; }
     html, body {
-      font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+      font-family: 'IBM Plex Sans Arabic', 'Cairo', 'Tajawal', system-ui, sans-serif;
       direction: rtl;
       margin: 0;
       padding: 0;
