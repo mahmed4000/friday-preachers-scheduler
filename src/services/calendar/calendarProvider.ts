@@ -106,7 +106,7 @@ export class UmmAlQuraCalendarProvider implements ICalendarProvider {
 
       const parts = dtf.formatToParts(date);
       let year = 1448;
-      let month = 9;
+      let month = 1;
       let day = 1;
 
       for (const p of parts) {
@@ -128,15 +128,45 @@ export class UmmAlQuraCalendarProvider implements ICalendarProvider {
         formatted: `${day} ${monthName} ${year} هـ`,
       };
     } catch {
-      // Fallback calculation in case of environment limitation
-      return {
-        year: 1448,
-        month: 9,
-        day: 1,
-        monthName: 'رمضان',
-        dayName: 'الجمعة',
-        formatted: '1 رمضان 1448 هـ',
-      };
+      // Secondary fallback with standard islamic calendar
+      try {
+        const dtfFallback = new Intl.DateTimeFormat('en-US-u-ca-islamic-nu-latn', {
+          timeZone: timezone,
+          year: 'numeric',
+          month: 'numeric',
+          day: 'numeric',
+        });
+        const parts = dtfFallback.formatToParts(date);
+        let year = 1448;
+        let month = 1;
+        let day = 1;
+        for (const p of parts) {
+          if (p.type === 'year') year = parseInt(p.value, 10) || year;
+          if (p.type === 'month') month = parseInt(p.value, 10) || month;
+          if (p.type === 'day') day = parseInt(p.value, 10) || day;
+        }
+        const dayOfWeekIndex = date.getDay();
+        const dayName = ARABIC_WEEKDAYS[dayOfWeekIndex] || 'الجمعة';
+        const monthName = HIJRI_MONTH_NAMES[month] || `شهر ${month}`;
+        return {
+          year,
+          month,
+          day,
+          monthName,
+          dayName,
+          formatted: `${day} ${monthName} ${year} هـ`,
+        };
+      } catch {
+        // Last-resort fallback starting cleanly with 1 Muharram
+        return {
+          year: 1448,
+          month: 1,
+          day: 1,
+          monthName: 'محرم',
+          dayName: 'الجمعة',
+          formatted: '1 محرم 1448 هـ',
+        };
+      }
     }
   }
 

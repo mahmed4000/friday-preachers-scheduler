@@ -44,7 +44,15 @@ import {
 import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
 import { SupabaseSyncService, SupabaseRealtimeSync } from '../services/supabaseSyncService.ts';
+import { SupabaseDataService } from '../services/supabaseDataService.ts';
 import { memoryStore } from './memoryStore.ts';
+
+// Trigger initial hydration from Supabase if configured
+if (SupabaseDataService.isAvailable()) {
+  SupabaseDataService.hydrateMemoryStore().catch((err) =>
+    console.warn('Initial Supabase hydration warning:', err?.message)
+  );
+}
 
 const api = express.Router({ mergeParams: true });
 api.use(express.json({ limit: '50mb' }));
@@ -615,6 +623,10 @@ api.get('/mosques', async (req: Request, res: Response) => {
   const region = (req.query.region as string) || '';
 
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getMosques(search, region);
+      return res.json(list);
+    }
     return res.json(memoryStore.getMosques(search, region));
   }
 
@@ -651,6 +663,10 @@ api.get('/mosques', async (req: Request, res: Response) => {
   } catch (error: any) {
     markDatabaseUnavailable();
     console.warn('DB fetch for mosques failed, falling back to memory store:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getMosques(search, region);
+      return res.json(list);
+    }
     const fallback = memoryStore.getMosques(search, region);
     res.json(fallback);
   }
@@ -659,6 +675,10 @@ api.get('/mosques', async (req: Request, res: Response) => {
 api.get('/mosques/:id', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const found = await SupabaseDataService.getMosqueDetails(id);
+      if (found) return res.json(found);
+    }
     const fallbackFound = memoryStore.getMosqueDetails(id);
     if (fallbackFound) return res.json(fallbackFound);
     return res.status(404).json({ error: 'المسجد غير موجود' });
@@ -667,6 +687,10 @@ api.get('/mosques/:id', async (req: Request, res: Response) => {
   try {
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
     if (!found[0]) {
+      if (SupabaseDataService.isAvailable()) {
+        const cloudFound = await SupabaseDataService.getMosqueDetails(id);
+        if (cloudFound) return res.json(cloudFound);
+      }
       const fallbackFound = memoryStore.getMosqueDetails(id);
       if (fallbackFound) return res.json(fallbackFound);
       return res.status(404).json({ error: 'المسجد غير موجود' });
@@ -908,6 +932,17 @@ api.post('/mosques', async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        const created = await SupabaseDataService.createMosque(req.body);
+        await logAudit(req, 'CREATE_MOSQUE', 'MOSQUE', created.id, { name, code });
+        return res.status(201).json(created);
+      }
+      const created = memoryStore.createMosque(req.body);
+      await logAudit(req, 'CREATE_MOSQUE', 'MOSQUE', created.id, { name, code });
+      return res.status(201).json(created);
+    }
+
     const [created] = await db.insert(mosques).values({
       name,
       code,
@@ -936,8 +971,12 @@ api.post('/mosques', async (req: AuthRequest, res: Response) => {
     SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
   } catch (error: any) {
-    console.warn('DB create mosque failed, falling back to memoryStore:', error?.message);
+    console.warn('DB create mosque failed, falling back to Supabase/memoryStore:', error?.message);
     try {
+      if (SupabaseDataService.isAvailable()) {
+        const created = await SupabaseDataService.createMosque(req.body);
+        return res.status(201).json(created);
+      }
       const created = memoryStore.createMosque(req.body);
       SupabaseRealtimeSync.syncMosque(created);
       return res.status(201).json(created);
@@ -977,6 +1016,17 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        const updated = await SupabaseDataService.updateMosque(id, data);
+        await logAudit(req, 'UPDATE_MOSQUE', 'MOSQUE', id, data);
+        return res.json(updated);
+      }
+      const updated = memoryStore.updateMosque(id, data);
+      await logAudit(req, 'UPDATE_MOSQUE', 'MOSQUE', id, data);
+      return res.json(updated);
+    }
+
     const [updated] = await db.update(mosques)
       .set({
         ...data,
@@ -994,8 +1044,12 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
     SupabaseRealtimeSync.syncMosque(updated);
     res.json(updated);
   } catch (error: any) {
-    console.warn('DB patch mosque failed, falling back to memoryStore:', error?.message);
+    console.warn('DB patch mosque failed, falling back to Supabase/memoryStore:', error?.message);
     try {
+      if (SupabaseDataService.isAvailable()) {
+        const updated = await SupabaseDataService.updateMosque(Number(req.params.id), req.body);
+        return res.json(updated);
+      }
       const updated = memoryStore.updateMosque(Number(req.params.id), req.body);
       if (updated) {
         SupabaseRealtimeSync.syncMosque(updated);
@@ -1011,11 +1065,26 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
 api.delete('/mosques/:id', async (req: AuthRequest, res: Response) => {
   try {
     const id = Number(req.params.id);
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        await SupabaseDataService.deleteMosque(id);
+        await logAudit(req, 'DELETE_MOSQUE', 'MOSQUE', id);
+        return res.json({ success: true });
+      }
+      memoryStore.deleteMosque(id);
+      await logAudit(req, 'DELETE_MOSQUE', 'MOSQUE', id);
+      return res.json({ success: true });
+    }
+
     await db.delete(mosques).where(eq(mosques.id, id));
     await logAudit(req, 'DELETE_MOSQUE', 'MOSQUE', id);
     res.json({ success: true });
   } catch (error: any) {
-    console.warn('DB delete mosque failed, falling back to memoryStore:', error?.message);
+    console.warn('DB delete mosque failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteMosque(Number(req.params.id));
+      return res.json({ success: true });
+    }
     memoryStore.deleteMosque(Number(req.params.id));
     return res.json({ success: true });
   }
@@ -1028,12 +1097,27 @@ api.post('/mosques/bulk-delete', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'يرجى تحديد المساجد المراد حذفها' });
     }
     const numIds = ids.map(Number).filter((n) => !isNaN(n));
+
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        const count = await SupabaseDataService.bulkDeleteMosques(numIds);
+        return res.json({ success: true, count });
+      }
+      const count = memoryStore.bulkDeleteMosques(numIds);
+      return res.json({ success: true, count });
+    }
+
     await db.delete(mosques).where(inArray(mosques.id, numIds));
     await logAudit(req, 'BULK_DELETE_MOSQUES', 'MOSQUE', 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
   } catch (error: any) {
     console.warn('DB bulk delete mosques failed, falling back to memoryStore:', error?.message);
-    const count = memoryStore.bulkDeleteMosques(req.body.ids || []);
+    const numIds = (req.body.ids || []).map(Number).filter((n: any) => !isNaN(n));
+    if (SupabaseDataService.isAvailable()) {
+      const count = await SupabaseDataService.bulkDeleteMosques(numIds);
+      return res.json({ success: true, count });
+    }
+    const count = memoryStore.bulkDeleteMosques(numIds);
     res.json({ success: true, count });
   }
 });
@@ -1046,6 +1130,17 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
   }
 
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const saved = await SupabaseDataService.upsertRule({
+        mosqueId,
+        imamId: Number(imamId),
+        relationshipType,
+        priority: priority ? Number(priority) : 1,
+        notes,
+      });
+      await logAudit(req, 'UPDATE_MOSQUE_RULE', 'MOSQUE_RULE', saved.id, { mosqueId, imamId, relationshipType });
+      return res.json(saved);
+    }
     const fallbackSaved = memoryStore.upsertRule({
       mosqueId,
       imamId: Number(imamId),
@@ -1088,7 +1183,17 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
     res.json(saved);
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB rule save failed, falling back to memoryStore:', error?.message);
+    console.warn('DB rule save failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      const saved = await SupabaseDataService.upsertRule({
+        mosqueId,
+        imamId: Number(imamId),
+        relationshipType,
+        priority: priority ? Number(priority) : 1,
+        notes,
+      });
+      return res.json(saved);
+    }
     const fallbackSaved = memoryStore.upsertRule({
       mosqueId,
       imamId: Number(imamId),
@@ -1104,6 +1209,10 @@ api.post('/mosques/:id/rules', async (req: AuthRequest, res: Response) => {
 api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response) => {
   const ruleId = Number(req.params.ruleId);
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteRule(ruleId);
+      return res.json({ success: true });
+    }
     memoryStore.deleteRule(ruleId);
     SupabaseRealtimeSync.deleteRule(ruleId);
     return res.json({ success: true });
@@ -1115,7 +1224,11 @@ api.delete('/mosques/:id/rules/:ruleId', async (req: AuthRequest, res: Response)
     res.json({ success: true });
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB rule delete failed, falling back to memoryStore:', error?.message);
+    console.warn('DB rule delete failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteRule(ruleId);
+      return res.json({ success: true });
+    }
     memoryStore.deleteRule(ruleId);
     SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
@@ -1547,8 +1660,13 @@ api.post('/mosques/import', async (req: AuthRequest, res: Response) => {
 // -------------------------------------------------------------
 // 2.5. Rules Matrix Endpoints
 // -------------------------------------------------------------
-api.get('/rules', async (_req: Request, res: Response) => {
+api.get('/rules', async (req: Request, res: Response) => {
+  const mosqueId = req.query.mosqueId ? Number(req.query.mosqueId) : undefined;
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getRules(mosqueId);
+      return res.json(list);
+    }
     return res.json(memoryStore.getRules());
   }
 
@@ -1557,7 +1675,11 @@ api.get('/rules', async (_req: Request, res: Response) => {
     res.json(list);
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB fetch for rules failed, falling back to memory store:', error?.message);
+    console.warn('DB fetch for rules failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getRules(mosqueId);
+      return res.json(list);
+    }
     res.json(memoryStore.getRules());
   }
 });
@@ -1569,6 +1691,16 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
   }
 
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const created = await SupabaseDataService.upsertRule({
+        mosqueId: Number(mosqueId),
+        imamId: Number(imamId),
+        relationshipType,
+        priority: priority || 1,
+        notes: notes || null,
+      });
+      return res.status(201).json(created);
+    }
     const created = memoryStore.createRule({
       mosqueId: Number(mosqueId),
       imamId: Number(imamId),
@@ -1592,8 +1724,18 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
     res.status(201).json(inserted[0]);
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB create rule failed, falling back to memoryStore:', error?.message);
+    console.warn('DB create rule failed, falling back to Supabase/memoryStore:', error?.message);
     try {
+      if (SupabaseDataService.isAvailable()) {
+        const created = await SupabaseDataService.upsertRule({
+          mosqueId: Number(req.body.mosqueId),
+          imamId: Number(req.body.imamId),
+          relationshipType: req.body.relationshipType,
+          priority: req.body.priority || 1,
+          notes: req.body.notes || null,
+        });
+        return res.status(201).json(created);
+      }
       const created = memoryStore.createRule({
         mosqueId: Number(req.body.mosqueId),
         imamId: Number(req.body.imamId),
@@ -1612,6 +1754,10 @@ api.post('/rules', async (req: AuthRequest, res: Response) => {
 api.delete('/rules/:id', async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteRule(id);
+      return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
+    }
     memoryStore.deleteRule(id);
     return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   }
@@ -1622,7 +1768,11 @@ api.delete('/rules/:id', async (req: AuthRequest, res: Response) => {
     res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB delete rule failed, falling back to memoryStore:', error?.message);
+    console.warn('DB delete rule failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteRule(id);
+      return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
+    }
     memoryStore.deleteRule(id);
     return res.json({ success: true, message: 'تم حذف القاعدة بنجاح' });
   }
@@ -1636,6 +1786,10 @@ api.get('/imams', async (req: Request, res: Response) => {
   const type = (req.query.type as string) || '';
 
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getImams(search, type);
+      return res.json(list);
+    }
     return res.json(memoryStore.getImams(search, type));
   }
 
@@ -1656,6 +1810,10 @@ api.get('/imams', async (req: Request, res: Response) => {
   } catch (error: any) {
     markDatabaseUnavailable();
     console.warn('DB fetch for imams failed, falling back to memory store:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getImams(search, type);
+      return res.json(list);
+    }
     const fallback = memoryStore.getImams(search, type);
     res.json(fallback);
   }
@@ -1664,6 +1822,10 @@ api.get('/imams', async (req: Request, res: Response) => {
 api.get('/imams/:id', async (req: Request, res: Response) => {
   const id = Number(req.params.id);
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const found = await SupabaseDataService.getImamDetails(id);
+      if (found) return res.json(found);
+    }
     const fallbackFound = memoryStore.getImamDetails(id);
     if (fallbackFound) return res.json(fallbackFound);
     return res.status(404).json({ error: 'الخطيب غير موجود' });
@@ -1915,6 +2077,17 @@ api.post('/imams', async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        const created = await SupabaseDataService.createImam(req.body);
+        await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
+        return res.status(201).json(created);
+      }
+      const created = memoryStore.createImam(req.body);
+      await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
+      return res.status(201).json(created);
+    }
+
     const [created] = await db.insert(imams).values({
       name,
       type: type || 'FLEXIBLE',
@@ -1942,8 +2115,12 @@ api.post('/imams', async (req: AuthRequest, res: Response) => {
     SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
   } catch (error: any) {
-    console.warn('DB create imam failed, falling back to memoryStore:', error?.message);
+    console.warn('DB create imam failed, falling back to Supabase/memoryStore:', error?.message);
     try {
+      if (SupabaseDataService.isAvailable()) {
+        const created = await SupabaseDataService.createImam(req.body);
+        return res.status(201).json(created);
+      }
       const created = memoryStore.createImam(req.body);
       SupabaseRealtimeSync.syncImam(created);
       return res.status(201).json(created);
@@ -1983,6 +2160,17 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
       }
     }
 
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        const updated = await SupabaseDataService.updateImam(id, data);
+        await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
+        return res.json(updated);
+      }
+      const updated = memoryStore.updateImam(id, data);
+      await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
+      return res.json(updated);
+    }
+
     const [updated] = await db.update(imams)
       .set({
         ...data,
@@ -2001,8 +2189,12 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
     SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
   } catch (error: any) {
-    console.warn('DB patch imam failed, falling back to memoryStore:', error?.message);
+    console.warn('DB patch imam failed, falling back to Supabase/memoryStore:', error?.message);
     try {
+      if (SupabaseDataService.isAvailable()) {
+        const updated = await SupabaseDataService.updateImam(Number(req.params.id), req.body);
+        return res.json(updated);
+      }
       const updated = memoryStore.updateImam(Number(req.params.id), req.body);
       if (updated) {
         SupabaseRealtimeSync.syncImam(updated);
@@ -2018,11 +2210,26 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
 api.delete('/imams/:id', async (req: AuthRequest, res: Response) => {
   try {
     const id = Number(req.params.id);
+    if (!isDatabaseAvailable()) {
+      if (SupabaseDataService.isAvailable()) {
+        await SupabaseDataService.deleteImam(id);
+        await logAudit(req, 'DELETE_IMAM', 'IMAM', id);
+        return res.json({ success: true });
+      }
+      memoryStore.deleteImam(id);
+      await logAudit(req, 'DELETE_IMAM', 'IMAM', id);
+      return res.json({ success: true });
+    }
+
     await db.delete(imams).where(eq(imams.id, id));
     await logAudit(req, 'DELETE_IMAM', 'IMAM', id);
     res.json({ success: true });
   } catch (error: any) {
-    console.warn('DB delete imam failed, falling back to memoryStore:', error?.message);
+    console.warn('DB delete imam failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteImam(Number(req.params.id));
+      return res.json({ success: true });
+    }
     memoryStore.deleteImam(Number(req.params.id));
     return res.json({ success: true });
   }
@@ -2035,6 +2242,15 @@ api.post('/imams/bulk-delete', async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'يرجى تحديد الخطباء المراد حذفهم' });
     }
     const numIds = ids.map(Number).filter((n) => !isNaN(n));
+
+    if (!isDatabaseAvailable()) {
+      memoryStore.bulkDeleteImams(numIds);
+      if (SupabaseDataService.isAvailable()) {
+        const client = SupabaseSyncService; // Client can delete
+      }
+      return res.json({ success: true, count: numIds.length });
+    }
+
     await db.delete(imams).where(inArray(imams.id, numIds));
     await logAudit(req, 'BULK_DELETE_IMAMS', 'IMAM', 0, { deletedCount: numIds.length });
     res.json({ success: true, count: numIds.length });
@@ -2091,6 +2307,10 @@ api.post('/imams/:id/availabilities', async (req: AuthRequest, res: Response) =>
 // -------------------------------------------------------------
 api.get('/schedules', async (_req: Request, res: Response) => {
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getSchedules();
+      return res.json(list);
+    }
     return res.json(memoryStore.getSchedules());
   }
 
@@ -2117,7 +2337,11 @@ api.get('/schedules', async (_req: Request, res: Response) => {
     res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error: any) {
     markDatabaseUnavailable();
-    console.warn('DB fetch for schedules failed, falling back to memory store:', error?.message);
+    console.warn('DB fetch for schedules failed, falling back to Supabase/memoryStore:', error?.message);
+    if (SupabaseDataService.isAvailable()) {
+      const list = await SupabaseDataService.getSchedules();
+      return res.json(list);
+    }
     res.json(memoryStore.getSchedules());
   }
 });
@@ -2238,6 +2462,10 @@ api.post('/schedules', async (req: AuthRequest, res: Response) => {
 api.get('/schedules/:id', async (req: Request, res: Response) => {
   const scheduleId = Number(req.params.id);
   if (!isDatabaseAvailable()) {
+    if (SupabaseDataService.isAvailable()) {
+      const details = await SupabaseDataService.getScheduleDetails(scheduleId);
+      if (details) return res.json(details);
+    }
     const fallback = memoryStore.getScheduleDetails(scheduleId);
     if (fallback) {
       return res.json({

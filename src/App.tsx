@@ -50,11 +50,35 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Master Data
-  const [mosques, setMosques] = useState<Mosque[]>([]);
-  const [imams, setImams] = useState<Imam[]>([]);
-  const [rules, setRules] = useState<MosqueImamRule[]>([]);
-  const [schedules, setSchedules] = useState<MonthlySchedule[]>([]);
+  // Master Data with local persistent cache
+  const [mosques, setMosques] = useState<Mosque[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_mosques');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return (initialSeed.mosques || []) as unknown as Mosque[];
+  });
+  const [imams, setImams] = useState<Imam[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_imams');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return (initialSeed.imams || []) as unknown as Imam[];
+  });
+  const [rules, setRules] = useState<MosqueImamRule[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_rules');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return (initialSeed.mosqueImamRules || []) as unknown as MosqueImamRule[];
+  });
+  const [schedules, setSchedules] = useState<MonthlySchedule[]>(() => {
+    try {
+      const cached = localStorage.getItem('cached_schedules');
+      if (cached) return JSON.parse(cached);
+    } catch {}
+    return CalendarService.sortSchedulesChronologically((initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]);
+  });
 
   // Dashboard Stats
   const [dashboardStats, setDashboardStats] = useState({
@@ -183,13 +207,18 @@ export default function App() {
     });
   };
 
-  // Fallback to embedded verified seed data
+  // Fallback to cached or embedded verified seed data
   const fallbackToSeedData = () => {
     try {
-      const seedMosques = (initialSeed.mosques || []) as unknown as Mosque[];
-      const seedImams = (initialSeed.imams || []) as unknown as Imam[];
-      const seedRules = (initialSeed.mosqueImamRules || []) as unknown as MosqueImamRule[];
-      const seedSchedules = (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[];
+      const cachedM = localStorage.getItem('cached_mosques');
+      const cachedI = localStorage.getItem('cached_imams');
+      const cachedR = localStorage.getItem('cached_rules');
+      const cachedS = localStorage.getItem('cached_schedules');
+
+      const seedMosques = (cachedM ? JSON.parse(cachedM) : (initialSeed.mosques || [])) as unknown as Mosque[];
+      const seedImams = (cachedI ? JSON.parse(cachedI) : (initialSeed.imams || [])) as unknown as Imam[];
+      const seedRules = (cachedR ? JSON.parse(cachedR) : (initialSeed.mosqueImamRules || [])) as unknown as MosqueImamRule[];
+      const seedSchedules = (cachedS ? JSON.parse(cachedS) : (initialSeed.monthlySchedules || [])) as unknown as MonthlySchedule[];
       const seedFridays = (initialSeed.fridays || []) as unknown as Friday[];
       const seedAssignments = (initialSeed.assignments || []) as unknown as Assignment[];
 
@@ -243,25 +272,43 @@ export default function App() {
 
       if (Array.isArray(mosquesRes) && mosquesRes.length > 0) {
         setMosques(mosquesRes);
+        try { localStorage.setItem('cached_mosques', JSON.stringify(mosquesRes)); } catch {}
       } else {
-        setMosques((initialSeed.mosques || []) as unknown as Mosque[]);
+        const cachedM = localStorage.getItem('cached_mosques');
+        if (cachedM) setMosques(JSON.parse(cachedM));
+        else setMosques((initialSeed.mosques || []) as unknown as Mosque[]);
       }
 
       if (Array.isArray(imamsRes) && imamsRes.length > 0) {
         setImams(imamsRes);
+        try { localStorage.setItem('cached_imams', JSON.stringify(imamsRes)); } catch {}
       } else {
-        setImams((initialSeed.imams || []) as unknown as Imam[]);
+        const cachedI = localStorage.getItem('cached_imams');
+        if (cachedI) setImams(JSON.parse(cachedI));
+        else setImams((initialSeed.imams || []) as unknown as Imam[]);
       }
 
-      if (Array.isArray(rulesRes)) setRules(rulesRes);
+      if (Array.isArray(rulesRes)) {
+        setRules(rulesRes);
+        try { localStorage.setItem('cached_rules', JSON.stringify(rulesRes)); } catch {}
+      } else {
+        const cachedR = localStorage.getItem('cached_rules');
+        if (cachedR) setRules(JSON.parse(cachedR));
+      }
       
       let resolvedSchedules: MonthlySchedule[] = [];
       if (Array.isArray(schedulesRes) && schedulesRes.length > 0) {
         resolvedSchedules = CalendarService.sortSchedulesChronologically(schedulesRes);
+        try { localStorage.setItem('cached_schedules', JSON.stringify(resolvedSchedules)); } catch {}
       } else {
-        resolvedSchedules = CalendarService.sortSchedulesChronologically(
-          (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]
-        );
+        const cachedS = localStorage.getItem('cached_schedules');
+        if (cachedS) {
+          resolvedSchedules = JSON.parse(cachedS);
+        } else {
+          resolvedSchedules = CalendarService.sortSchedulesChronologically(
+            (initialSeed.monthlySchedules || []) as unknown as MonthlySchedule[]
+          );
+        }
       }
       setSchedules(resolvedSchedules);
 

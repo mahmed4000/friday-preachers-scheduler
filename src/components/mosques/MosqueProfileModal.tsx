@@ -112,10 +112,11 @@ export function MosqueProfileModal({
     try {
       return CalendarService.getHijriMonthDetails(patternYear, patternMonth);
     } catch {
+      const mName = HIJRI_MONTH_NAMES[patternMonth] || 'محرم';
       return {
-        monthName: 'رمضان',
-        fridaysCount: 5,
-        fridays: [1, 2, 3, 4, 5].map((idx) => ({
+        monthName: mName,
+        fridaysCount: 4,
+        fridays: [1, 2, 3, 4].map((idx) => ({
           fridayIndex: idx,
           hijriDate: `جمعة ${idx}`,
           gregorianDate: '',

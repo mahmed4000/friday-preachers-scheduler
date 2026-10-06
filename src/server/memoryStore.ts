@@ -54,6 +54,22 @@ export const memoryStore = {
     memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
   },
 
+  hydrate(data: {
+    mosques?: any[];
+    imams?: any[];
+    rules?: any[];
+    schedules?: any[];
+    fridays?: any[];
+    assignments?: any[];
+  }) {
+    if (data.mosques && data.mosques.length > 0) memoryMosques = [...data.mosques];
+    if (data.imams && data.imams.length > 0) memoryImams = [...data.imams];
+    if (data.rules !== undefined) memoryRules = [...data.rules];
+    if (data.schedules && data.schedules.length > 0) memorySchedules = [...data.schedules];
+    if (data.fridays && data.fridays.length > 0) memoryFridays = [...data.fridays];
+    if (data.assignments && data.assignments.length > 0) memoryAssignments = [...data.assignments];
+  },
+
   getMosques(search: string = '', region: string = '') {
     const imamMap = new Map(memoryImams.map((i: any) => [i.id, i.name]));
     let list = [...memoryMosques];

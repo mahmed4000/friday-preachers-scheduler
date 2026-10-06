@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api.ts';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
+import { CalendarService } from '../../services/calendar/calendarService.ts';
 
 interface ImamProfileModalProps {
   isOpen: boolean;
@@ -208,11 +209,12 @@ export function ImamProfileModal({
     if (!imam) return;
     setErrorMessage(null);
     try {
+      const curHijri = CalendarService.getCurrentDateTime().hijri;
       await fetchApi(`/api/imams/${imam.id}/availabilities`, {
         method: 'POST',
         body: JSON.stringify({
-          hijriYear: 1448,
-          hijriMonth: 9, // Ramadan as default
+          hijriYear: curHijri.year || 1448,
+          hijriMonth: curHijri.month || 1,
           fridayIndex: newFridayIndex,
           isAvailable: false,
           reason: newReason,
