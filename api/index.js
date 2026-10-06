@@ -136469,11 +136469,11 @@ api.put("/settings", async (req, res) => {
 api.get("/mosques", async (req, res) => {
   const search = req.query.search || "";
   const region = req.query.region || "";
+  if (SupabaseDataService.isAvailable()) {
+    const list = await SupabaseDataService.getMosques(search, region);
+    return res.json(list);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getMosques(search, region);
-      return res.json(list);
-    }
     return res.json(memoryStore.getMosques(search, region));
   }
   try {
@@ -136513,11 +136513,11 @@ api.get("/mosques", async (req, res) => {
 });
 api.get("/mosques/:id", async (req, res) => {
   const id = Number(req.params.id);
+  if (SupabaseDataService.isAvailable()) {
+    const found = await SupabaseDataService.getMosqueDetails(id);
+    if (found) return res.json(found);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const found = await SupabaseDataService.getMosqueDetails(id);
-      if (found) return res.json(found);
-    }
     const fallbackFound = memoryStore.getMosqueDetails(id);
     if (fallbackFound) return res.json(fallbackFound);
     return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -136525,10 +136525,6 @@ api.get("/mosques/:id", async (req, res) => {
   try {
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
     if (!found[0]) {
-      if (SupabaseDataService.isAvailable()) {
-        const cloudFound = await SupabaseDataService.getMosqueDetails(id);
-        if (cloudFound) return res.json(cloudFound);
-      }
       const fallbackFound = memoryStore.getMosqueDetails(id);
       if (fallbackFound) return res.json(fallbackFound);
       return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -136555,10 +136551,9 @@ api.get("/mosques/:id", async (req, res) => {
 api.get("/mosques/:id/profile", async (req, res) => {
   const id = Number(req.params.id);
   const schedId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
-  if (!isDatabaseAvailable()) {
+  if (!isDatabaseAvailable() || SupabaseDataService.isAvailable()) {
     const fallback = memoryStore.getMosqueProfile(id, schedId);
-    if (!fallback) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
-    return res.json(fallback);
+    if (fallback) return res.json(fallback);
   }
   try {
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
@@ -136737,12 +136732,12 @@ api.post("/mosques", async (req, res) => {
         }
       }
     }
+    if (SupabaseDataService.isAvailable()) {
+      const created2 = await SupabaseDataService.createMosque(req.body);
+      await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created2.id, { name, code });
+      return res.status(201).json(created2);
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const created3 = await SupabaseDataService.createMosque(req.body);
-        await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created3.id, { name, code });
-        return res.status(201).json(created3);
-      }
       const created2 = memoryStore.createMosque(req.body);
       await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created2.id, { name, code });
       return res.status(201).json(created2);
@@ -136815,12 +136810,12 @@ api.patch("/mosques/:id", async (req, res) => {
         }
       }
     }
+    if (SupabaseDataService.isAvailable()) {
+      const updated2 = await SupabaseDataService.updateMosque(id, data);
+      await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
+      return res.json(updated2);
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const updated3 = await SupabaseDataService.updateMosque(id, data);
-        await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
-        return res.json(updated3);
-      }
       const updated2 = memoryStore.updateMosque(id, data);
       await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
       return res.json(updated2);
@@ -136858,12 +136853,12 @@ api.patch("/mosques/:id", async (req, res) => {
 api.delete("/mosques/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteMosque(id);
+      await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
+      return res.json({ success: true });
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        await SupabaseDataService.deleteMosque(id);
-        await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
-        return res.json({ success: true });
-      }
       memoryStore.deleteMosque(id);
       await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
       return res.json({ success: true });
@@ -136888,11 +136883,12 @@ api.post("/mosques/bulk-delete", async (req, res) => {
       return res.status(400).json({ error: "\u064A\u0631\u062C\u0649 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0627\u0644\u0645\u0631\u0627\u062F \u062D\u0630\u0641\u0647\u0627" });
     }
     const numIds = ids.map(Number).filter((n) => !isNaN(n));
+    if (SupabaseDataService.isAvailable()) {
+      const count = await SupabaseDataService.bulkDeleteMosques(numIds);
+      await logAudit(req, "BULK_DELETE_MOSQUES", "MOSQUE", 0, { deletedCount: count });
+      return res.json({ success: true, count });
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const count2 = await SupabaseDataService.bulkDeleteMosques(numIds);
-        return res.json({ success: true, count: count2 });
-      }
       const count = memoryStore.bulkDeleteMosques(numIds);
       return res.json({ success: true, count });
     }
@@ -136916,18 +136912,18 @@ api.post("/mosques/:id/rules", async (req, res) => {
   if (!imamId || !relationshipType) {
     return res.status(400).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
   }
+  if (SupabaseDataService.isAvailable()) {
+    const saved = await SupabaseDataService.upsertRule({
+      mosqueId,
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority ? Number(priority) : 1,
+      notes
+    });
+    await logAudit(req, "UPDATE_MOSQUE_RULE", "MOSQUE_RULE", saved.id, { mosqueId, imamId, relationshipType });
+    return res.json(saved);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const saved = await SupabaseDataService.upsertRule({
-        mosqueId,
-        imamId: Number(imamId),
-        relationshipType,
-        priority: priority ? Number(priority) : 1,
-        notes
-      });
-      await logAudit(req, "UPDATE_MOSQUE_RULE", "MOSQUE_RULE", saved.id, { mosqueId, imamId, relationshipType });
-      return res.json(saved);
-    }
     const fallbackSaved = memoryStore.upsertRule({
       mosqueId,
       imamId: Number(imamId),
@@ -136987,11 +136983,11 @@ api.post("/mosques/:id/rules", async (req, res) => {
 });
 api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
   const ruleId = Number(req.params.ruleId);
+  if (SupabaseDataService.isAvailable()) {
+    await SupabaseDataService.deleteRule(ruleId);
+    return res.json({ success: true });
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(ruleId);
-      return res.json({ success: true });
-    }
     memoryStore.deleteRule(ruleId);
     SupabaseRealtimeSync.deleteRule(ruleId);
     return res.json({ success: true });
@@ -137392,11 +137388,11 @@ api.post("/mosques/import", async (req, res) => {
 });
 api.get("/rules", async (req, res) => {
   const mosqueId = req.query.mosqueId ? Number(req.query.mosqueId) : void 0;
+  if (SupabaseDataService.isAvailable()) {
+    const list = await SupabaseDataService.getRules(mosqueId);
+    return res.json(list);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getRules(mosqueId);
-      return res.json(list);
-    }
     return res.json(memoryStore.getRules());
   }
   try {
@@ -137417,17 +137413,17 @@ api.post("/rules", async (req, res) => {
   if (!mosqueId || !imamId || !relationshipType) {
     return res.status(400).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u0648\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u062D\u0642\u0648\u0644 \u0645\u0637\u0644\u0648\u0628\u0629" });
   }
+  if (SupabaseDataService.isAvailable()) {
+    const created = await SupabaseDataService.upsertRule({
+      mosqueId: Number(mosqueId),
+      imamId: Number(imamId),
+      relationshipType,
+      priority: priority || 1,
+      notes: notes || null
+    });
+    return res.status(201).json(created);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const created2 = await SupabaseDataService.upsertRule({
-        mosqueId: Number(mosqueId),
-        imamId: Number(imamId),
-        relationshipType,
-        priority: priority || 1,
-        notes: notes || null
-      });
-      return res.status(201).json(created2);
-    }
     const created = memoryStore.createRule({
       mosqueId: Number(mosqueId),
       imamId: Number(imamId),
@@ -137477,11 +137473,11 @@ api.post("/rules", async (req, res) => {
 });
 api.delete("/rules/:id", async (req, res) => {
   const id = Number(req.params.id);
+  if (SupabaseDataService.isAvailable()) {
+    await SupabaseDataService.deleteRule(id);
+    return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(id);
-      return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
-    }
     memoryStore.deleteRule(id);
     return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
   }
@@ -137503,11 +137499,11 @@ api.delete("/rules/:id", async (req, res) => {
 api.get("/imams", async (req, res) => {
   const search = req.query.search || "";
   const type = req.query.type || "";
+  if (SupabaseDataService.isAvailable()) {
+    const list = await SupabaseDataService.getImams(search, type);
+    return res.json(list);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getImams(search, type);
-      return res.json(list);
-    }
     return res.json(memoryStore.getImams(search, type));
   }
   try {
@@ -137535,11 +137531,11 @@ api.get("/imams", async (req, res) => {
 });
 api.get("/imams/:id", async (req, res) => {
   const id = Number(req.params.id);
+  if (SupabaseDataService.isAvailable()) {
+    const found = await SupabaseDataService.getImamDetails(id);
+    if (found) return res.json(found);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const found = await SupabaseDataService.getImamDetails(id);
-      if (found) return res.json(found);
-    }
     const fallbackFound = memoryStore.getImamDetails(id);
     if (fallbackFound) return res.json(fallbackFound);
     return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -137758,12 +137754,12 @@ api.post("/imams", async (req, res) => {
         }
       }
     }
+    if (SupabaseDataService.isAvailable()) {
+      const created2 = await SupabaseDataService.createImam(req.body);
+      await logAudit(req, "CREATE_IMAM", "IMAM", created2.id, { name });
+      return res.status(201).json(created2);
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const created3 = await SupabaseDataService.createImam(req.body);
-        await logAudit(req, "CREATE_IMAM", "IMAM", created3.id, { name });
-        return res.status(201).json(created3);
-      }
       const created2 = memoryStore.createImam(req.body);
       await logAudit(req, "CREATE_IMAM", "IMAM", created2.id, { name });
       return res.status(201).json(created2);
@@ -137835,12 +137831,12 @@ api.patch("/imams/:id", async (req, res) => {
         }
       }
     }
+    if (SupabaseDataService.isAvailable()) {
+      const updated2 = await SupabaseDataService.updateImam(id, data);
+      await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
+      return res.json(updated2);
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const updated3 = await SupabaseDataService.updateImam(id, data);
-        await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
-        return res.json(updated3);
-      }
       const updated2 = memoryStore.updateImam(id, data);
       await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
       return res.json(updated2);
@@ -137879,12 +137875,12 @@ api.patch("/imams/:id", async (req, res) => {
 api.delete("/imams/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
+    if (SupabaseDataService.isAvailable()) {
+      await SupabaseDataService.deleteImam(id);
+      await logAudit(req, "DELETE_IMAM", "IMAM", id);
+      return res.json({ success: true });
+    }
     if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        await SupabaseDataService.deleteImam(id);
-        await logAudit(req, "DELETE_IMAM", "IMAM", id);
-        return res.json({ success: true });
-      }
       memoryStore.deleteImam(id);
       await logAudit(req, "DELETE_IMAM", "IMAM", id);
       return res.json({ success: true });
@@ -137959,11 +137955,11 @@ api.post("/imams/:id/availabilities", async (req, res) => {
   }
 });
 api.get("/schedules", async (_req, res) => {
+  if (SupabaseDataService.isAvailable()) {
+    const list = await SupabaseDataService.getSchedules();
+    return res.json(list);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getSchedules();
-      return res.json(list);
-    }
     return res.json(memoryStore.getSchedules());
   }
   try {
@@ -138096,11 +138092,11 @@ api.post("/schedules", async (req, res) => {
 });
 api.get("/schedules/:id", async (req, res) => {
   const scheduleId = Number(req.params.id);
+  if (SupabaseDataService.isAvailable()) {
+    const details = await SupabaseDataService.getScheduleDetails(scheduleId);
+    if (details) return res.json(details);
+  }
   if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const details = await SupabaseDataService.getScheduleDetails(scheduleId);
-      if (details) return res.json(details);
-    }
     const fallback = memoryStore.getScheduleDetails(scheduleId);
     if (fallback) {
       return res.json({
