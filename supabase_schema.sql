@@ -169,6 +169,24 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 12. جدول أنماط التثبيت الشهرية (Fixed Assignment Patterns)
+CREATE TABLE IF NOT EXISTS fixed_assignment_patterns (
+  id SERIAL PRIMARY KEY,
+  mosque_id INTEGER NOT NULL REFERENCES mosques(id) ON DELETE CASCADE,
+  hijri_year INTEGER NOT NULL,
+  hijri_month INTEGER NOT NULL,
+  CONSTRAINT uq_fixed_assignment_patterns UNIQUE (mosque_id, hijri_year, hijri_month)
+);
+
+-- 13. جدول عناصر أنماط التثبيت (Fixed Assignment Pattern Items)
+CREATE TABLE IF NOT EXISTS fixed_assignment_pattern_items (
+  id SERIAL PRIMARY KEY,
+  pattern_id INTEGER NOT NULL REFERENCES fixed_assignment_patterns(id) ON DELETE CASCADE,
+  friday_index INTEGER NOT NULL,
+  imam_id INTEGER NOT NULL REFERENCES imams(id) ON DELETE CASCADE,
+  CONSTRAINT uq_fixed_assignment_pattern_items UNIQUE (pattern_id, friday_index)
+);
+
 -- فهارس تحسين الأداء والبحث (Performance Indexes)
 CREATE INDEX IF NOT EXISTS idx_assignments_schedule ON assignments(schedule_id);
 CREATE INDEX IF NOT EXISTS idx_assignments_friday ON assignments(friday_index);
@@ -177,6 +195,9 @@ CREATE INDEX IF NOT EXISTS idx_fridays_schedule ON fridays(schedule_id);
 CREATE INDEX IF NOT EXISTS idx_conflicts_schedule ON conflicts(schedule_id);
 CREATE INDEX IF NOT EXISTS idx_rules_mosque ON mosque_imam_rules(mosque_id);
 CREATE INDEX IF NOT EXISTS idx_rules_imam ON mosque_imam_rules(imam_id);
+CREATE INDEX IF NOT EXISTS idx_fixed_patterns_mosque ON fixed_assignment_patterns(mosque_id);
+CREATE INDEX IF NOT EXISTS idx_fixed_pattern_items_pattern ON fixed_assignment_pattern_items(pattern_id);
+CREATE INDEX IF NOT EXISTS idx_fixed_pattern_items_imam ON fixed_assignment_pattern_items(imam_id);
 
 -- سياسات الأمان (Row Level Security) - إتاحة القراءة والكتابة لنظام الجدولة
 ALTER TABLE organization_settings ENABLE ROW LEVEL SECURITY;
@@ -190,6 +211,8 @@ ALTER TABLE assignment_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE conflicts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fixed_assignment_patterns ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fixed_assignment_pattern_items ENABLE ROW LEVEL SECURITY;
 
 -- سياسات الأمان المحكمة (Row Level Security): قراءة عامة للبيانات وتقييد التعديل والمحو للمصرح لهم
 DO $$
@@ -205,6 +228,8 @@ BEGIN
     CREATE POLICY "Allow public read access" ON assignments FOR SELECT USING (true);
     CREATE POLICY "Allow public read access" ON conflicts FOR SELECT USING (true);
     CREATE POLICY "Allow public read access" ON overrides FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON fixed_assignment_patterns FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON fixed_assignment_pattern_items FOR SELECT USING (true);
   END IF;
 
   -- 2. حماية عمليات الإضافة والتعديل والحذف (محصورة على المستخدمين الموثقين أو مفتاح الخدمة)
@@ -220,6 +245,9 @@ BEGIN
     CREATE POLICY "Restrict mutations to authenticated" ON overrides FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
     CREATE POLICY "Restrict mutations to authenticated" ON assignment_history FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
     CREATE POLICY "Restrict mutations to authenticated" ON audit_logs FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON fixed_assignment_patterns FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON fixed_assignment_pattern_items FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
   END IF;
 END $$;
+
 

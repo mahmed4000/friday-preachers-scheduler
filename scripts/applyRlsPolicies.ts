@@ -58,7 +58,9 @@ export async function applyRlsPolicies() {
       'assignment_history',
       'conflicts',
       'overrides',
-      'audit_logs'
+      'audit_logs',
+      'fixed_assignment_patterns',
+      'fixed_assignment_pattern_items'
     ];
 
     for (const t of tables) {
@@ -75,9 +77,9 @@ export async function applyRlsPolicies() {
     }
 
     // 4. Create new fine-grained policies
-    console.log('Creating 38 targeted RLS policies across 11 tables...');
+    console.log('Creating 46 targeted RLS policies across 13 tables...');
 
-    // A. Public SELECT (6 tables)
+    // A. Public SELECT (8 tables)
     await c.query(`
       CREATE POLICY "public_select_mosques" ON mosques FOR SELECT USING (true);
       CREATE POLICY "public_select_imams" ON imams FOR SELECT USING (true);
@@ -85,6 +87,8 @@ export async function applyRlsPolicies() {
       CREATE POLICY "public_select_fridays" ON fridays FOR SELECT USING (true);
       CREATE POLICY "public_select_assignments" ON assignments FOR SELECT USING (true);
       CREATE POLICY "public_select_settings" ON organization_settings FOR SELECT USING (true);
+      CREATE POLICY "public_select_fixed_patterns" ON fixed_assignment_patterns FOR SELECT USING (true);
+      CREATE POLICY "public_select_fixed_pattern_items" ON fixed_assignment_pattern_items FOR SELECT USING (true);
     `);
 
     // B. Authenticated SELECT (4 tables)
@@ -105,7 +109,7 @@ export async function applyRlsPolicies() {
         USING (current_app_role() = 'admin');
     `);
 
-    // D. Staff & Admin INSERT / UPDATE (6 tables)
+    // D. Staff & Admin INSERT / UPDATE (8 tables)
     await c.query(`
       CREATE POLICY "staff_admin_insert_mosques" ON mosques FOR INSERT
         WITH CHECK (current_app_role() IN ('staff', 'admin'));
@@ -142,6 +146,18 @@ export async function applyRlsPolicies() {
       CREATE POLICY "staff_admin_update_assignments" ON assignments FOR UPDATE
         USING (current_app_role() IN ('staff', 'admin'))
         WITH CHECK (current_app_role() IN ('staff', 'admin'));
+
+      CREATE POLICY "staff_admin_insert_fixed_patterns" ON fixed_assignment_patterns FOR INSERT
+        WITH CHECK (current_app_role() IN ('staff', 'admin'));
+      CREATE POLICY "staff_admin_update_fixed_patterns" ON fixed_assignment_patterns FOR UPDATE
+        USING (current_app_role() IN ('staff', 'admin'))
+        WITH CHECK (current_app_role() IN ('staff', 'admin'));
+
+      CREATE POLICY "staff_admin_insert_fixed_pattern_items" ON fixed_assignment_pattern_items FOR INSERT
+        WITH CHECK (current_app_role() IN ('staff', 'admin'));
+      CREATE POLICY "staff_admin_update_fixed_pattern_items" ON fixed_assignment_pattern_items FOR UPDATE
+        USING (current_app_role() IN ('staff', 'admin'))
+        WITH CHECK (current_app_role() IN ('staff', 'admin'));
     `);
 
     // E. Admin Only INSERT / UPDATE (3 tables)
@@ -171,7 +187,7 @@ export async function applyRlsPolicies() {
         WITH CHECK (current_app_role() IN ('staff', 'admin'));
     `);
 
-    // G. Admin Only DELETE (8 operational tables)
+    // G. Admin Only DELETE (10 operational tables)
     await c.query(`
       CREATE POLICY "admin_delete_mosques" ON mosques FOR DELETE
         USING (current_app_role() = 'admin');
@@ -189,10 +205,14 @@ export async function applyRlsPolicies() {
         USING (current_app_role() = 'admin');
       CREATE POLICY "admin_delete_overrides" ON overrides FOR DELETE
         USING (current_app_role() = 'admin');
+      CREATE POLICY "admin_delete_fixed_patterns" ON fixed_assignment_patterns FOR DELETE
+        USING (current_app_role() = 'admin');
+      CREATE POLICY "admin_delete_fixed_pattern_items" ON fixed_assignment_pattern_items FOR DELETE
+        USING (current_app_role() = 'admin');
     `);
 
     await c.query('COMMIT');
-    console.log('✅ ALL 38 RLS POLICIES APPLIED SUCCESSFULLY.');
+    console.log('✅ ALL 46 RLS POLICIES APPLIED SUCCESSFULLY.');
   } catch (err) {
     await c.query('ROLLBACK');
     console.error('❌ Failed to apply RLS policies:', err);

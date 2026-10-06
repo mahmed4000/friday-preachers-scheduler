@@ -20,7 +20,9 @@ export async function executeCleanDatabaseReset() {
     'assignment_history',
     'conflicts',
     'overrides',
-    'audit_logs'
+    'audit_logs',
+    'fixed_assignment_patterns',
+    'fixed_assignment_pattern_items'
   ];
 
   console.log('====================================================');
@@ -47,6 +49,8 @@ export async function executeCleanDatabaseReset() {
   try {
     // Delete in strict FK dependency order (leaf -> root)
     const deletionOrder = [
+      'fixed_assignment_pattern_items',
+      'fixed_assignment_patterns',
       'assignment_history',
       'overrides',
       'conflicts',
@@ -68,6 +72,8 @@ export async function executeCleanDatabaseReset() {
     // 3. Reset Sequences / Identity state
     console.log('\n3. RESTARTING IDENTITY SEQUENCES TO 1...');
     const sequences = [
+      'fixed_assignment_pattern_items_id_seq',
+      'fixed_assignment_patterns_id_seq',
       'assignment_history_id_seq',
       'assignments_id_seq',
       'audit_logs_id_seq',

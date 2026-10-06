@@ -20,7 +20,9 @@ export async function rollbackRls() {
     'assignment_history',
     'conflicts',
     'overrides',
-    'audit_logs'
+    'audit_logs',
+    'fixed_assignment_patterns',
+    'fixed_assignment_pattern_items'
   ];
 
   console.log('--- STARTING ROLLBACK TO PHASE 6A SECURITY STATE ---');

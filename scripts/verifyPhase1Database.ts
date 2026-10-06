@@ -56,6 +56,8 @@ export async function verifyPhase1Database() {
       { name: 'conflicts', model: schema.conflicts },
       { name: 'overrides', model: schema.overrides },
       { name: 'audit_logs', model: schema.auditLogs },
+      { name: 'fixed_assignment_patterns', model: schema.fixedAssignmentPatterns },
+      { name: 'fixed_assignment_pattern_items', model: schema.fixedAssignmentPatternItems },
     ];
 
     let verifiedCount = 0;
