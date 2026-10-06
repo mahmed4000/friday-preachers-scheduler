@@ -474,7 +474,10 @@ export default function App() {
 
   const handleResetDemo = async () => {
     try {
-      await fetchApi('/api/system/reset-demo', { method: 'POST' });
+      await fetchApi('/api/system/reset-demo', {
+        method: 'POST',
+        headers: { 'x-admin-action': 'confirmed' },
+      });
       await loadInitialData();
       setToastMessage({ text: 'تمت إعادة تهيئة البيانات التجريبية بنجاح!', type: 'success' });
       setTimeout(() => setToastMessage(null), 4000);

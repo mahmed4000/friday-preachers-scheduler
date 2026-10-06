@@ -25,7 +25,7 @@ import {
 import { eq, desc, asc, and, ilike, ne, inArray } from 'drizzle-orm';
 import { SchedulingEngine } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
-import { optionalAuth, AuthRequest } from '../middleware/auth.ts';
+import { optionalAuth, requireAuth, requireAdmin, AuthRequest } from '../middleware/auth.ts';
 import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from '../lib/defaultLogo.ts';
 import { OrganizationSettings } from '../types/index.ts';
 import { CalendarService } from '../services/calendar/calendarService.ts';
@@ -4825,7 +4825,7 @@ api.post('/mosques/import', async (req: AuthRequest, res: Response) => {
 });
 
 // System Reset & Clear Data Endpoints
-api.post('/system/clear-all', async (req: AuthRequest, res: Response) => {
+api.post('/system/clear-all', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     await clearAllDatabaseData();
     await logAudit(req, 'CLEAR_ALL_DATA', 'SYSTEM', 1);
@@ -4835,7 +4835,7 @@ api.post('/system/clear-all', async (req: AuthRequest, res: Response) => {
   }
 });
 
-api.post('/system/reset-demo', async (req: AuthRequest, res: Response) => {
+api.post('/system/reset-demo', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     memoryStore.reset();
     await seedDatabase().catch((e) => console.warn('seedDatabase DB error (using memoryStore):', e?.message));
@@ -4848,7 +4848,7 @@ api.post('/system/reset-demo', async (req: AuthRequest, res: Response) => {
 });
 
 // System Seed Freeze & Export for GitHub / External Server Deployment
-api.post('/system/export-seed', async (req: AuthRequest, res: Response) => {
+api.post('/system/export-seed', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { exportCurrentDatabaseToSeedJson } = await import('../../scripts/exportSeed.ts');
     const result = await exportCurrentDatabaseToSeedJson();

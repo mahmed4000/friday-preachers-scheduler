@@ -124010,6 +124010,29 @@ try {
 var adminAuth = adminAuthInstance;
 
 // src/middleware/auth.ts
+var requireAdmin = async (req, res, next) => {
+  const adminSecret = req.headers["x-admin-secret"];
+  const expectedSecret = process.env.ADMIN_RESET_SECRET || process.env.ADMIN_SECRET;
+  if (expectedSecret && adminSecret === expectedSecret) {
+    req.user = { uid: "secret-admin", email: "admin@aljameya.org", role: "admin", name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645" };
+    return next();
+  }
+  if (process.env.NODE_ENV !== "production") {
+    const confirmAction = req.headers["x-admin-action"] || req.body?.confirmAction;
+    if (confirmAction === "confirmed" || confirmAction === "confirm-system-reset") {
+      req.user = { uid: "dev-admin", email: "admin@aljameya.org", role: "admin", name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u062A\u0637\u0648\u064A\u0631" };
+      return next();
+    }
+  }
+  if (process.env.NODE_ENV === "production" && !expectedSecret) {
+    return res.status(403).json({
+      error: "\u0645\u062D\u0638\u0648\u0631: \u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u062D\u0633\u0627\u0633\u0629 \u0645\u0639\u0637\u0644\u0629 \u0641\u064A \u0628\u064A\u0626\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0644\u0639\u062F\u0645 \u0636\u0628\u0637 \u0627\u0644\u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0625\u062F\u0627\u0631\u064A ADMIN_RESET_SECRET"
+    });
+  }
+  return res.status(403).json({
+    error: "\u0645\u062D\u0638\u0648\u0631: \u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629 \u062D\u0633\u0627\u0633\u0629 \u0648\u062A\u062A\u0637\u0644\u0628 \u062A\u0623\u0643\u064A\u062F\u0627\u064B \u0625\u062F\u0627\u0631\u064A\u0627\u064B \u0635\u0631\u064A\u062D\u0627\u064B (Header x-admin-action \u0623\u0648 \u0645\u0641\u062A\u0627\u062D \u0625\u062F\u0627\u0631\u064A)"
+  });
+};
 var optionalAuth = async (req, _res, next) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ") && adminAuth) {
@@ -133828,12 +133851,10 @@ function getEnvVar(key) {
   }
   return void 0;
 }
-var fallbackUrl = "https://tctaqmtvypibxsaehawf.supabase.co";
-var fallbackKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg";
 var dynamicUrl = "";
 var dynamicKey = "";
-var supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || fallbackUrl;
-var supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || fallbackKey;
+var supabaseUrl = dynamicUrl || getEnvVar("SUPABASE_URL") || getEnvVar("VITE_SUPABASE_URL") || getEnvVar("NEXT_PUBLIC_SUPABASE_URL") || "";
+var supabaseKey = dynamicKey || getEnvVar("SUPABASE_SERVICE_ROLE_KEY") || getEnvVar("SUPABASE_ANON_KEY") || getEnvVar("VITE_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY") || getEnvVar("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY") || "";
 var isSupabaseConfigured = Boolean(
   supabaseUrl && supabaseKey && supabaseUrl.startsWith("https://") && !supabaseUrl.includes("placeholder") && !supabaseUrl.includes("your-project")
 );
@@ -140102,7 +140123,7 @@ api.post("/mosques/import", async (req, res) => {
     res.status(500).json({ error: "\u0641\u0634\u0644 \u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F", details: error.message });
   }
 });
-api.post("/system/clear-all", async (req, res) => {
+api.post("/system/clear-all", requireAdmin, async (req, res) => {
   try {
     await clearAllDatabaseData();
     await logAudit(req, "CLEAR_ALL_DATA", "SYSTEM", 1);
@@ -140111,7 +140132,7 @@ api.post("/system/clear-all", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0635\u0641\u064A\u0631 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0646\u0638\u0627\u0645", details: error.message });
   }
 });
-api.post("/system/reset-demo", async (req, res) => {
+api.post("/system/reset-demo", requireAdmin, async (req, res) => {
   try {
     memoryStore.reset();
     await seedDatabase().catch((e2) => console.warn("seedDatabase DB error (using memoryStore):", e2?.message));
@@ -140122,7 +140143,7 @@ api.post("/system/reset-demo", async (req, res) => {
     res.json({ success: true, message: "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0646\u0638\u0627\u0645 \u0625\u0644\u0649 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629 \u0628\u0646\u062C\u0627\u062D" });
   }
 });
-api.post("/system/export-seed", async (req, res) => {
+api.post("/system/export-seed", requireAdmin, async (req, res) => {
   try {
     const { exportCurrentDatabaseToSeedJson: exportCurrentDatabaseToSeedJson2 } = await Promise.resolve().then(() => (init_exportSeed(), exportSeed_exports));
     const result = await exportCurrentDatabaseToSeedJson2();

@@ -191,20 +191,35 @@ ALTER TABLE conflicts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE overrides ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
--- سياسة سماح عامة للتطبيق (Permissive for Service/Scheduler operations)
+-- سياسات الأمان المحكمة (Row Level Security): قراءة عامة للبيانات وتقييد التعديل والمحو للمصرح لهم
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow scheduler access') THEN
-    CREATE POLICY "Allow scheduler access" ON organization_settings FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON mosques FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON imams FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON mosque_imam_rules FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON monthly_schedules FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON fridays FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON assignments FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON assignment_history FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON conflicts FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON overrides FOR ALL USING (true) WITH CHECK (true);
-    CREATE POLICY "Allow scheduler access" ON audit_logs FOR ALL USING (true) WITH CHECK (true);
+  -- 1. القراءة العامة للجداول الأساسية
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Allow public read access' AND tablename = 'mosques') THEN
+    CREATE POLICY "Allow public read access" ON organization_settings FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON mosques FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON imams FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON mosque_imam_rules FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON monthly_schedules FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON fridays FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON assignments FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON conflicts FOR SELECT USING (true);
+    CREATE POLICY "Allow public read access" ON overrides FOR SELECT USING (true);
+  END IF;
+
+  -- 2. حماية عمليات الإضافة والتعديل والحذف (محصورة على المستخدمين الموثقين أو مفتاح الخدمة)
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'Restrict mutations to authenticated' AND tablename = 'mosques') THEN
+    CREATE POLICY "Restrict mutations to authenticated" ON organization_settings FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON mosques FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON imams FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON mosque_imam_rules FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON monthly_schedules FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON fridays FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON assignments FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON conflicts FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON overrides FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON assignment_history FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
+    CREATE POLICY "Restrict mutations to authenticated" ON audit_logs FOR ALL USING (auth.role() IN ('authenticated', 'service_role')) WITH CHECK (auth.role() IN ('authenticated', 'service_role'));
   END IF;
 END $$;
+

@@ -17,10 +17,6 @@ function getEnvVar(key: string): string | undefined {
   return undefined;
 }
 
-const fallbackUrl = 'https://tctaqmtvypibxsaehawf.supabase.co';
-const fallbackKey =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg';
-
 let dynamicUrl = '';
 let dynamicKey = '';
 
@@ -35,7 +31,7 @@ const supabaseUrl =
   getEnvVar('SUPABASE_URL') ||
   getEnvVar('VITE_SUPABASE_URL') ||
   getEnvVar('NEXT_PUBLIC_SUPABASE_URL') ||
-  fallbackUrl;
+  '';
 const supabaseKey =
   dynamicKey ||
   getEnvVar('SUPABASE_SERVICE_ROLE_KEY') ||
@@ -43,7 +39,7 @@ const supabaseKey =
   getEnvVar('VITE_SUPABASE_ANON_KEY') ||
   getEnvVar('NEXT_PUBLIC_SUPABASE_ANON_KEY') ||
   getEnvVar('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY') ||
-  fallbackKey;
+  '';
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
