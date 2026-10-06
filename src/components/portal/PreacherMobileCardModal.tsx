@@ -218,9 +218,9 @@ export function PreacherMobileCardModal({
       });
       setConfirmationStatus('CONFIRMED');
       onStatusUpdated?.();
-    } catch {
-      setConfirmationStatus('CONFIRMED');
-      onStatusUpdated?.();
+    } catch (err: any) {
+      console.error('Confirm assignment error:', err);
+      alert(err.message || 'تعذر تأكيد الحضور في قاعدة البيانات');
     } finally {
       setUpdating(false);
     }
@@ -241,10 +241,9 @@ export function PreacherMobileCardModal({
       setConfirmationStatus('DECLINED');
       setShowApologyReason(false);
       onStatusUpdated?.();
-    } catch {
-      setConfirmationStatus('DECLINED');
-      setShowApologyReason(false);
-      onStatusUpdated?.();
+    } catch (err: any) {
+      console.error('Decline assignment error:', err);
+      alert(err.message || 'تعذر تسجيل الاعتذار في قاعدة البيانات');
     } finally {
       setUpdating(false);
     }

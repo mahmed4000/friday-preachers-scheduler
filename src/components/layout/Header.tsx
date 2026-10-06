@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button.tsx';
 import { useTheme } from '../../context/ThemeContext.tsx';
+import { useAuth } from '../../context/AuthContext.tsx';
 
 interface HeaderProps {
   activeTitle: string;
@@ -37,6 +38,7 @@ export function Header({
   onToggleMobileMenu,
   alertCount = 0,
 }: HeaderProps) {
+  const { user, isAuthenticated, logout, openLoginModal } = useAuth();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
@@ -188,74 +190,79 @@ export function Header({
           )}
         </div>
 
-        {/* User Profile Menu */}
-        <div className="relative" ref={userMenuRef}>
+        {/* User Profile / Auth State */}
+        {!isAuthenticated ? (
           <button
-            onClick={() => setIsUserMenuOpen((prev) => !prev)}
-            className="flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-emerald-800/70 hover:border-emerald-700 bg-emerald-950/60 hover:bg-emerald-900/70 transition-all cursor-pointer"
+            onClick={openLoginModal}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-amber-400/60 hover:border-amber-300 bg-amber-400/15 hover:bg-amber-400/25 text-amber-300 text-xs font-bold transition-all cursor-pointer shadow-xs"
+            title="تسجيل الدخول"
           >
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-emerald-950 flex items-center justify-center font-bold text-xs shadow-md">
-              م
-            </div>
-            <div className="text-right hidden sm:block">
-              <span className="text-xs font-bold text-white font-heading block leading-tight">
-                محمد
-              </span>
-              <span className="text-[10px] text-amber-300 font-semibold block leading-tight">
-                مدير النظام
-              </span>
-            </div>
-            <ChevronDown className="w-3.5 h-3.5 text-emerald-300/70 mr-0.5" />
+            <ShieldCheck className="w-4 h-4 text-amber-400" />
+            <span>تسجيل الدخول</span>
           </button>
-
-          {isUserMenuOpen && (
-            <div className="absolute left-0 mt-2 w-52 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-right animate-in fade-in-50 duration-150">
-              <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
-                <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block font-heading">
-                  الشيخ محمد بن عبد العزيز
+        ) : (
+          <div className="relative" ref={userMenuRef}>
+            <button
+              onClick={() => setIsUserMenuOpen((prev) => !prev)}
+              className="flex items-center gap-2 p-1.5 pr-2.5 rounded-lg border border-emerald-800/70 hover:border-emerald-700 bg-emerald-950/60 hover:bg-emerald-900/70 transition-all cursor-pointer"
+            >
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 text-emerald-950 flex items-center justify-center font-bold text-xs shadow-md">
+                {user?.name ? user.name.trim().charAt(0) : 'م'}
+              </div>
+              <div className="text-right hidden sm:block">
+                <span className="text-xs font-bold text-white font-heading block leading-tight truncate max-w-[110px]">
+                  {user?.name || 'مستخدم'}
                 </span>
-                <span className="text-[11px] text-slate-500 dark:text-slate-400 block">مدير عام شؤون المساجد</span>
+                <span className="text-[10px] text-amber-300 font-semibold block leading-tight">
+                  {user?.role === 'admin' ? 'مدير النظام' : user?.role === 'staff' ? 'مشرف جداول' : 'مشاهد'}
+                </span>
               </div>
+              <ChevronDown className="w-3.5 h-3.5 text-emerald-300/70 mr-0.5" />
+            </button>
 
-              <div className="py-1 text-xs">
-                <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    onOpenSettings?.();
-                  }}
-                  className="w-full px-4 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <User className="w-3.5 h-3.5 text-slate-400" />
-                  <span>الملف الشخصي والبيانات</span>
-                </button>
+            {isUserMenuOpen && (
+              <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-right animate-in fade-in-50 duration-150">
+                <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-xs font-bold text-slate-900 dark:text-slate-100 block font-heading truncate">
+                    {user?.name}
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400 block truncate" dir="ltr">
+                    {user?.email}
+                  </span>
+                  <span className="inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                    {user?.role === 'admin' ? 'صلاحيات كاملة (Admin)' : user?.role === 'staff' ? 'مشرف جداول (Staff)' : 'مشاهد (Viewer)'}
+                  </span>
+                </div>
 
-                <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    onOpenSettings?.();
-                  }}
-                  className="w-full px-4 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
-                >
-                  <SettingsIcon className="w-3.5 h-3.5 text-slate-400" />
-                  <span>إعدادات النظام والجمعية</span>
-                </button>
+                <div className="py-1 text-xs">
+                  <button
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onOpenSettings?.();
+                    }}
+                    className="w-full px-4 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <SettingsIcon className="w-3.5 h-3.5 text-slate-400" />
+                    <span>إعدادات النظام والجمعية</span>
+                  </button>
+                </div>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-1">
+                  <button
+                    onClick={async () => {
+                      setIsUserMenuOpen(false);
+                      await logout();
+                    }}
+                    className="w-full px-4 py-2 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors cursor-pointer text-xs font-semibold"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-rose-600" />
+                    <span>تسجيل الخروج</span>
+                  </button>
+                </div>
               </div>
-
-              <div className="border-t border-slate-100 dark:border-slate-800 pt-1">
-                <button
-                  onClick={() => {
-                    setIsUserMenuOpen(false);
-                    window.location.reload();
-                  }}
-                  className="w-full px-4 py-2 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors cursor-pointer text-xs font-semibold"
-                >
-                  <LogOut className="w-3.5 h-3.5 text-rose-600" />
-                  <span>تسجيل الخروج</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
       </div>
     </header>
   );

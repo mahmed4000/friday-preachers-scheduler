@@ -203,68 +203,12 @@ export function ScheduleWizardModal({
       setGenerationResult(genRes.result);
       setStep(5);
     } catch (err: any) {
-      console.warn('Backend API generation failed, running resilient local SchedulingEngine fallback:', err);
-      try {
-        setGenerationLog((prev) => [
-          ...prev,
-          '✓ تفعيل محرك الجدولة الحتمي الذاتي (وضع التشغيل المباشر)...',
-          '✓ تطبيق التفضيلات وقواعد المنع وعدالة الأحمال محلياً...',
-        ]);
-
-        const clientResult = SchedulingEngine.generate({
-          monthName,
-          hijriYear,
-          hijriMonth,
-          fridaysCount,
-          mosques: activeMosques.map((m) => ({
-            id: m.id,
-            name: m.name,
-            code: m.code,
-            region: m.region,
-            isActive: m.isActive,
-            fixedImamId: m.fixedImamId,
-            fixedPattern: m.fixedPattern as any,
-            fixedCount: m.fixedCount,
-          })),
-          imams: activeImams.map((i) => ({
-            id: i.id,
-            name: i.name,
-            type: i.type as any,
-            minFridays: i.minFridays,
-            targetFridays: i.targetFridays,
-            maxFridays: i.maxFridays,
-            isActive: i.isActive,
-            region: i.region,
-          })),
-          rules: rules.map((r) => ({
-            mosqueId: r.mosqueId,
-            imamId: r.imamId,
-            relationshipType: r.relationshipType as any,
-            priority: r.priority || 1,
-          })),
-          availabilities: [],
-          distributionMethod: distributionMethod as any,
-          seed: `${monthName}-${hijriYear}-Direct`,
-        });
-
-        await new Promise((r) => setTimeout(r, 400));
-        setGenerationPhase(5);
-        setGenerationLog((prev) => [
-          ...prev,
-          '✓ فحص النتائج وكشف التعارضات والتأكد من سلامة الجداول...',
-          '✅ اكتمل التوزيع بنجاح وفق تقويم أم القرى (وضع التشغيل المباشر)!',
-        ]);
-        const existingSched = schedules?.find((s) => s.hijriYear === hijriYear && s.hijriMonth === hijriMonth);
-        const resolvedId = createdScheduleId || existingSched?.id || null;
-        if (resolvedId) setCreatedScheduleId(resolvedId);
-        setGenerationResult(clientResult);
-        setStep(5);
-      } catch (localErr: any) {
-        setGenerationLog((prev) => [
-          ...prev,
-          `❌ فشل التوزيع: ${localErr.message || 'حدث خطأ أثناء التوزيع'}`,
-        ]);
-      }
+      console.error('Schedule generation failed on server:', err);
+      setGenerationLog((prev) => [
+        ...prev,
+        `❌ فشل إنشاء وتوزيع الجدول في قاعدة البيانات: ${err.message || 'حدث خطأ في الخادم'}`,
+        '⚠️ توقفت العملية للحفاظ على سلامة البيانات وعدم ادعاء نجاح وهمي.',
+      ]);
     }
   };
 

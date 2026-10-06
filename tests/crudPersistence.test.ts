@@ -2,6 +2,7 @@ import assert from 'node:assert';
 import express from 'express';
 import http from 'http';
 import api from '../src/server/api.ts';
+import { isDatabaseAvailable, isDatabaseConfigured } from '../src/db/index.ts';
 
 console.log('--- بدء اختبارات استمرارية البيانات ودورة حياة الكيانات (Phase 3 CRUD Persistence Tests) ---');
 
@@ -15,14 +16,31 @@ server.listen(0, async () => {
   const port = (server.address() as any).port;
   const baseUrl = `http://127.0.0.1:${port}/api`;
 
+  // -------------------------------------------------------------
+  // CONTROL 2: التحقق الصارم من توفر قاعدة بيانات PostgreSQL حقيقية
+  // يُحظر حظراً باتاً السقوط الصامت على memoryStore في اختبارات الاستمرارية
+  // -------------------------------------------------------------
+  if (!isDatabaseConfigured || !isDatabaseAvailable()) {
+    console.error('\n❌ [FAIL - CONTROL 2 ENFORCED] متغير DATABASE_URL غير معرف أو تعذر الاتصال بقاعدة بيانات PostgreSQL.');
+    console.error('❌ يُحظر حظراً باتاً السقوط الصامت على memoryStore لاجتياز اختبارات استمرارية البيانات (P0 Persistence).');
+    console.error('❌ يجب ضبط DATABASE_URL صالح للاتصال بقاعدة بيانات PostgreSQL الحقيقية لإثبات الاستمرارية.\n');
+    server.close(() => {
+      process.exit(1);
+    });
+    return;
+  }
+
   try {
+    const authHeaders = { 'Content-Type': 'application/json', 'x-admin-action': 'confirmed' };
+    const adminActionHeader = { 'x-admin-action': 'confirmed' };
+
     // -------------------------------------------------------------
     // 1. اختبار دورة حياة المسجد (Mosque CRUD Lifecycle)
     // -------------------------------------------------------------
     const mosqueCode = `TEST-M-${Date.now()}`;
     const createMosqueRes = await fetch(`${baseUrl}/mosques`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         name: 'مسجد الاختبار المعياري للتعافي',
         code: mosqueCode,
@@ -42,7 +60,7 @@ server.listen(0, async () => {
     // 1.2 Update Mosque with extra frontend properties (Verify whitelisting prevents column errors)
     const patchMosqueRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         ...createdMosque,
         name: 'مسجد الاختبار المعياري المحدث',
@@ -73,7 +91,7 @@ server.listen(0, async () => {
     // -------------------------------------------------------------
     const createImamRes = await fetch(`${baseUrl}/imams`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         name: 'الشيخ اختبار المعياري',
         type: 'FLEXIBLE',
@@ -94,7 +112,7 @@ server.listen(0, async () => {
     // 2.2 Update Imam with extra frontend properties
     const patchImamRes = await fetch(`${baseUrl}/imams/${createdImam.id}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         ...createdImam,
         name: 'الشيخ اختبار المعياري المحدث',
@@ -125,7 +143,7 @@ server.listen(0, async () => {
     // -------------------------------------------------------------
     const createRuleRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}/rules`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         imamId: createdImam.id,
         relationshipType: 'PREFERRED',
@@ -143,6 +161,7 @@ server.listen(0, async () => {
     // 3.2 Delete Rule
     const deleteRuleRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}/rules/${savedRule.id}`, {
       method: 'DELETE',
+      headers: adminActionHeader,
     });
     assert.strictEqual(deleteRuleRes.status, 200, 'DELETE rule must return 200 OK');
     console.log('✅ [PASS] 3.2 حذف قاعدة التفضيل بنجاح');
@@ -152,7 +171,7 @@ server.listen(0, async () => {
     // -------------------------------------------------------------
     const updateSettingsRes = await fetch(`${baseUrl}/settings`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders,
       body: JSON.stringify({
         associationName: 'جمعية رعاية المساجد - اختبار الاستمرارية',
         branchName: 'فرع الجيزة المعتمد',
@@ -171,7 +190,9 @@ server.listen(0, async () => {
     // -------------------------------------------------------------
     // 4.1 التحقق من تسجيل العمليات في سجل التدقيق (Audit Logs Verification)
     // -------------------------------------------------------------
-    const auditRes = await fetch(`${baseUrl}/audit-logs`);
+    const auditRes = await fetch(`${baseUrl}/audit-logs`, {
+      headers: adminActionHeader,
+    });
     assert.strictEqual(auditRes.status, 200, 'GET /api/audit-logs must return 200 OK');
     const logs = await auditRes.json();
     assert.ok(Array.isArray(logs), 'Audit logs response must be an array');
@@ -184,19 +205,33 @@ server.listen(0, async () => {
     // -------------------------------------------------------------
     // 5. تنظيف الكيانات الاختبارية (Cleanup)
     // -------------------------------------------------------------
-    const delMosqueRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}`, { method: 'DELETE' });
+    const delMosqueRes = await fetch(`${baseUrl}/mosques/${createdMosque.id}`, {
+      method: 'DELETE',
+      headers: adminActionHeader,
+    });
     assert.strictEqual(delMosqueRes.status, 200, 'DELETE /api/mosques/:id must return 200');
 
-    const delImamRes = await fetch(`${baseUrl}/imams/${createdImam.id}`, { method: 'DELETE' });
+    const delImamRes = await fetch(`${baseUrl}/imams/${createdImam.id}`, {
+      method: 'DELETE',
+      headers: adminActionHeader,
+    });
     assert.strictEqual(delImamRes.status, 200, 'DELETE /api/imams/:id must return 200');
-    console.log('✅ [PASS] 5. تنظيف الكيانات الاختبارية بنجاح');
+
+    // Clean up settings and audit logs to restore exact baseline
+    const { db } = await import('../src/db/index.ts');
+    const { organizationSettings, auditLogs } = await import('../src/db/schema.ts');
+    await db.delete(organizationSettings);
+    await db.delete(auditLogs);
+    console.log('✅ [PASS] 5. تنظيف الكيانات الاختبارية وسجلات التدقيق واستعادة خط الأساس بنجاح');
 
     console.log('--- اكتملت جميع اختبارات استمرارية البيانات CRUD بنجاح تام (All Passed) ---');
+    server.closeAllConnections?.();
     server.close();
     process.exit(0);
   } catch (err) {
     console.error('❌ [FAIL] فشل في اختبارات استمرارية البيانات:', err);
-    server.close();
-    process.exit(1);
+    server.close(() => {
+      process.exit(1);
+    });
   }
 });

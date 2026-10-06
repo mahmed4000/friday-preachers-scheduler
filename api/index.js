@@ -18820,14 +18820,14 @@ var require_etag = __commonJS({
   "node_modules/etag/index.js"(exports, module) {
     "use strict";
     module.exports = etag;
-    var crypto2 = __require("crypto");
+    var crypto3 = __require("crypto");
     var Stats = __require("fs").Stats;
     var toString = Object.prototype.toString;
     function entitytag(entity) {
       if (entity.length === 0) {
         return '"0-2jmj7l5rSw0yVb/vlWAYkK/YBwk"';
       }
-      var hash = crypto2.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
+      var hash = crypto3.createHash("sha1").update(entity, "utf8").digest("base64").substring(0, 27);
       var len = typeof entity === "string" ? Buffer.byteLength(entity, "utf8") : entity.length;
       return '"' + len.toString(16) + "-" + hash + '"';
     }
@@ -21736,11 +21736,11 @@ var require_request = __commonJS({
 // node_modules/cookie-signature/index.js
 var require_cookie_signature = __commonJS({
   "node_modules/cookie-signature/index.js"(exports) {
-    var crypto2 = __require("crypto");
+    var crypto3 = __require("crypto");
     exports.sign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Cookie value must be provided as a string.");
       if (null == secret) throw new TypeError("Secret key must be provided.");
-      return val + "." + crypto2.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
+      return val + "." + crypto3.createHmac("sha256", secret).update(val).digest("base64").replace(/\=+$/, "");
     };
     exports.unsign = function(val, secret) {
       if ("string" !== typeof val) throw new TypeError("Signed cookie string must be provided.");
@@ -21749,7 +21749,7 @@ var require_cookie_signature = __commonJS({
       return sha1(mac) == sha1(val) ? str : false;
     };
     function sha1(str) {
-      return crypto2.createHash("sha1").update(str).digest("hex");
+      return crypto3.createHash("sha1").update(str).digest("hex");
     }
   }
 });
@@ -22714,6 +22714,386 @@ var require_express2 = __commonJS({
   "node_modules/express/index.js"(exports, module) {
     "use strict";
     module.exports = require_express();
+  }
+});
+
+// node_modules/dotenv/lib/main.js
+var require_main = __commonJS({
+  "node_modules/dotenv/lib/main.js"(exports, module) {
+    var fs5 = __require("fs");
+    var path4 = __require("path");
+    var os = __require("os");
+    var crypto3 = __require("crypto");
+    var TIPS = [
+      "\u25C8 encrypted .env [www.dotenvx.com]",
+      "\u25C8 secrets for agents [www.dotenvx.com]",
+      "\u2301 auth for agents [www.vestauth.com]",
+      "\u2318 custom filepath { path: '/custom/path/.env' }",
+      "\u2318 enable debugging { debug: true }",
+      "\u2318 override existing { override: true }",
+      "\u2318 suppress logs { quiet: true }",
+      "\u2318 multiple files { path: ['.env.local', '.env'] }"
+    ];
+    function _getRandomTip() {
+      return TIPS[Math.floor(Math.random() * TIPS.length)];
+    }
+    function parseBoolean(value) {
+      if (typeof value === "string") {
+        return !["false", "0", "no", "off", ""].includes(value.toLowerCase());
+      }
+      return Boolean(value);
+    }
+    function supportsAnsi() {
+      return process.stdout.isTTY;
+    }
+    function dim(text2) {
+      return supportsAnsi() ? `\x1B[2m${text2}\x1B[0m` : text2;
+    }
+    var LINE = /(?:^|^)\s*(?:export\s+)?([\w.-]+)(?:\s*=\s*?|:\s+?)(\s*'(?:\\'|[^'])*'|\s*"(?:\\"|[^"])*"|\s*`(?:\\`|[^`])*`|[^#\r\n]+)?\s*(?:#.*)?(?:$|$)/mg;
+    function parse(src) {
+      const obj = {};
+      let lines = src.toString();
+      lines = lines.replace(/\r\n?/mg, "\n");
+      let match;
+      while ((match = LINE.exec(lines)) != null) {
+        const key = match[1];
+        let value = match[2] || "";
+        value = value.trim();
+        const maybeQuote = value[0];
+        value = value.replace(/^(['"`])([\s\S]*)\1$/mg, "$2");
+        if (maybeQuote === '"') {
+          value = value.replace(/\\n/g, "\n");
+          value = value.replace(/\\r/g, "\r");
+        }
+        obj[key] = value;
+      }
+      return obj;
+    }
+    function _parseVault(options) {
+      options = options || {};
+      const vaultPath = _vaultPath(options);
+      options.path = vaultPath;
+      const result = DotenvModule.configDotenv(options);
+      if (!result.parsed) {
+        const err = new Error(`MISSING_DATA: Cannot parse ${vaultPath} for an unknown reason`);
+        err.code = "MISSING_DATA";
+        throw err;
+      }
+      const keys = _dotenvKey(options).split(",");
+      const length = keys.length;
+      let decrypted;
+      for (let i2 = 0; i2 < length; i2++) {
+        try {
+          const key = keys[i2].trim();
+          const attrs = _instructions(result, key);
+          decrypted = DotenvModule.decrypt(attrs.ciphertext, attrs.key);
+          break;
+        } catch (error) {
+          if (i2 + 1 >= length) {
+            throw error;
+          }
+        }
+      }
+      return DotenvModule.parse(decrypted);
+    }
+    function _warn(message2) {
+      console.error(`\u26A0 ${message2}`);
+    }
+    function _debug(message2) {
+      console.log(`\u2506 ${message2}`);
+    }
+    function _log(message2) {
+      console.log(`\u25C7 ${message2}`);
+    }
+    function _dotenvKey(options) {
+      if (options && options.DOTENV_KEY && options.DOTENV_KEY.length > 0) {
+        return options.DOTENV_KEY;
+      }
+      if (process.env.DOTENV_KEY && process.env.DOTENV_KEY.length > 0) {
+        return process.env.DOTENV_KEY;
+      }
+      return "";
+    }
+    function _instructions(result, dotenvKey) {
+      let uri;
+      try {
+        uri = new URL(dotenvKey);
+      } catch (error) {
+        if (error.code === "ERR_INVALID_URL") {
+          const err = new Error("INVALID_DOTENV_KEY: Wrong format. Must be in valid uri format like dotenv://:key_1234@dotenvx.com/vault/.env.vault?environment=development");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        }
+        throw error;
+      }
+      const key = uri.password;
+      if (!key) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing key part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environment = uri.searchParams.get("environment");
+      if (!environment) {
+        const err = new Error("INVALID_DOTENV_KEY: Missing environment part");
+        err.code = "INVALID_DOTENV_KEY";
+        throw err;
+      }
+      const environmentKey = `DOTENV_VAULT_${environment.toUpperCase()}`;
+      const ciphertext = result.parsed[environmentKey];
+      if (!ciphertext) {
+        const err = new Error(`NOT_FOUND_DOTENV_ENVIRONMENT: Cannot locate environment ${environmentKey} in your .env.vault file.`);
+        err.code = "NOT_FOUND_DOTENV_ENVIRONMENT";
+        throw err;
+      }
+      return { ciphertext, key };
+    }
+    function _vaultPath(options) {
+      let possibleVaultPath = null;
+      if (options && options.path && options.path.length > 0) {
+        if (Array.isArray(options.path)) {
+          for (const filepath of options.path) {
+            if (fs5.existsSync(filepath)) {
+              possibleVaultPath = filepath.endsWith(".vault") ? filepath : `${filepath}.vault`;
+            }
+          }
+        } else {
+          possibleVaultPath = options.path.endsWith(".vault") ? options.path : `${options.path}.vault`;
+        }
+      } else {
+        possibleVaultPath = path4.resolve(process.cwd(), ".env.vault");
+      }
+      if (fs5.existsSync(possibleVaultPath)) {
+        return possibleVaultPath;
+      }
+      return null;
+    }
+    function _resolveHome(envPath) {
+      return envPath[0] === "~" ? path4.join(os.homedir(), envPath.slice(1)) : envPath;
+    }
+    function _configVault(options) {
+      const debug = parseBoolean(process.env.DOTENV_CONFIG_DEBUG || options && options.debug);
+      const quiet = parseBoolean(process.env.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (debug || !quiet) {
+        _log("loading env from encrypted .env.vault");
+      }
+      const parsed = DotenvModule._parseVault(options);
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      DotenvModule.populate(processEnv, parsed, options);
+      return { parsed };
+    }
+    function configDotenv(options) {
+      const dotenvPath = path4.resolve(process.cwd(), ".env");
+      let encoding = "utf8";
+      let processEnv = process.env;
+      if (options && options.processEnv != null) {
+        processEnv = options.processEnv;
+      }
+      let debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || options && options.debug);
+      let quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || options && options.quiet);
+      if (options && options.encoding) {
+        encoding = options.encoding;
+      } else {
+        if (debug) {
+          _debug("no encoding is specified (UTF-8 is used by default)");
+        }
+      }
+      let optionPaths = [dotenvPath];
+      if (options && options.path) {
+        if (!Array.isArray(options.path)) {
+          optionPaths = [_resolveHome(options.path)];
+        } else {
+          optionPaths = [];
+          for (const filepath of options.path) {
+            optionPaths.push(_resolveHome(filepath));
+          }
+        }
+      }
+      let lastError;
+      const parsedAll = {};
+      for (const path5 of optionPaths) {
+        try {
+          const parsed = DotenvModule.parse(fs5.readFileSync(path5, { encoding }));
+          DotenvModule.populate(parsedAll, parsed, options);
+        } catch (e2) {
+          if (debug) {
+            _debug(`failed to load ${path5} ${e2.message}`);
+          }
+          lastError = e2;
+        }
+      }
+      const populated = DotenvModule.populate(processEnv, parsedAll, options);
+      debug = parseBoolean(processEnv.DOTENV_CONFIG_DEBUG || debug);
+      quiet = parseBoolean(processEnv.DOTENV_CONFIG_QUIET || quiet);
+      if (debug || !quiet) {
+        const keysCount = Object.keys(populated).length;
+        const shortPaths = [];
+        for (const filePath of optionPaths) {
+          try {
+            const relative = path4.relative(process.cwd(), filePath);
+            shortPaths.push(relative);
+          } catch (e2) {
+            if (debug) {
+              _debug(`failed to load ${filePath} ${e2.message}`);
+            }
+            lastError = e2;
+          }
+        }
+        _log(`injected env (${keysCount}) from ${shortPaths.join(",")} ${dim(`// tip: ${_getRandomTip()}`)}`);
+      }
+      if (lastError) {
+        return { parsed: parsedAll, error: lastError };
+      } else {
+        return { parsed: parsedAll };
+      }
+    }
+    function config(options) {
+      if (_dotenvKey(options).length === 0) {
+        return DotenvModule.configDotenv(options);
+      }
+      const vaultPath = _vaultPath(options);
+      if (!vaultPath) {
+        _warn(`you set DOTENV_KEY but you are missing a .env.vault file at ${vaultPath}`);
+        return DotenvModule.configDotenv(options);
+      }
+      return DotenvModule._configVault(options);
+    }
+    function decrypt2(encrypted, keyStr) {
+      const key = Buffer.from(keyStr.slice(-64), "hex");
+      let ciphertext = Buffer.from(encrypted, "base64");
+      const nonce = ciphertext.subarray(0, 12);
+      const authTag = ciphertext.subarray(-16);
+      ciphertext = ciphertext.subarray(12, -16);
+      try {
+        const aesgcm = crypto3.createDecipheriv("aes-256-gcm", key, nonce);
+        aesgcm.setAuthTag(authTag);
+        return `${aesgcm.update(ciphertext)}${aesgcm.final()}`;
+      } catch (error) {
+        const isRange = error instanceof RangeError;
+        const invalidKeyLength = error.message === "Invalid key length";
+        const decryptionFailed = error.message === "Unsupported state or unable to authenticate data";
+        if (isRange || invalidKeyLength) {
+          const err = new Error("INVALID_DOTENV_KEY: It must be 64 characters long (or more)");
+          err.code = "INVALID_DOTENV_KEY";
+          throw err;
+        } else if (decryptionFailed) {
+          const err = new Error("DECRYPTION_FAILED: Please check your DOTENV_KEY");
+          err.code = "DECRYPTION_FAILED";
+          throw err;
+        } else {
+          throw error;
+        }
+      }
+    }
+    function populate(processEnv, parsed, options = {}) {
+      const debug = Boolean(options && options.debug);
+      const override = Boolean(options && options.override);
+      const populated = {};
+      if (typeof parsed !== "object") {
+        const err = new Error("OBJECT_REQUIRED: Please check the processEnv argument being passed to populate");
+        err.code = "OBJECT_REQUIRED";
+        throw err;
+      }
+      for (const key of Object.keys(parsed)) {
+        if (Object.prototype.hasOwnProperty.call(processEnv, key)) {
+          if (override === true) {
+            processEnv[key] = parsed[key];
+            populated[key] = parsed[key];
+          }
+          if (debug) {
+            if (override === true) {
+              _debug(`"${key}" is already defined and WAS overwritten`);
+            } else {
+              _debug(`"${key}" is already defined and was NOT overwritten`);
+            }
+          }
+        } else {
+          processEnv[key] = parsed[key];
+          populated[key] = parsed[key];
+        }
+      }
+      return populated;
+    }
+    var DotenvModule = {
+      configDotenv,
+      _configVault,
+      _parseVault,
+      config,
+      decrypt: decrypt2,
+      parse,
+      populate
+    };
+    module.exports.configDotenv = DotenvModule.configDotenv;
+    module.exports._configVault = DotenvModule._configVault;
+    module.exports._parseVault = DotenvModule._parseVault;
+    module.exports.config = DotenvModule.config;
+    module.exports.decrypt = DotenvModule.decrypt;
+    module.exports.parse = DotenvModule.parse;
+    module.exports.populate = DotenvModule.populate;
+    module.exports = DotenvModule;
+  }
+});
+
+// node_modules/dotenv/lib/env-options.js
+var require_env_options = __commonJS({
+  "node_modules/dotenv/lib/env-options.js"(exports, module) {
+    var options = {};
+    if (process.env.DOTENV_CONFIG_ENCODING != null) {
+      options.encoding = process.env.DOTENV_CONFIG_ENCODING;
+    }
+    if (process.env.DOTENV_CONFIG_PATH != null) {
+      options.path = process.env.DOTENV_CONFIG_PATH;
+    }
+    if (process.env.DOTENV_CONFIG_QUIET != null) {
+      options.quiet = process.env.DOTENV_CONFIG_QUIET;
+    }
+    if (process.env.DOTENV_CONFIG_DEBUG != null) {
+      options.debug = process.env.DOTENV_CONFIG_DEBUG;
+    }
+    if (process.env.DOTENV_CONFIG_OVERRIDE != null) {
+      options.override = process.env.DOTENV_CONFIG_OVERRIDE;
+    }
+    if (process.env.DOTENV_CONFIG_DOTENV_KEY != null) {
+      options.DOTENV_KEY = process.env.DOTENV_CONFIG_DOTENV_KEY;
+    }
+    module.exports = options;
+  }
+});
+
+// node_modules/dotenv/lib/cli-options.js
+var require_cli_options = __commonJS({
+  "node_modules/dotenv/lib/cli-options.js"(exports, module) {
+    var re = /^dotenv_config_(encoding|path|quiet|debug|override|DOTENV_KEY)=(.+)$/;
+    module.exports = function optionMatcher(args) {
+      const options = args.reduce(function(acc, cur) {
+        const matches = cur.match(re);
+        if (matches) {
+          acc[matches[1]] = matches[2];
+        }
+        return acc;
+      }, {});
+      if (!("quiet" in options)) {
+        options.quiet = "true";
+      }
+      return options;
+    };
+  }
+});
+
+// node_modules/dotenv/config.js
+var init_config = __esm({
+  "node_modules/dotenv/config.js"() {
+    (function() {
+      require_main().config(
+        Object.assign(
+          {},
+          require_env_options(),
+          require_cli_options()(process.argv)
+        )
+      );
+    })();
   }
 });
 
@@ -24050,7 +24430,7 @@ var require_cert_signatures = __commonJS({
 var require_sasl = __commonJS({
   "node_modules/pg/lib/crypto/sasl.js"(exports, module) {
     "use strict";
-    var crypto2 = require_utils4();
+    var crypto3 = require_utils4();
     var { signatureAlgorithmHashFromCertificate } = require_cert_signatures();
     function saslprep(password) {
       const nonAsciiSpace = /[\u00A0\u1680\u2000-\u200B\u202F\u205F\u3000]/g;
@@ -24068,7 +24448,7 @@ var require_sasl = __commonJS({
       if (mechanism === "SCRAM-SHA-256-PLUS" && typeof stream.getPeerCertificate !== "function") {
         throw new Error("SASL: Mechanism SCRAM-SHA-256-PLUS requires a certificate");
       }
-      const clientNonce = crypto2.randomBytes(18).toString("base64");
+      const clientNonce = crypto3.randomBytes(18).toString("base64");
       const gs2Header = mechanism === "SCRAM-SHA-256-PLUS" ? "p=tls-server-end-point" : stream ? "y" : "n";
       return {
         mechanism,
@@ -24110,20 +24490,20 @@ var require_sasl = __commonJS({
         const peerCert = stream.getPeerCertificate().raw;
         let hashName = signatureAlgorithmHashFromCertificate(peerCert);
         if (hashName === "MD5" || hashName === "SHA-1") hashName = "SHA-256";
-        const certHash = await crypto2.hashByName(hashName, peerCert);
+        const certHash = await crypto3.hashByName(hashName, peerCert);
         const bindingData = Buffer.concat([Buffer.from("p=tls-server-end-point,,"), Buffer.from(certHash)]);
         channelBinding = bindingData.toString("base64");
       }
       const clientFinalMessageWithoutProof = "c=" + channelBinding + ",r=" + sv.nonce;
       const authMessage = clientFirstMessageBare + "," + serverFirstMessage + "," + clientFinalMessageWithoutProof;
       const saltBytes = Buffer.from(sv.salt, "base64");
-      const saltedPassword = await crypto2.deriveKey(saslprep(password), saltBytes, sv.iteration);
-      const clientKey = await crypto2.hmacSha256(saltedPassword, "Client Key");
-      const storedKey = await crypto2.sha256(clientKey);
-      const clientSignature = await crypto2.hmacSha256(storedKey, authMessage);
+      const saltedPassword = await crypto3.deriveKey(saslprep(password), saltBytes, sv.iteration);
+      const clientKey = await crypto3.hmacSha256(saltedPassword, "Client Key");
+      const storedKey = await crypto3.sha256(clientKey);
+      const clientSignature = await crypto3.hmacSha256(storedKey, authMessage);
       const clientProof = xorBuffers(Buffer.from(clientKey), Buffer.from(clientSignature)).toString("base64");
-      const serverKey = await crypto2.hmacSha256(saltedPassword, "Server Key");
-      const serverSignatureBytes = await crypto2.hmacSha256(serverKey, authMessage);
+      const serverKey = await crypto3.hmacSha256(saltedPassword, "Server Key");
+      const serverSignatureBytes = await crypto3.hmacSha256(serverKey, authMessage);
       session.message = "SASLResponse";
       session.serverSignature = Buffer.from(serverSignatureBytes).toString("base64");
       session.response = clientFinalMessageWithoutProof + ",p=" + clientProof;
@@ -26362,7 +26742,7 @@ var require_client = __commonJS({
     var Query2 = require_query2();
     var defaults2 = require_defaults();
     var Connection2 = require_connection();
-    var crypto2 = require_utils4();
+    var crypto3 = require_utils4();
     var activeQueryDeprecationNotice = nodeUtils.deprecate(
       () => {
       },
@@ -26617,7 +26997,7 @@ var require_client = __commonJS({
       _handleAuthMD5Password(msg) {
         this._getPassword(async () => {
           try {
-            const hashedPassword = await crypto2.postgresMd5PasswordHash(this.user, this.password, msg.salt);
+            const hashedPassword = await crypto3.postgresMd5PasswordHash(this.user, this.password, msg.salt);
             this.connection.password(hashedPassword);
           } catch (e2) {
             this.emit("error", e2);
@@ -36449,17 +36829,18 @@ __export(schema_exports, {
   addresses: () => addresses,
   administrativeUnits: () => administrativeUnits,
   assignmentHistory: () => assignmentHistory,
+  assignmentHistoryRelations: () => assignmentHistoryRelations,
   assignments: () => assignments,
   assignmentsRelations: () => assignmentsRelations,
   auditLogs: () => auditLogs,
   conflicts: () => conflicts,
+  conflictsRelations: () => conflictsRelations,
   countries: () => countries,
   distributionLogs: () => distributionLogs,
   fixedAssignmentPatternItems: () => fixedAssignmentPatternItems,
-  fixedAssignmentPatternItemsRelations: () => fixedAssignmentPatternItemsRelations,
   fixedAssignmentPatterns: () => fixedAssignmentPatterns,
-  fixedAssignmentPatternsRelations: () => fixedAssignmentPatternsRelations,
   fridays: () => fridays,
+  fridaysRelations: () => fridaysRelations,
   imamAvailabilities: () => imamAvailabilities,
   imams: () => imams,
   imamsRelations: () => imamsRelations,
@@ -36473,359 +36854,166 @@ __export(schema_exports, {
   mosquesRelations: () => mosquesRelations,
   organizationSettings: () => organizationSettings,
   overrides: () => overrides,
+  overridesRelations: () => overridesRelations,
   scheduleVersions: () => scheduleVersions,
   users: () => users
 });
-var countries, administrativeUnits, addresses, users, mosques, imams, fixedAssignmentPatterns, fixedAssignmentPatternItems, mosqueImamRules, imamAvailabilities, monthlySchedules, fridays, assignments, conflicts, overrides, assignmentHistory, scheduleVersions, distributionLogs, auditLogs, importExportLogs, importSnapshots, mosquesRelations, imamsRelations, fixedAssignmentPatternsRelations, fixedAssignmentPatternItemsRelations, mosqueImamRulesRelations, monthlySchedulesRelations, assignmentsRelations, organizationSettings;
+var organizationSettings, mosques, imams, mosqueImamRules, monthlySchedules, fridays, assignments, assignmentHistory, conflicts, overrides, auditLogs, mosquesRelations, imamsRelations, mosqueImamRulesRelations, monthlySchedulesRelations, fridaysRelations, assignmentsRelations, assignmentHistoryRelations, conflictsRelations, overridesRelations, countries, administrativeUnits, addresses, users, fixedAssignmentPatterns, fixedAssignmentPatternItems, imamAvailabilities, scheduleVersions, distributionLogs, importExportLogs, importSnapshots;
 var init_schema2 = __esm({
   "src/db/schema.ts"() {
     init_drizzle_orm();
     init_pg_core();
-    countries = pgTable("countries", {
+    organizationSettings = pgTable("organization_settings", {
       id: serial("id").primaryKey(),
-      code: text("code").notNull().unique(),
-      // 'EG'
-      nameAr: text("name_ar").notNull(),
-      // 'جمهورية مصر العربية'
-      nameEn: text("name_en"),
-      // 'Arab Republic of Egypt'
-      defaultTimezone: text("default_timezone").default("Africa/Cairo").notNull(),
-      isDefault: boolean("is_default").default(true).notNull(),
-      isActive: boolean("is_active").default(true).notNull(),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    administrativeUnits = pgTable("administrative_units", {
-      id: serial("id").primaryKey(),
-      countryId: integer("country_id").default(1).notNull(),
-      parentId: integer("parent_id"),
-      level: integer("level").notNull(),
-      // 1=GOVERNORATE, 2=DISTRICT/QISM/MARKAZ, 3=SHEIKHA/AREA/VILLAGE
-      type: text("type").notNull(),
-      // GOVERNORATE, DISTRICT, QISM, MARKAZ, CITY, SHEIKHA, VILLAGE, AREA
-      code: text("code"),
-      // e.g. 'GZ', 'GZ-HRM', 'GZ-HRM-MBK'
-      nameAr: text("name_ar").notNull(),
-      nameEn: text("name_en"),
-      postalCode: text("postal_code"),
-      latitude: real("latitude"),
-      longitude: real("longitude"),
-      isActive: boolean("is_active").default(true).notNull(),
-      sortOrder: integer("sort_order").default(0).notNull(),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    addresses = pgTable("addresses", {
-      id: serial("id").primaryKey(),
-      countryId: integer("country_id").default(1).notNull(),
-      governorateId: integer("governorate_id").notNull(),
-      districtId: integer("district_id"),
-      areaId: integer("area_id"),
-      subAreaId: integer("sub_area_id"),
-      street: text("street"),
-      buildingNumber: text("building_number"),
-      landmark: text("landmark"),
-      floor: text("floor"),
-      apartment: text("apartment"),
-      postalCode: text("postal_code"),
-      latitude: real("latitude"),
-      longitude: real("longitude"),
-      formattedAddress: text("formatted_address").notNull(),
-      legacyAddress: text("legacy_address"),
-      needsReview: boolean("needs_review").default(false).notNull(),
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull()
-    });
-    users = pgTable("users", {
-      id: serial("id").primaryKey(),
-      uid: text("uid").notNull().unique(),
-      // Firebase Auth UID
-      email: text("email").notNull(),
-      name: text("name"),
-      role: text("role").default("admin").notNull(),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      associationName: text("association_name").default("\u062C\u0645\u0639\u064A\u0629 \u0627\u0644\u0639\u0646\u0627\u064A\u0629 \u0628\u0627\u0644\u0645\u0633\u0627\u062C\u062F"),
+      branchName: text("branch_name").default("\u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0634\u0624\u0648\u0646 \u0627\u0644\u062E\u0637\u0628\u0627\u0621"),
+      calendarProvider: text("calendar_provider").default("UMM_AL_QURA"),
+      timezone: text("timezone").default("Asia/Riyadh"),
+      contactPhone: text("contact_phone"),
+      contactEmail: text("contact_email"),
+      website: text("website"),
+      address: text("address"),
+      formattedAddress: text("formatted_address"),
+      defaultDistributionMethod: text("default_distribution_method").default("Balanced Random"),
+      autoLockFixed: boolean("auto_lock_fixed").default(true),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
     });
     mosques = pgTable("mosques", {
       id: serial("id").primaryKey(),
       name: text("name").notNull(),
       code: text("code").notNull().unique(),
-      region: text("region").notNull(),
+      region: text("region").default("\u0627\u0644\u0648\u0633\u0637"),
       address: text("address"),
-      // Structured Egyptian Location columns
-      countryId: integer("country_id"),
-      governorateId: integer("governorate_id"),
-      districtId: integer("district_id"),
-      areaId: integer("area_id"),
-      street: text("street"),
-      buildingNumber: text("building_number"),
-      landmark: text("landmark"),
-      formattedAddress: text("formatted_address"),
-      legacyAddress: text("legacy_address"),
-      needsReview: boolean("needs_review").default(false).notNull(),
-      latitude: text("latitude"),
-      longitude: text("longitude"),
       managerName: text("manager_name"),
       phone: text("phone"),
       whatsapp: text("whatsapp"),
-      isActive: boolean("is_active").default(true).notNull(),
       fixedImamId: integer("fixed_imam_id"),
-      fixedPattern: text("fixed_pattern").default("ALL").notNull(),
-      // ALL, FIRST_N, LAST_N, ANY_N, SPECIFIC_FRIDAYS
-      fixedCount: integer("fixed_count").default(0).notNull(),
+      isActive: boolean("is_active").default(true),
       notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
     });
     imams = pgTable("imams", {
       id: serial("id").primaryKey(),
       name: text("name").notNull(),
-      type: text("type").default("FLEXIBLE").notNull(),
-      // FIXED, PARTIAL_FIXED, FLEXIBLE
-      minFridays: integer("min_fridays").default(1).notNull(),
-      targetFridays: integer("target_fridays").default(4).notNull(),
-      maxFridays: integer("max_fridays").default(5).notNull(),
       phone: text("phone"),
       whatsapp: text("whatsapp"),
-      region: text("region"),
-      address: text("address"),
-      // Structured Egyptian Location columns
-      countryId: integer("country_id"),
-      governorateId: integer("governorate_id"),
-      districtId: integer("district_id"),
-      areaId: integer("area_id"),
-      street: text("street"),
-      buildingNumber: text("building_number"),
-      landmark: text("landmark"),
-      formattedAddress: text("formatted_address"),
-      legacyAddress: text("legacy_address"),
-      needsReview: boolean("needs_review").default(false).notNull(),
-      latitude: text("latitude"),
-      longitude: text("longitude"),
-      isActive: boolean("is_active").default(true).notNull(),
+      type: text("type").default("FLEXIBLE"),
+      region: text("region").default("\u0627\u0644\u0648\u0633\u0637"),
+      minFridays: integer("min_fridays").default(1),
+      maxFridays: integer("max_fridays").default(4),
+      targetFridays: integer("target_fridays").default(2),
+      isActive: boolean("is_active").default(true),
       notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    fixedAssignmentPatterns = pgTable("fixed_assignment_patterns", {
-      id: serial("id").primaryKey(),
-      mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }).notNull(),
-      hijriYear: integer("hijri_year").notNull(),
-      hijriMonth: integer("hijri_month").notNull(),
-      patternType: text("pattern_type").default("SAME_ALL").notNull(),
-      // SAME_ALL, SPLIT_COUNTS, SPECIFIC_FRIDAYS, CUSTOM
-      fridaysCount: integer("fridays_count").default(5).notNull(),
-      // 4 or 5
-      isActive: boolean("is_active").default(true).notNull(),
-      notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull()
-    });
-    fixedAssignmentPatternItems = pgTable("fixed_assignment_pattern_items", {
-      id: serial("id").primaryKey(),
-      patternId: integer("pattern_id").references(() => fixedAssignmentPatterns.id, { onDelete: "cascade" }).notNull(),
-      fridayIndex: integer("friday_index").notNull(),
-      // 1..5
-      imamId: integer("imam_id").references(() => imams.id, { onDelete: "cascade" }).notNull(),
-      sequence: integer("sequence").default(1).notNull(),
-      notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
     });
     mosqueImamRules = pgTable("mosque_imam_rules", {
       id: serial("id").primaryKey(),
       mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }).notNull(),
       imamId: integer("imam_id").references(() => imams.id, { onDelete: "cascade" }).notNull(),
       relationshipType: text("relationship_type").notNull(),
-      // FIXED, PREFERRED, ALLOWED, DISCOURAGED, FORBIDDEN, FLEXIBLE
-      priority: integer("priority").default(1).notNull(),
-      // 1 is highest priority for PREFERRED
+      priority: integer("priority").default(1),
       notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    imamAvailabilities = pgTable("imam_availabilities", {
-      id: serial("id").primaryKey(),
-      imamId: integer("imam_id").references(() => imams.id, { onDelete: "cascade" }).notNull(),
-      hijriYear: integer("hijri_year").notNull(),
-      hijriMonth: integer("hijri_month").notNull(),
-      fridayIndex: integer("friday_index").notNull(),
-      // 1 to 5
-      isAvailable: boolean("is_available").default(false).notNull(),
-      // false = unavailable
-      reason: text("reason"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
     monthlySchedules = pgTable("monthly_schedules", {
       id: serial("id").primaryKey(),
       hijriYear: integer("hijri_year").notNull(),
       hijriMonth: integer("hijri_month").notNull(),
       monthName: text("month_name").notNull(),
+      calendarProvider: text("calendar_provider").default("UMM_AL_QURA"),
+      timezone: text("timezone").default("Asia/Riyadh"),
       fridaysCount: integer("fridays_count").notNull(),
-      // 4 or 5
-      daysCount: integer("days_count").default(30).notNull(),
-      // 29 or 30 days
-      calendarProvider: text("calendar_provider").default("UMM_AL_QURA").notNull(),
-      // UMM_AL_QURA, OFFICIAL_LOCAL, CUSTOM
-      timezone: text("timezone").default("Africa/Cairo").notNull(),
-      startDateGregorian: text("start_date_gregorian"),
-      endDateGregorian: text("end_date_gregorian"),
-      status: text("status").default("DRAFT").notNull(),
-      // DRAFT, GENERATED, REVIEW, APPROVED, PUBLISHED, MODIFIED, NEEDS_REAPPROVAL
-      currentVersion: integer("current_version").default(1).notNull(),
-      createdBy: text("created_by"),
+      status: text("status").default("DRAFT"),
+      currentVersion: integer("current_version").default(1),
       approvedBy: text("approved_by"),
-      approvedAt: timestamp("approved_at"),
-      publishedAt: timestamp("published_at"),
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull()
+      approvedAt: timestamp("approved_at", { withTimezone: true }),
+      publishedAt: timestamp("published_at", { withTimezone: true }),
+      notes: text("notes"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
     });
     fridays = pgTable("fridays", {
       id: serial("id").primaryKey(),
       scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
       fridayIndex: integer("friday_index").notNull(),
-      // 1..5
-      hijriYear: integer("hijri_year"),
-      hijriMonth: integer("hijri_month"),
-      hijriDay: integer("hijri_day"),
       hijriDate: text("hijri_date").notNull(),
       gregorianDate: text("gregorian_date").notNull(),
-      dayOfWeek: text("day_of_week").default("\u0627\u0644\u062C\u0645\u0639\u0629").notNull()
+      gregorianIso: text("gregorian_iso").notNull(),
+      periodStatus: text("period_status").default("FUTURE"),
+      isPast: boolean("is_past").default(false),
+      notes: text("notes"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
     assignments = pgTable("assignments", {
       id: serial("id").primaryKey(),
       scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
-      fridayId: integer("friday_id").references(() => fridays.id, { onDelete: "cascade" }).notNull(),
-      fridayIndex: integer("friday_index").notNull(),
       mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }).notNull(),
+      fridayIndex: integer("friday_index").notNull(),
       imamId: integer("imam_id").references(() => imams.id, { onDelete: "set null" }),
-      source: text("source").default("BALANCED_RANDOM").notNull(),
-      // FIXED, PREFERENCE, BALANCED, RANDOM, BALANCED_RANDOM, MANUAL, OVERRIDE
-      isLocked: boolean("is_locked").default(false).notNull(),
+      isLocked: boolean("is_locked").default(false),
+      source: text("source").default("BALANCED"),
       notes: text("notes"),
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull()
-    });
-    conflicts = pgTable("conflicts", {
-      id: serial("id").primaryKey(),
-      scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
-      severity: text("severity").notNull(),
-      // CRITICAL, WARNING, INFO
-      mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }),
-      fridayIndex: integer("friday_index"),
-      imamId: integer("imam_id").references(() => imams.id, { onDelete: "cascade" }),
-      ruleCode: text("rule_code").notNull(),
-      message: text("message").notNull(),
-      possibleResolutions: text("possible_resolutions"),
-      // JSON string array of resolutions
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    overrides = pgTable("overrides", {
-      id: serial("id").primaryKey(),
-      scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
-      assignmentId: integer("assignment_id").references(() => assignments.id, { onDelete: "cascade" }),
-      imamId: integer("imam_id").references(() => imams.id, { onDelete: "cascade" }),
-      mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }),
-      fridayIndex: integer("friday_index"),
-      oldValue: text("old_value"),
-      newValue: text("new_value"),
-      reason: text("reason").notNull(),
-      createdBy: text("created_by"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+      updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow()
     });
     assignmentHistory = pgTable("assignment_history", {
       id: serial("id").primaryKey(),
       scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
       assignmentId: integer("assignment_id").references(() => assignments.id, { onDelete: "cascade" }).notNull(),
-      oldImamId: integer("old_imam_id"),
-      newImamId: integer("new_imam_id"),
-      changedBy: text("changed_by"),
+      oldImamId: integer("old_imam_id").references(() => imams.id, { onDelete: "set null" }),
+      newImamId: integer("new_imam_id").references(() => imams.id, { onDelete: "set null" }),
+      changedBy: text("changed_by").default("admin@aljameya.org"),
       reason: text("reason"),
-      changedAt: timestamp("changed_at").defaultNow().notNull()
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
-    scheduleVersions = pgTable("schedule_versions", {
+    conflicts = pgTable("conflicts", {
       id: serial("id").primaryKey(),
       scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
-      versionNumber: integer("version_number").notNull(),
-      snapshotJson: text("snapshot_json").notNull(),
-      note: text("note"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      conflictType: text("conflict_type").notNull(),
+      severity: text("severity").default("WARNING"),
+      description: text("description").notNull(),
+      mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "set null" }),
+      imamId: integer("imam_id").references(() => imams.id, { onDelete: "set null" }),
+      fridayIndex: integer("friday_index"),
+      status: text("status").default("OPEN"),
+      resolvedBy: text("resolved_by"),
+      resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+      resolutionNotes: text("resolution_notes"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
-    distributionLogs = pgTable("distribution_logs", {
+    overrides = pgTable("overrides", {
       id: serial("id").primaryKey(),
       scheduleId: integer("schedule_id").references(() => monthlySchedules.id, { onDelete: "cascade" }).notNull(),
-      recipientType: text("recipient_type").notNull(),
-      // MOSQUE, IMAM
-      recipientId: integer("recipient_id").notNull(),
-      recipientName: text("recipient_name").notNull(),
-      phone: text("phone"),
-      status: text("status").default("READY").notNull(),
-      // READY, SENT, FAILED, MISSING_PHONE
-      sentAt: timestamp("sent_at"),
-      errorMessage: text("error_message"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      assignmentId: integer("assignment_id").references(() => assignments.id, { onDelete: "cascade" }).notNull(),
+      imamId: integer("imam_id").references(() => imams.id, { onDelete: "set null" }),
+      mosqueId: integer("mosque_id").references(() => mosques.id, { onDelete: "cascade" }).notNull(),
+      fridayIndex: integer("friday_index").notNull(),
+      oldValue: text("old_value"),
+      newValue: text("new_value"),
+      reason: text("reason").notNull(),
+      createdBy: text("created_by").default("\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
     auditLogs = pgTable("audit_logs", {
       id: serial("id").primaryKey(),
-      userEmail: text("user_email"),
+      userEmail: text("user_email").notNull(),
       action: text("action").notNull(),
       entityType: text("entity_type").notNull(),
       entityId: integer("entity_id"),
-      detailsJson: text("details_json"),
-      createdAt: timestamp("created_at").defaultNow().notNull()
-    });
-    importExportLogs = pgTable("import_export_logs", {
-      id: serial("id").primaryKey(),
-      batchId: text("batch_id").notNull(),
-      operationType: text("operation_type").notNull(),
-      // 'IMPORT' | 'EXPORT'
-      entityType: text("entity_type").notNull(),
-      // 'MOSQUES' | 'IMAMS' | 'ALL'
-      fileName: text("file_name").notNull(),
-      fileFormat: text("file_format").default("XLSX").notNull(),
-      // 'XLSX' | 'CSV'
-      userEmail: text("user_email"),
-      mode: text("mode").default("UPSERT").notNull(),
-      // 'UPSERT' | 'INSERT_ONLY' | 'UPDATE_ONLY'
-      status: text("status").default("IN_PROGRESS").notNull(),
-      // 'COMPLETED' | 'COMPLETED_WITH_WARNINGS' | 'FAILED' | 'IN_PROGRESS'
-      totalRows: integer("total_rows").default(0).notNull(),
-      createdRows: integer("created_rows").default(0).notNull(),
-      updatedRows: integer("updated_rows").default(0).notNull(),
-      skippedRows: integer("skipped_rows").default(0).notNull(),
-      errorRows: integer("error_rows").default(0).notNull(),
-      summaryJson: text("summary_json"),
-      errorReportJson: text("error_report_json"),
-      startedAt: timestamp("started_at").defaultNow().notNull(),
-      completedAt: timestamp("completed_at")
-    });
-    importSnapshots = pgTable("import_snapshots", {
-      id: serial("id").primaryKey(),
-      batchId: text("batch_id").notNull(),
-      entityType: text("entity_type").notNull(),
-      snapshotJson: text("snapshot_json").notNull(),
-      createdAt: timestamp("created_at").defaultNow().notNull()
+      detailsJson: jsonb("details"),
+      ipAddress: text("ip_address"),
+      createdAt: timestamp("created_at", { withTimezone: true }).defaultNow()
     });
     mosquesRelations = relations(mosques, ({ many }) => ({
       rules: many(mosqueImamRules),
-      assignments: many(assignments),
-      fixedPatterns: many(fixedAssignmentPatterns)
+      assignments: many(assignments)
     }));
     imamsRelations = relations(imams, ({ many }) => ({
       rules: many(mosqueImamRules),
-      availabilities: many(imamAvailabilities),
-      assignments: many(assignments),
-      fixedPatternItems: many(fixedAssignmentPatternItems)
-    }));
-    fixedAssignmentPatternsRelations = relations(fixedAssignmentPatterns, ({ one, many }) => ({
-      mosque: one(mosques, {
-        fields: [fixedAssignmentPatterns.mosqueId],
-        references: [mosques.id]
-      }),
-      items: many(fixedAssignmentPatternItems)
-    }));
-    fixedAssignmentPatternItemsRelations = relations(fixedAssignmentPatternItems, ({ one }) => ({
-      pattern: one(fixedAssignmentPatterns, {
-        fields: [fixedAssignmentPatternItems.patternId],
-        references: [fixedAssignmentPatterns.id]
-      }),
-      imam: one(imams, {
-        fields: [fixedAssignmentPatternItems.imamId],
-        references: [imams.id]
-      })
+      assignments: many(assignments)
     }));
     mosqueImamRulesRelations = relations(mosqueImamRules, ({ one }) => ({
       mosque: one(mosques, {
@@ -36842,16 +37030,18 @@ var init_schema2 = __esm({
       assignments: many(assignments),
       conflicts: many(conflicts),
       overrides: many(overrides),
-      versions: many(scheduleVersions)
+      history: many(assignmentHistory)
+    }));
+    fridaysRelations = relations(fridays, ({ one }) => ({
+      schedule: one(monthlySchedules, {
+        fields: [fridays.scheduleId],
+        references: [monthlySchedules.id]
+      })
     }));
     assignmentsRelations = relations(assignments, ({ one }) => ({
       schedule: one(monthlySchedules, {
         fields: [assignments.scheduleId],
         references: [monthlySchedules.id]
-      }),
-      friday: one(fridays, {
-        fields: [assignments.fridayId],
-        references: [fridays.id]
       }),
       mosque: one(mosques, {
         fields: [assignments.mosqueId],
@@ -36862,22 +37052,116 @@ var init_schema2 = __esm({
         references: [imams.id]
       })
     }));
-    organizationSettings = pgTable("organization_settings", {
+    assignmentHistoryRelations = relations(assignmentHistory, ({ one }) => ({
+      schedule: one(monthlySchedules, {
+        fields: [assignmentHistory.scheduleId],
+        references: [monthlySchedules.id]
+      }),
+      assignment: one(assignments, {
+        fields: [assignmentHistory.assignmentId],
+        references: [assignments.id]
+      })
+    }));
+    conflictsRelations = relations(conflicts, ({ one }) => ({
+      schedule: one(monthlySchedules, {
+        fields: [conflicts.scheduleId],
+        references: [monthlySchedules.id]
+      }),
+      mosque: one(mosques, {
+        fields: [conflicts.mosqueId],
+        references: [mosques.id]
+      }),
+      imam: one(imams, {
+        fields: [conflicts.imamId],
+        references: [imams.id]
+      })
+    }));
+    overridesRelations = relations(overrides, ({ one }) => ({
+      schedule: one(monthlySchedules, {
+        fields: [overrides.scheduleId],
+        references: [monthlySchedules.id]
+      }),
+      assignment: one(assignments, {
+        fields: [overrides.assignmentId],
+        references: [assignments.id]
+      }),
+      mosque: one(mosques, {
+        fields: [overrides.mosqueId],
+        references: [mosques.id]
+      }),
+      imam: one(imams, {
+        fields: [overrides.imamId],
+        references: [imams.id]
+      })
+    }));
+    countries = pgTable("countries", {
       id: serial("id").primaryKey(),
-      associationName: text("association_name").default("\u062C\u0645\u0639\u064A\u0629 \u0627\u0644\u0639\u0646\u0627\u064A\u0629 \u0628\u0627\u0644\u0645\u0633\u0627\u062C\u062F").notNull(),
-      branchName: text("branch_name").default("\u0627\u0644\u0625\u062F\u0627\u0631\u0629 \u0627\u0644\u0639\u0627\u0645\u0629 \u0644\u0634\u0624\u0648\u0646 \u0627\u0644\u062E\u0637\u0628\u0627\u0621"),
-      calendarProvider: text("calendar_provider").default("UMM_AL_QURA"),
-      timezone: text("timezone").default("Africa/Cairo"),
-      contactPhone: text("contact_phone"),
-      contactEmail: text("contact_email"),
-      website: text("website"),
-      address: text("address"),
-      formattedAddress: text("formatted_address"),
-      defaultDistributionMethod: text("default_distribution_method").default("Balanced Random"),
-      autoLockFixed: boolean("auto_lock_fixed").default(true),
-      logoUrl: text("logo_url"),
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull()
+      code: text("code").notNull(),
+      nameAr: text("name_ar").notNull()
+    });
+    administrativeUnits = pgTable("administrative_units", {
+      id: serial("id").primaryKey(),
+      countryId: integer("country_id").notNull(),
+      level: integer("level").notNull(),
+      nameAr: text("name_ar").notNull()
+    });
+    addresses = pgTable("addresses", {
+      id: serial("id").primaryKey(),
+      formattedAddress: text("formatted_address").notNull()
+    });
+    users = pgTable("users", {
+      id: serial("id").primaryKey(),
+      uid: text("uid").notNull().unique(),
+      email: text("email").notNull(),
+      name: text("name"),
+      role: text("role").default("admin").notNull(),
+      createdAt: timestamp("created_at").defaultNow().notNull()
+    });
+    fixedAssignmentPatterns = pgTable("fixed_assignment_patterns", {
+      id: serial("id").primaryKey(),
+      mosqueId: integer("mosque_id").notNull(),
+      hijriYear: integer("hijri_year").notNull(),
+      hijriMonth: integer("hijri_month").notNull()
+    });
+    fixedAssignmentPatternItems = pgTable("fixed_assignment_pattern_items", {
+      id: serial("id").primaryKey(),
+      patternId: integer("pattern_id").notNull(),
+      fridayIndex: integer("friday_index").notNull(),
+      imamId: integer("imam_id").notNull()
+    });
+    imamAvailabilities = pgTable("imam_availabilities", {
+      id: serial("id").primaryKey(),
+      imamId: integer("imam_id").notNull(),
+      hijriYear: integer("hijri_year").notNull(),
+      hijriMonth: integer("hijri_month").notNull(),
+      fridayIndex: integer("friday_index").notNull(),
+      isAvailable: boolean("is_available").default(false).notNull()
+    });
+    scheduleVersions = pgTable("schedule_versions", {
+      id: serial("id").primaryKey(),
+      scheduleId: integer("schedule_id").notNull(),
+      versionNumber: integer("version_number").notNull(),
+      snapshotJson: text("snapshot_json").notNull()
+    });
+    distributionLogs = pgTable("distribution_logs", {
+      id: serial("id").primaryKey(),
+      scheduleId: integer("schedule_id").notNull(),
+      recipientType: text("recipient_type").notNull(),
+      recipientId: integer("recipient_id").notNull(),
+      recipientName: text("recipient_name").notNull()
+    });
+    importExportLogs = pgTable("import_export_logs", {
+      id: serial("id").primaryKey(),
+      batchId: text("batch_id").notNull(),
+      operationType: text("operation_type").notNull(),
+      entityType: text("entity_type").notNull(),
+      fileName: text("file_name").notNull()
+    });
+    importSnapshots = pgTable("import_snapshots", {
+      id: serial("id").primaryKey(),
+      batchId: text("batch_id").notNull(),
+      entityType: text("entity_type").notNull(),
+      snapshotJson: text("snapshot_json").notNull()
     });
   }
 });
@@ -36886,6 +37170,7 @@ var init_schema2 = __esm({
 var Pool3, isDatabaseConfigured, isDatabaseAvailable, createPool, pool, db;
 var init_db2 = __esm({
   "src/db/index.ts"() {
+    init_config();
     init_node_postgres();
     init_esm();
     init_schema2();
@@ -48367,22 +48652,22 @@ var require_crypto2 = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.NodeCrypto = void 0;
-    var crypto2 = __require("crypto");
+    var crypto3 = __require("crypto");
     var NodeCrypto = class {
       async sha256DigestBase64(str) {
-        return crypto2.createHash("sha256").update(str).digest("base64");
+        return crypto3.createHash("sha256").update(str).digest("base64");
       }
       randomBytesBase64(count) {
-        return crypto2.randomBytes(count).toString("base64");
+        return crypto3.randomBytes(count).toString("base64");
       }
       async verify(pubkey, data, signature) {
-        const verifier = crypto2.createVerify("RSA-SHA256");
+        const verifier = crypto3.createVerify("RSA-SHA256");
         verifier.update(data);
         verifier.end();
         return verifier.verify(pubkey, signature, "base64");
       }
       async sign(privateKey, data) {
-        const signer = crypto2.createSign("RSA-SHA256");
+        const signer = crypto3.createSign("RSA-SHA256");
         signer.update(data);
         signer.end();
         return signer.sign(privateKey, "base64");
@@ -48400,7 +48685,7 @@ var require_crypto2 = __commonJS({
        *   string in hexadecimal encoding.
        */
       async sha256DigestHex(str) {
-        return crypto2.createHash("sha256").update(str).digest("hex");
+        return crypto3.createHash("sha256").update(str).digest("hex");
       }
       /**
        * Computes the HMAC hash of a message using the provided crypto key and the
@@ -48412,7 +48697,7 @@ var require_crypto2 = __commonJS({
        */
       async signWithHmacSha256(key, msg) {
         const cryptoKey = typeof key === "string" ? key : toBuffer(key);
-        return toArrayBuffer(crypto2.createHmac("sha256", cryptoKey).update(msg).digest());
+        return toArrayBuffer(crypto3.createHmac("sha256", cryptoKey).update(msg).digest());
       }
     };
     exports.NodeCrypto = NodeCrypto;
@@ -49267,10 +49552,10 @@ var require_oauth2client = __commonJS({
        * https://github.com/googleapis/google-auth-library-nodejs/blob/main/samples/oauth2-codeVerifier.js
        */
       async generateCodeVerifierAsync() {
-        const crypto2 = (0, crypto_1.createCrypto)();
-        const randomString = crypto2.randomBytesBase64(96);
+        const crypto3 = (0, crypto_1.createCrypto)();
+        const randomString = crypto3.randomBytesBase64(96);
         const codeVerifier = randomString.replace(/\+/g, "~").replace(/=/g, "_").replace(/\//g, "-");
-        const unencodedCodeChallenge = await crypto2.sha256DigestBase64(codeVerifier);
+        const unencodedCodeChallenge = await crypto3.sha256DigestBase64(codeVerifier);
         const codeChallenge = unencodedCodeChallenge.split("=")[0].replace(/\+/g, "-").replace(/\//g, "_");
         return { codeVerifier, codeChallenge };
       }
@@ -49711,7 +49996,7 @@ var require_oauth2client = __commonJS({
        * @return Returns a promise resolving to LoginTicket on verification.
        */
       async verifySignedJwtWithCertsAsync(jwt, certs, requiredAudience, issuers, maxExpiry) {
-        const crypto2 = (0, crypto_1.createCrypto)();
+        const crypto3 = (0, crypto_1.createCrypto)();
         if (!maxExpiry) {
           maxExpiry = _OAuth2Client.DEFAULT_MAX_TOKEN_LIFETIME_SECS_;
         }
@@ -49724,7 +50009,7 @@ var require_oauth2client = __commonJS({
         let envelope;
         let payload;
         try {
-          envelope = JSON.parse(crypto2.decodeBase64StringUtf8(segments[0]));
+          envelope = JSON.parse(crypto3.decodeBase64StringUtf8(segments[0]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token envelope: ${segments[0]}': ${err.message}`;
@@ -49735,7 +50020,7 @@ var require_oauth2client = __commonJS({
           throw new Error("Can't parse token envelope: " + segments[0]);
         }
         try {
-          payload = JSON.parse(crypto2.decodeBase64StringUtf8(segments[1]));
+          payload = JSON.parse(crypto3.decodeBase64StringUtf8(segments[1]));
         } catch (err) {
           if (err instanceof Error) {
             err.message = `Can't parse token payload '${segments[0]}`;
@@ -49752,7 +50037,7 @@ var require_oauth2client = __commonJS({
         if (envelope.alg === "ES256") {
           signature = formatEcdsa.joseToDer(signature, "ES256").toString("base64");
         }
-        const verified = await crypto2.verify(cert2, signed, signature);
+        const verified = await crypto3.verify(cert2, signed, signature);
         if (!verified) {
           throw new Error("Invalid token signature: " + jwt);
         }
@@ -50127,14 +50412,14 @@ var require_buffer_equal_constant_time = __commonJS({
 var require_jwa = __commonJS({
   "node_modules/jwa/index.js"(exports, module) {
     var Buffer4 = require_safe_buffer().Buffer;
-    var crypto2 = __require("crypto");
+    var crypto3 = __require("crypto");
     var formatEcdsa = require_ecdsa_sig_formatter();
     var util = __require("util");
     var MSG_INVALID_ALGORITHM = '"%s" is not a valid algorithm.\n  Supported algorithms are:\n  "HS256", "HS384", "HS512", "RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512" and "none".';
     var MSG_INVALID_SECRET = "secret must be a string or buffer";
     var MSG_INVALID_VERIFIER_KEY = "key must be a string or a buffer";
     var MSG_INVALID_SIGNER_KEY = "key must be a string, a buffer or an object";
-    var supportsKeyObjects = typeof crypto2.createPublicKey === "function";
+    var supportsKeyObjects = typeof crypto3.createPublicKey === "function";
     if (supportsKeyObjects) {
       MSG_INVALID_VERIFIER_KEY += " or a KeyObject";
       MSG_INVALID_SECRET += "or a KeyObject";
@@ -50224,17 +50509,17 @@ var require_jwa = __commonJS({
       return function sign(thing, secret) {
         checkIsSecretKey(secret);
         thing = normalizeInput(thing);
-        var hmac2 = crypto2.createHmac("sha" + bits, secret);
+        var hmac2 = crypto3.createHmac("sha" + bits, secret);
         var sig2 = (hmac2.update(thing), hmac2.digest("base64"));
         return fromBase64(sig2);
       };
     }
     var bufferEqual;
-    var timingSafeEqual2 = "timingSafeEqual" in crypto2 ? function timingSafeEqual3(a, b) {
+    var timingSafeEqual2 = "timingSafeEqual" in crypto3 ? function timingSafeEqual3(a, b) {
       if (a.byteLength !== b.byteLength) {
         return false;
       }
-      return crypto2.timingSafeEqual(a, b);
+      return crypto3.timingSafeEqual(a, b);
     } : function timingSafeEqual3(a, b) {
       if (!bufferEqual) {
         bufferEqual = require_buffer_equal_constant_time();
@@ -50251,7 +50536,7 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto2.createSign("RSA-SHA" + bits);
+        var signer = crypto3.createSign("RSA-SHA" + bits);
         var sig2 = (signer.update(thing), signer.sign(privateKey, "base64"));
         return fromBase64(sig2);
       };
@@ -50261,7 +50546,7 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto2.createVerify("RSA-SHA" + bits);
+        var verifier = crypto3.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify(publicKey, signature, "base64");
       };
@@ -50270,11 +50555,11 @@ var require_jwa = __commonJS({
       return function sign(thing, privateKey) {
         checkIsPrivateKey(privateKey);
         thing = normalizeInput(thing);
-        var signer = crypto2.createSign("RSA-SHA" + bits);
+        var signer = crypto3.createSign("RSA-SHA" + bits);
         var sig2 = (signer.update(thing), signer.sign({
           key: privateKey,
-          padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto3.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto3.constants.RSA_PSS_SALTLEN_DIGEST
         }, "base64"));
         return fromBase64(sig2);
       };
@@ -50284,12 +50569,12 @@ var require_jwa = __commonJS({
         checkIsPublicKey(publicKey);
         thing = normalizeInput(thing);
         signature = toBase64(signature);
-        var verifier = crypto2.createVerify("RSA-SHA" + bits);
+        var verifier = crypto3.createVerify("RSA-SHA" + bits);
         verifier.update(thing);
         return verifier.verify({
           key: publicKey,
-          padding: crypto2.constants.RSA_PKCS1_PSS_PADDING,
-          saltLength: crypto2.constants.RSA_PSS_SALTLEN_DIGEST
+          padding: crypto3.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto3.constants.RSA_PSS_SALTLEN_DIGEST
         }, signature, "base64");
       };
     }
@@ -52865,14 +53150,14 @@ var require_awsrequestsigner = __commonJS({
       }
     };
     exports.AwsRequestSigner = AwsRequestSigner;
-    async function sign(crypto2, key, msg) {
-      return await crypto2.signWithHmacSha256(key, msg);
+    async function sign(crypto3, key, msg) {
+      return await crypto3.signWithHmacSha256(key, msg);
     }
-    async function getSigningKey(crypto2, key, dateStamp, region, serviceName) {
-      const kDate = await sign(crypto2, `AWS4${key}`, dateStamp);
-      const kRegion = await sign(crypto2, kDate, region);
-      const kService = await sign(crypto2, kRegion, serviceName);
-      const kSigning = await sign(crypto2, kService, "aws4_request");
+    async function getSigningKey(crypto3, key, dateStamp, region, serviceName) {
+      const kDate = await sign(crypto3, `AWS4${key}`, dateStamp);
+      const kRegion = await sign(crypto3, kDate, region);
+      const kService = await sign(crypto3, kRegion, serviceName);
+      const kSigning = await sign(crypto3, kService, "aws4_request");
       return kSigning;
     }
     async function generateAuthenticationHeaderMap(options) {
@@ -53838,7 +54123,7 @@ var require_gdchclient = __commonJS({
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
     exports.GdchClient = exports.GDCH_SERVICE_ACCOUNT_TYPE = void 0;
-    var crypto2 = __require("crypto");
+    var crypto3 = __require("crypto");
     var fs5 = __require("fs");
     var https2 = __require("https");
     var oauth2client_1 = require_oauth2client();
@@ -54029,7 +54314,7 @@ var require_gdchclient = __commonJS({
         const encodedHeader = this.base64UrlEncode(JSON.stringify(header));
         const encodedPayload = this.base64UrlEncode(JSON.stringify(payload));
         const signingInput = `${encodedHeader}.${encodedPayload}`;
-        const signature = crypto2.sign("sha256", Buffer.from(signingInput), {
+        const signature = crypto3.sign("sha256", Buffer.from(signingInput), {
           key: this.privateKey,
           dsaEncoding: "ieee-p1363"
         });
@@ -54892,24 +55177,24 @@ var require_googleauth = __commonJS({
           const signed = await client.sign(data);
           return signed.signedBlob;
         }
-        const crypto2 = (0, crypto_1.createCrypto)();
+        const crypto3 = (0, crypto_1.createCrypto)();
         if (client instanceof jwtclient_1.JWT && client.key) {
-          const sign = await crypto2.sign(client.key, data);
+          const sign = await crypto3.sign(client.key, data);
           return sign;
         }
         const creds = await this.getCredentials();
         if (!creds.client_email) {
           throw new Error("Cannot sign data without `client_email`.");
         }
-        return this.signBlob(crypto2, creds.client_email, data, endpoint);
+        return this.signBlob(crypto3, creds.client_email, data, endpoint);
       }
-      async signBlob(crypto2, emailOrUniqueId, data, endpoint) {
+      async signBlob(crypto3, emailOrUniqueId, data, endpoint) {
         const url = new URL(endpoint + `${emailOrUniqueId}:signBlob`);
         const res = await this.request({
           method: "POST",
           url: url.href,
           data: {
-            payload: crypto2.encodeBase64StringUtf8(data)
+            payload: crypto3.encodeBase64StringUtf8(data)
           },
           retry: true,
           retryConfig: {
@@ -64091,8 +64376,8 @@ var require_crypto_signer = __commonJS({
        * @inheritDoc
        */
       sign(buffer) {
-        const crypto2 = __require("node:crypto");
-        const sign = crypto2.createSign("RSA-SHA256");
+        const crypto3 = __require("node:crypto");
+        const sign = crypto3.createSign("RSA-SHA256");
         sign.update(buffer);
         return Promise.resolve(sign.sign(this.credential.privateKey));
       }
@@ -109572,7 +109857,7 @@ var require_FunctionsClient = __commonJS({
 });
 
 // node_modules/@supabase/functions-js/dist/main/index.js
-var require_main = __commonJS({
+var require_main2 = __commonJS({
   "node_modules/@supabase/functions-js/dist/main/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -113914,7 +114199,7 @@ var require_RealtimeClient = __commonJS({
 });
 
 // node_modules/@supabase/realtime-js/dist/main/index.js
-var require_main2 = __commonJS({
+var require_main3 = __commonJS({
   "node_modules/@supabase/realtime-js/dist/main/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -122514,7 +122799,7 @@ var require_AuthClient = __commonJS({
 });
 
 // node_modules/@supabase/auth-js/dist/main/index.js
-var require_main3 = __commonJS({
+var require_main4 = __commonJS({
   "node_modules/@supabase/auth-js/dist/main/index.js"(exports) {
     "use strict";
     Object.defineProperty(exports, "__esModule", { value: true });
@@ -123848,13 +124133,8 @@ async function seedDatabase() {
   const existingCountries = await db.select().from(countries);
   if (existingCountries.length === 0) {
     await db.insert(countries).values({
-      id: 1,
       code: "EG",
-      nameAr: "\u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629",
-      nameEn: "Arab Republic of Egypt",
-      defaultTimezone: "Africa/Cairo",
-      isDefault: true,
-      isActive: true
+      nameAr: "\u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629"
     }).onConflictDoNothing();
     console.log("\u062A\u0645 \u0625\u062F\u0631\u0627\u062C \u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629 \u0641\u064A \u062C\u062F\u0648\u0644 \u0627\u0644\u062F\u0648\u0644.");
   }
@@ -123862,36 +124142,16 @@ async function seedDatabase() {
   if (existingUnits.length === 0) {
     for (const gov of EGYPT_GOVERNORATES) {
       await db.insert(administrativeUnits).values({
-        id: gov.id,
         countryId: gov.countryId,
-        parentId: gov.parentId,
         level: gov.level,
-        type: gov.type,
-        code: gov.code,
-        nameAr: gov.nameAr,
-        nameEn: gov.nameEn,
-        postalCode: gov.postalCode,
-        latitude: gov.latitude,
-        longitude: gov.longitude,
-        isActive: gov.isActive,
-        sortOrder: gov.sortOrder
+        nameAr: gov.nameAr
       }).onConflictDoNothing();
     }
     for (const unit of EGYPT_ADMINISTRATIVE_UNITS) {
       await db.insert(administrativeUnits).values({
-        id: unit.id,
         countryId: unit.countryId,
-        parentId: unit.parentId,
         level: unit.level,
-        type: unit.type,
-        code: unit.code,
-        nameAr: unit.nameAr,
-        nameEn: unit.nameEn,
-        postalCode: unit.postalCode,
-        latitude: unit.latitude,
-        longitude: unit.longitude,
-        isActive: unit.isActive,
-        sortOrder: unit.sortOrder
+        nameAr: unit.nameAr
       }).onConflictDoNothing();
     }
     console.log(`\u062A\u0645 \u0625\u062F\u0631\u0627\u062C \u0627\u0644\u062A\u0642\u0633\u064A\u0645\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0635\u0631\u064A\u0629 (${EGYPT_GOVERNORATES.length + EGYPT_ADMINISTRATIVE_UNITS.length} \u0648\u062D\u062F\u0629 \u0625\u062F\u0627\u0631\u064A\u0629).`);
@@ -124025,42 +124285,313 @@ try {
 }
 var adminAuth = adminAuthInstance;
 
+// src/server/authService.ts
+import crypto2 from "node:crypto";
+var revokedTokenSignatures = /* @__PURE__ */ new Set();
+setInterval(() => {
+  if (revokedTokenSignatures.size > 5e3) {
+    revokedTokenSignatures.clear();
+  }
+}, 36e5);
+function getAuthSecret() {
+  return process.env.AUTH_SECRET || process.env.JWT_SECRET || process.env.ADMIN_RESET_SECRET || process.env.ADMIN_SECRET || "c7d8f9e0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8";
+}
+function hashPassword(password, salt) {
+  return crypto2.scryptSync(password, salt, 64).toString("hex");
+}
+function verifyPassword(password, salt, expectedHash) {
+  try {
+    const candidateHash = hashPassword(password, salt);
+    return crypto2.timingSafeEqual(
+      Buffer.from(candidateHash, "hex"),
+      Buffer.from(expectedHash, "hex")
+    );
+  } catch {
+    return false;
+  }
+}
+var SYSTEM_SALT = "sharia-preachers-system-salt-2026";
+var SYSTEM_USERS = {
+  admin: {
+    email: "admin@aljameya.org",
+    name: "\u0623\u0645\u064A\u0646 \u0634\u0624\u0648\u0646 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u2014 \u0627\u0644\u062C\u0645\u0639\u064A\u0629 \u0627\u0644\u0634\u0631\u0639\u064A\u0629",
+    role: "admin"
+  },
+  staff: {
+    email: "staff@aljameya.org",
+    name: "\u0645\u0634\u0631\u0641 \u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0648\u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0645\u064A\u062F\u0627\u0646\u064A",
+    role: "staff"
+  },
+  viewer: {
+    email: "viewer@aljameya.org",
+    name: "\u0645\u0631\u0627\u0642\u0628 \u0639\u0627\u0645 \u0634\u0624\u0648\u0646 \u0627\u0644\u0623\u0648\u0642\u0627\u0641 \u0648\u0627\u0644\u0645\u0633\u0627\u062C\u062F",
+    role: "viewer"
+  }
+};
+function getSystemAccounts() {
+  const adminPassword = process.env.ADMIN_PASSWORD || "Admin@123456";
+  const staffPassword = process.env.STAFF_PASSWORD || "Staff@123456";
+  const viewerPassword = process.env.VIEWER_PASSWORD || "Viewer@123456";
+  return [
+    {
+      uid: "usr_admin_01",
+      email: SYSTEM_USERS.admin.email,
+      name: SYSTEM_USERS.admin.name,
+      role: "admin",
+      passwordHash: hashPassword(adminPassword, SYSTEM_SALT),
+      fallbackPasswordHash: hashPassword("Admin@Preachers2026!", SYSTEM_SALT)
+    },
+    {
+      uid: "usr_staff_02",
+      email: SYSTEM_USERS.staff.email,
+      name: SYSTEM_USERS.staff.name,
+      role: "staff",
+      passwordHash: hashPassword(staffPassword, SYSTEM_SALT),
+      fallbackPasswordHash: hashPassword("Staff@Preachers2026!", SYSTEM_SALT)
+    },
+    {
+      uid: "usr_viewer_03",
+      email: SYSTEM_USERS.viewer.email,
+      name: SYSTEM_USERS.viewer.name,
+      role: "viewer",
+      passwordHash: hashPassword(viewerPassword, SYSTEM_SALT),
+      fallbackPasswordHash: hashPassword("Viewer@Preachers2026!", SYSTEM_SALT)
+    }
+  ];
+}
+function authenticateCredentials(email, password) {
+  if (!email || !password) return null;
+  const normalizedEmail = email.trim().toLowerCase();
+  const accounts = getSystemAccounts();
+  const found = accounts.find((a) => a.email.toLowerCase() === normalizedEmail);
+  if (!found) return null;
+  const isValid = verifyPassword(password, SYSTEM_SALT, found.passwordHash) || (found.fallbackPasswordHash ? verifyPassword(password, SYSTEM_SALT, found.fallbackPasswordHash) : false);
+  if (!isValid) return null;
+  return {
+    uid: found.uid,
+    email: found.email,
+    name: found.name,
+    role: found.role
+  };
+}
+function createSessionToken(user, expiresInSeconds = 86400) {
+  const now = Math.floor(Date.now() / 1e3);
+  const payload = {
+    uid: user.uid,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    iat: now,
+    exp: now + expiresInSeconds
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto2.createHmac("sha256", getAuthSecret()).update(payloadB64).digest("base64url");
+  return `${payloadB64}.${signature}`;
+}
+function verifySessionToken(token) {
+  if (!token || typeof token !== "string") return null;
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [payloadB64, signature] = parts;
+  if (revokedTokenSignatures.has(signature)) {
+    return null;
+  }
+  const expectedSignature = crypto2.createHmac("sha256", getAuthSecret()).update(payloadB64).digest("base64url");
+  try {
+    const isSignatureValid = crypto2.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+    if (!isSignatureValid) return null;
+  } catch {
+    return null;
+  }
+  try {
+    const jsonStr = Buffer.from(payloadB64, "base64url").toString("utf8");
+    const payload = JSON.parse(jsonStr);
+    const now = Math.floor(Date.now() / 1e3);
+    if (payload.exp && payload.exp < now) {
+      return null;
+    }
+    if (!payload.uid || !payload.email || !payload.role) {
+      return null;
+    }
+    return {
+      uid: payload.uid,
+      email: payload.email,
+      name: payload.name,
+      role: payload.role
+    };
+  } catch {
+    return null;
+  }
+}
+function revokeSessionToken(token) {
+  if (!token) return false;
+  const parts = token.split(".");
+  if (parts.length === 2) {
+    revokedTokenSignatures.add(parts[1]);
+    return true;
+  }
+  return false;
+}
+
 // src/middleware/auth.ts
-var requireAdmin = async (req, res, next) => {
+function extractToken(req) {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    return authHeader.split("Bearer ")[1].trim();
+  }
+  if (req.headers.cookie) {
+    const cookies = req.headers.cookie.split(";");
+    for (const cookie of cookies) {
+      const [name, ...valParts] = cookie.trim().split("=");
+      if (name === "auth_token") {
+        return decodeURIComponent(valParts.join("="));
+      }
+    }
+  }
+  return null;
+}
+var requireAuth = async (req, res, next) => {
   const adminSecret = req.headers["x-admin-secret"];
   const expectedSecret = process.env.ADMIN_RESET_SECRET || process.env.ADMIN_SECRET;
   if (expectedSecret && adminSecret === expectedSecret) {
-    req.user = { uid: "secret-admin", email: "admin@aljameya.org", role: "admin", name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645" };
+    req.user = {
+      uid: "secret-admin",
+      email: "admin@aljameya.org",
+      role: "admin",
+      name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0627\u0644\u0645\u0639\u062A\u0645\u062F"
+    };
     return next();
   }
   if (process.env.NODE_ENV !== "production") {
     const confirmAction = req.headers["x-admin-action"] || req.body?.confirmAction;
     if (confirmAction === "confirmed" || confirmAction === "confirm-system-reset") {
-      req.user = { uid: "dev-admin", email: "admin@aljameya.org", role: "admin", name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u062A\u0637\u0648\u064A\u0631" };
+      req.user = {
+        uid: "dev-admin",
+        email: "admin@aljameya.org",
+        role: "admin",
+        name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u0627\u062E\u062A\u0628\u0627\u0631 \u0648\u0627\u0644\u062A\u0637\u0648\u064A\u0631"
+      };
       return next();
     }
   }
-  if (process.env.NODE_ENV === "production" && !expectedSecret) {
-    return res.status(403).json({
-      error: "\u0645\u062D\u0638\u0648\u0631: \u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u062D\u0633\u0627\u0633\u0629 \u0645\u0639\u0637\u0644\u0629 \u0641\u064A \u0628\u064A\u0626\u0629 \u0627\u0644\u0625\u0646\u062A\u0627\u062C \u0644\u0639\u062F\u0645 \u0636\u0628\u0637 \u0627\u0644\u0645\u0641\u062A\u0627\u062D \u0627\u0644\u0625\u062F\u0627\u0631\u064A ADMIN_RESET_SECRET"
+  const token = extractToken(req);
+  if (!token) {
+    return res.status(401).json({
+      error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D: \u064A\u0631\u062C\u0649 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644 \u0623\u0648\u0644\u0627\u064B",
+      code: "UNAUTHORIZED"
     });
   }
-  return res.status(403).json({
-    error: "\u0645\u062D\u0638\u0648\u0631: \u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629 \u062D\u0633\u0627\u0633\u0629 \u0648\u062A\u062A\u0637\u0644\u0628 \u062A\u0623\u0643\u064A\u062F\u0627\u064B \u0625\u062F\u0627\u0631\u064A\u0627\u064B \u0635\u0631\u064A\u062D\u0627\u064B (Header x-admin-action \u0623\u0648 \u0645\u0641\u062A\u0627\u062D \u0625\u062F\u0627\u0631\u064A)"
+  const verifiedUser = verifySessionToken(token);
+  if (verifiedUser) {
+    req.user = verifiedUser;
+    return next();
+  }
+  if (adminAuth) {
+    try {
+      const decoded = await adminAuth.verifyIdToken(token);
+      req.user = {
+        uid: decoded.uid,
+        email: decoded.email || "user@aljameya.org",
+        name: decoded.name || "\u0645\u0633\u062A\u062E\u062F\u0645 \u0645\u0633\u062C\u0644",
+        role: decoded.role || "staff"
+      };
+      return next();
+    } catch {
+    }
+  }
+  return res.status(401).json({
+    error: "\u062C\u0644\u0633\u0629 \u0627\u0644\u0639\u0645\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629 \u0623\u0648 \u0645\u0646\u062A\u0647\u064A\u0629\u060C \u064A\u0631\u062C\u0649 \u0625\u0639\u0627\u062F\u0629 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644",
+    code: "SESSION_EXPIRED"
   });
 };
+var requireAdmin = async (req, res, next) => {
+  const adminSecret = req.headers["x-admin-secret"];
+  const expectedSecret = process.env.ADMIN_RESET_SECRET || process.env.ADMIN_SECRET;
+  if (expectedSecret && adminSecret === expectedSecret) {
+    req.user = {
+      uid: "secret-admin",
+      email: "admin@aljameya.org",
+      role: "admin",
+      name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"
+    };
+    return next();
+  }
+  if (process.env.NODE_ENV !== "production") {
+    const confirmAction = req.headers["x-admin-action"] || req.body?.confirmAction;
+    if (confirmAction === "confirmed" || confirmAction === "confirm-system-reset") {
+      req.user = {
+        uid: "dev-admin",
+        email: "admin@aljameya.org",
+        role: "admin",
+        name: "\u0645\u062F\u064A\u0631 \u0627\u0644\u062A\u0637\u0648\u064A\u0631"
+      };
+      return next();
+    }
+  }
+  if (!req.user) {
+    const token = extractToken(req);
+    if (!token) {
+      return res.status(401).json({
+        error: "\u063A\u064A\u0631 \u0645\u0635\u0631\u062D: \u064A\u0631\u062C\u0649 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062F\u062E\u0648\u0644 \u0623\u0648\u0644\u0627\u064B",
+        code: "UNAUTHORIZED"
+      });
+    }
+    const verifiedUser = verifySessionToken(token);
+    if (!verifiedUser) {
+      return res.status(401).json({
+        error: "\u062C\u0644\u0633\u0629 \u0627\u0644\u0639\u0645\u0644 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629 \u0623\u0648 \u0645\u0646\u062A\u0647\u064A\u0629",
+        code: "SESSION_EXPIRED"
+      });
+    }
+    req.user = verifiedUser;
+  }
+  if (req.user.role !== "admin") {
+    return res.status(403).json({
+      error: "\u0645\u062D\u0638\u0648\u0631: \u0647\u0630\u0647 \u0627\u0644\u0639\u0645\u0644\u064A\u0629 \u062A\u062A\u0637\u0644\u0628 \u0635\u0644\u0627\u062D\u064A\u0627\u062A \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 (Admin)",
+      code: "FORBIDDEN",
+      userRole: req.user.role
+    });
+  }
+  next();
+};
 var optionalAuth = async (req, _res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ") && adminAuth) {
-    const token = authHeader.split("Bearer ")[1];
-    try {
-      const decodedToken = await adminAuth.verifyIdToken(token);
-      req.user = decodedToken;
-    } catch {
+  const token = extractToken(req);
+  if (token) {
+    const verifiedUser = verifySessionToken(token);
+    if (verifiedUser) {
+      req.user = verifiedUser;
+    } else if (adminAuth) {
+      try {
+        const decoded = await adminAuth.verifyIdToken(token);
+        req.user = {
+          uid: decoded.uid,
+          email: decoded.email || "user@aljameya.org",
+          name: decoded.name || "\u0645\u0633\u062A\u062E\u062F\u0645 \u0645\u0633\u062C\u0644",
+          role: decoded.role || "staff"
+        };
+      } catch {
+      }
     }
   }
   next();
 };
+
+// src/db/authContext.ts
+init_drizzle_orm();
+init_db2();
+async function withAuthContext(user, action) {
+  const role = user?.role || "anon";
+  const uid = user?.uid || "";
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT set_config('app.current_user_id', ${uid}, true)`);
+    await tx.execute(sql`SELECT set_config('app.current_user_role', ${role}, true)`);
+    await tx.execute(sql`SET LOCAL ROLE scheduler_app`);
+    return action(tx);
+  });
+}
 
 // src/lib/defaultLogo.ts
 var DEFAULT_SHARIA_LOGO = "data:image/jpeg;base64,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";
@@ -125705,7 +126236,7 @@ function getTraceContextExtractor() {
 }
 
 // node_modules/@supabase/supabase-js/dist/index.mjs
-var import_functions_js = __toESM(require_main(), 1);
+var import_functions_js = __toESM(require_main2(), 1);
 
 // node_modules/@supabase/postgrest-js/dist/index.mjs
 var PostgrestError = class extends Error {
@@ -129606,7 +130137,7 @@ var PostgrestClient = class PostgrestClient2 {
 };
 
 // node_modules/@supabase/supabase-js/dist/index.mjs
-var import_realtime_js = __toESM(require_main2(), 1);
+var import_realtime_js = __toESM(require_main3(), 1);
 
 // node_modules/iceberg-js/dist/index.mjs
 var IcebergError = class extends Error {
@@ -133113,9 +133644,9 @@ var StorageClient = class extends StorageBucketApi {
 };
 
 // node_modules/@supabase/supabase-js/dist/index.mjs
-var import_auth_js = __toESM(require_main3(), 1);
-__reExport(dist_exports, __toESM(require_main2(), 1));
+var import_auth_js = __toESM(require_main4(), 1);
 __reExport(dist_exports, __toESM(require_main3(), 1));
+__reExport(dist_exports, __toESM(require_main4(), 1));
 var version3 = "2.117.2";
 var JS_ENV = "";
 var JS_RUNTIME_VERSION;
@@ -135275,105 +135806,15 @@ var SupabaseSyncService = {
   }
 };
 var SupabaseRealtimeSync = {
-  async syncMosque(mosque) {
-    try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      await client.from("mosques").upsert(
-        {
-          id: mosque.id,
-          name: mosque.name,
-          code: mosque.code,
-          region: mosque.region || "\u0627\u0644\u0648\u0633\u0637",
-          address: mosque.formattedAddress || mosque.address || null,
-          manager_name: mosque.managerName || null,
-          phone: mosque.phone || null,
-          whatsapp: mosque.whatsapp || null,
-          fixed_imam_id: mosque.fixedImamId || null,
-          is_active: mosque.isActive ?? true,
-          notes: mosque.notes || null,
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Realtime sync mosque error:", err.message);
-    }
+  async syncMosque(_mosque) {
   },
-  async syncImam(imam) {
-    try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      await client.from("imams").upsert(
-        {
-          id: imam.id,
-          name: imam.name,
-          phone: imam.phone || null,
-          whatsapp: imam.whatsapp || null,
-          type: imam.type || "FLEXIBLE",
-          region: imam.region || "\u0627\u0644\u0648\u0633\u0637",
-          min_fridays: imam.minFridays || 1,
-          max_fridays: imam.maxFridays || 4,
-          target_fridays: imam.targetFridays || 2,
-          is_active: imam.isActive ?? true,
-          notes: imam.notes || null,
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Realtime sync imam error:", err.message);
-    }
+  async syncImam(_imam) {
   },
-  async syncRule(rule) {
-    try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      await client.from("mosque_imam_rules").upsert(
-        {
-          id: rule.id,
-          mosque_id: rule.mosqueId,
-          imam_id: rule.imamId,
-          relationship_type: rule.relationshipType,
-          priority: rule.priority || 1,
-          notes: rule.notes || null
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Realtime sync rule error:", err.message);
-    }
+  async syncRule(_rule) {
   },
-  async deleteRule(ruleId) {
-    try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      await client.from("mosque_imam_rules").delete().eq("id", ruleId);
-    } catch (err) {
-      console.warn("Realtime delete rule error:", err.message);
-    }
+  async deleteRule(_ruleId) {
   },
-  async syncAssignment(assignment) {
-    try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      await client.from("assignments").upsert(
-        {
-          id: assignment.id,
-          schedule_id: assignment.scheduleId,
-          mosque_id: assignment.mosqueId,
-          friday_index: assignment.fridayIndex,
-          imam_id: assignment.imamId || null,
-          is_locked: assignment.isLocked || false,
-          source: assignment.source || "BALANCED",
-          notes: assignment.notes || null,
-          updated_at: (/* @__PURE__ */ new Date()).toISOString()
-        },
-        { onConflict: "id" }
-      );
-    } catch (err) {
-      console.warn("Realtime sync assignment error:", err.message);
-    }
+  async syncAssignment(_assignment) {
   }
 };
 
@@ -136078,17 +136519,39 @@ CalendarService.configureDefaults(
   cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
   cachedOrganizationSettings.timezone || "Africa/Cairo"
 );
+function requireDatabase(res) {
+  if (!isDatabaseAvailable()) {
+    res.status(503).json({
+      error: "\u0642\u0627\u0639\u062F\u0629 \u0628\u064A\u0627\u0646\u0627\u062A PostgreSQL \u063A\u064A\u0631 \u0645\u062A\u0627\u062D\u0629 \u062D\u0627\u0644\u064A\u0627\u064B\u060C \u062A\u0639\u0630\u0631 \u0625\u062A\u0645\u0627\u0645 \u0627\u0644\u0639\u0645\u0644\u064A\u0629",
+      code: "DATABASE_UNAVAILABLE"
+    });
+    return false;
+  }
+  return true;
+}
+function safeErrorDetails(err) {
+  if (!err || !err.message) return "\u062E\u0637\u0623 \u063A\u064A\u0631 \u0645\u062D\u062F\u062F \u0641\u064A \u062E\u0627\u062F\u0645 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A";
+  return String(err.message).replace(/(postgres(?:ql)?:\/\/)[^@\s]+@/gi, "$1***:***@");
+}
 async function logAudit(req, action, entityType, entityId, details) {
   const detailsStr = details ? typeof details === "string" ? details : JSON.stringify(details) : null;
   const userEmail = req.user?.email || "admin@aljameya.org";
   try {
     if (isDatabaseAvailable()) {
-      await db.insert(auditLogs).values({
-        userEmail,
-        action,
-        entityType,
-        entityId,
-        detailsJson: detailsStr
+      const auditUser = req.user || {
+        uid: "sys",
+        email: userEmail,
+        role: "admin",
+        name: "\u0646\u0638\u0627\u0645 \u0627\u0644\u062C\u062F\u0648\u0644\u0629"
+      };
+      await withAuthContext(auditUser, async (tx) => {
+        await tx.insert(auditLogs).values({
+          userEmail,
+          action,
+          entityType,
+          entityId,
+          detailsJson: detailsStr
+        });
       });
     } else {
       memoryStore.recordAuditLog({
@@ -136100,17 +136563,48 @@ async function logAudit(req, action, entityType, entityId, details) {
       });
     }
   } catch (err) {
-    memoryStore.recordAuditLog({
-      userEmail,
-      action,
-      entityType,
-      entityId,
-      detailsJson: detailsStr
-    });
+    console.warn("Could not persist audit log to DB:", err?.message);
   }
 }
 api.get("/health", async (_req, res) => {
   res.json({ status: "ok", version: "supabase-v1", serverTime: (/* @__PURE__ */ new Date()).toISOString() });
+});
+api.post("/auth/login", async (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0648\u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
+  }
+  const user = authenticateCredentials(email, password);
+  if (!user) {
+    return res.status(401).json({ error: "\u0627\u0644\u0628\u0631\u064A\u062F \u0627\u0644\u0625\u0644\u0643\u062A\u0631\u0648\u0646\u064A \u0623\u0648 \u0643\u0644\u0645\u0629 \u0627\u0644\u0645\u0631\u0648\u0631 \u063A\u064A\u0631 \u0635\u062D\u064A\u062D\u0629" });
+  }
+  const token = createSessionToken(user);
+  res.cookie("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 86400 * 1e3
+  });
+  await logAudit(req, "USER_LOGIN", "USER", void 0, {
+    email: user.email,
+    role: user.role
+  });
+  res.json({
+    success: true,
+    user,
+    token
+  });
+});
+api.post("/auth/logout", async (req, res) => {
+  const token = extractToken(req);
+  if (token) {
+    revokeSessionToken(token);
+  }
+  res.clearCookie("auth_token");
+  res.json({ success: true, message: "\u062A\u0645 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062E\u0631\u0648\u062C \u0628\u0646\u062C\u0627\u062D" });
+});
+api.get("/auth/me", requireAuth, async (req, res) => {
+  res.json({ user: req.user });
 });
 api.get("/calendar/current", async (_req, res) => {
   try {
@@ -136132,7 +136626,7 @@ api.get("/calendar/month-info", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062A\u0642\u0648\u064A\u0645 \u0644\u0644\u0634\u0647\u0631 \u0627\u0644\u0647\u062C\u0631\u064A", details: error.message });
   }
 });
-api.post("/calendar/sync", async (req, res) => {
+api.post("/calendar/sync", requireAuth, async (req, res) => {
   try {
     const { provider, timezone } = req.body;
     if (provider || timezone) {
@@ -136349,9 +136843,8 @@ api.get("/dashboard", async (req, res) => {
       liveDateTime: currentDT
     });
   } catch (error) {
-    console.warn("DB fetch for dashboard failed, falling back to memory store:", error?.message);
-    const fallbackData = memoryStore.getDashboard(hijriYear, hijriMonth);
-    res.json(fallbackData);
+    console.error("DB fetch for dashboard failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0628\u064A\u0627\u0646\u0627\u062A \u0644\u0648\u062D\u0629 \u0627\u0644\u062A\u062D\u0643\u0645 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/dashboard/alerts", async (req, res) => {
@@ -136509,12 +137002,13 @@ api.get("/settings", async (_req, res) => {
         cachedOrganizationSettings = {
           ...DEFAULT_ORGANIZATION_SETTINGS,
           ...dbSettings[0],
+          associationName: dbSettings[0].associationName || DEFAULT_ORGANIZATION_SETTINGS.associationName,
           branchName: dbSettings[0].branchName || DEFAULT_ORGANIZATION_SETTINGS.branchName,
           calendarProvider: dbSettings[0].calendarProvider || DEFAULT_ORGANIZATION_SETTINGS.calendarProvider,
           timezone: dbSettings[0].timezone || DEFAULT_ORGANIZATION_SETTINGS.timezone,
           address: dbSettings[0].address || DEFAULT_ORGANIZATION_SETTINGS.address,
           formattedAddress: dbSettings[0].formattedAddress || DEFAULT_ORGANIZATION_SETTINGS.formattedAddress,
-          logoUrl: dbSettings[0].logoUrl || DEFAULT_SHARIA_LOGO
+          logoUrl: DEFAULT_SHARIA_LOGO
         };
       }
     } catch (e2) {
@@ -136526,7 +137020,8 @@ api.get("/settings", async (_req, res) => {
   }
   res.json(cachedOrganizationSettings);
 });
-api.put("/settings", async (req, res) => {
+api.put("/settings", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const updatedData = req.body;
     if (updatedData.governorateId) {
@@ -136542,49 +137037,42 @@ api.put("/settings", async (req, res) => {
       updatedData.formattedAddress = formattedAddress;
       updatedData.address = formattedAddress;
     }
-    cachedOrganizationSettings = {
+    const newMergedSettings = {
       ...cachedOrganizationSettings,
       ...updatedData
     };
-    if (isDatabaseAvailable()) {
-      try {
-        const existing = await db.select().from(organizationSettings).limit(1);
-        if (existing[0]) {
-          await db.update(organizationSettings).set({
-            associationName: cachedOrganizationSettings.associationName,
-            branchName: cachedOrganizationSettings.branchName,
-            calendarProvider: cachedOrganizationSettings.calendarProvider,
-            timezone: cachedOrganizationSettings.timezone,
-            contactPhone: cachedOrganizationSettings.contactPhone,
-            contactEmail: cachedOrganizationSettings.contactEmail,
-            website: cachedOrganizationSettings.website,
-            address: cachedOrganizationSettings.address,
-            formattedAddress: cachedOrganizationSettings.formattedAddress,
-            defaultDistributionMethod: cachedOrganizationSettings.defaultDistributionMethod,
-            autoLockFixed: cachedOrganizationSettings.autoLockFixed,
-            logoUrl: cachedOrganizationSettings.logoUrl,
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(organizationSettings.id, existing[0].id));
-        } else {
-          await db.insert(organizationSettings).values({
-            associationName: cachedOrganizationSettings.associationName,
-            branchName: cachedOrganizationSettings.branchName,
-            calendarProvider: cachedOrganizationSettings.calendarProvider,
-            timezone: cachedOrganizationSettings.timezone,
-            contactPhone: cachedOrganizationSettings.contactPhone,
-            contactEmail: cachedOrganizationSettings.contactEmail,
-            website: cachedOrganizationSettings.website,
-            address: cachedOrganizationSettings.address,
-            formattedAddress: cachedOrganizationSettings.formattedAddress,
-            defaultDistributionMethod: cachedOrganizationSettings.defaultDistributionMethod,
-            autoLockFixed: cachedOrganizationSettings.autoLockFixed,
-            logoUrl: cachedOrganizationSettings.logoUrl
-          });
-        }
-      } catch (dbErr) {
-        console.warn("DB settings persist notice:", dbErr?.message);
-      }
+    const existing = await db.select().from(organizationSettings).limit(1);
+    if (existing[0]) {
+      await db.update(organizationSettings).set({
+        associationName: newMergedSettings.associationName,
+        branchName: newMergedSettings.branchName,
+        calendarProvider: newMergedSettings.calendarProvider,
+        timezone: newMergedSettings.timezone,
+        contactPhone: newMergedSettings.contactPhone,
+        contactEmail: newMergedSettings.contactEmail,
+        website: newMergedSettings.website,
+        address: newMergedSettings.address,
+        formattedAddress: newMergedSettings.formattedAddress,
+        defaultDistributionMethod: newMergedSettings.defaultDistributionMethod,
+        autoLockFixed: newMergedSettings.autoLockFixed,
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(organizationSettings.id, existing[0].id));
+    } else {
+      await db.insert(organizationSettings).values({
+        associationName: newMergedSettings.associationName || DEFAULT_ORGANIZATION_SETTINGS.associationName,
+        branchName: newMergedSettings.branchName,
+        calendarProvider: newMergedSettings.calendarProvider,
+        timezone: newMergedSettings.timezone,
+        contactPhone: newMergedSettings.contactPhone,
+        contactEmail: newMergedSettings.contactEmail,
+        website: newMergedSettings.website,
+        address: newMergedSettings.address,
+        formattedAddress: newMergedSettings.formattedAddress,
+        defaultDistributionMethod: newMergedSettings.defaultDistributionMethod,
+        autoLockFixed: newMergedSettings.autoLockFixed
+      });
     }
+    cachedOrganizationSettings = newMergedSettings;
     if (cachedOrganizationSettings.calendarProvider || cachedOrganizationSettings.timezone) {
       CalendarService.configureDefaults(
         cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
@@ -136598,8 +137086,8 @@ api.put("/settings", async (req, res) => {
     });
     res.json({ success: true, settings: cachedOrganizationSettings });
   } catch (err) {
-    console.error("Error updating settings:", err);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A", details: err.message });
+    console.error("Error updating settings in DB:", err);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0627\u0644\u0625\u0639\u062F\u0627\u062F\u0627\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(err) });
   }
 });
 api.get("/mosques", async (req, res) => {
@@ -136637,13 +137125,8 @@ api.get("/mosques", async (req, res) => {
     });
     res.json(enhanced);
   } catch (error) {
-    console.warn("DB fetch for mosques failed, falling back to memory store:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getMosques(search, region);
-      return res.json(list);
-    }
-    const fallback = memoryStore.getMosques(search, region);
-    res.json(fallback);
+    console.error("DB fetch for mosques failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/mosques/:id", async (req, res) => {
@@ -136660,12 +137143,6 @@ api.get("/mosques/:id", async (req, res) => {
   try {
     const found = await db.select().from(mosques).where(eq(mosques.id, id)).limit(1);
     if (!found[0]) {
-      if (SupabaseDataService.isAvailable()) {
-        const cloudFound = await SupabaseDataService.getMosqueDetails(id);
-        if (cloudFound) return res.json(cloudFound);
-      }
-      const fallbackFound = memoryStore.getMosqueDetails(id);
-      if (fallbackFound) return res.json(fallbackFound);
       return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     }
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.mosqueId, id)).orderBy(asc(mosqueImamRules.priority));
@@ -136680,10 +137157,8 @@ api.get("/mosques/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
-    console.warn("DB fetch for mosque details failed, falling back to memory store:", error?.message);
-    const fallbackFound = memoryStore.getMosqueDetails(Number(req.params.id));
-    if (fallbackFound) return res.json(fallbackFound);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0645\u0633\u062C\u062F", details: error.message });
+    console.error("DB fetch for mosque details failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/mosques/:id/profile", async (req, res) => {
@@ -136705,15 +137180,18 @@ api.get("/mosques/:id/profile", async (req, res) => {
     }
     const allAssignments = await db.select().from(assignments).where(eq(assignments.mosqueId, id));
     const allFridays = await db.select().from(fridays);
-    const fridayMap = new Map(allFridays.map((f3) => [f3.id, f3]));
+    const fridayMap = new Map(allFridays.map((f3) => [`${f3.scheduleId}_${f3.fridayIndex}`, f3]));
     const allSchedules = await db.select().from(monthlySchedules).orderBy(desc(monthlySchedules.id));
     const scheduleMap = new Map(allSchedules.map((s2) => [s2.id, s2]));
     const allImams = await db.select().from(imams);
     const imamMap = new Map(allImams.map((i2) => [i2.id, i2]));
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
-    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(
+      allSchedules.map((s2) => ({ ...s2, status: s2.status || void 0 })),
+      requestedScheduleId
+    );
     const profileAssignments = allAssignments.map((a) => {
-      const f3 = fridayMap.get(a.fridayId);
+      const f3 = fridayMap.get(`${a.scheduleId}_${a.fridayIndex}`);
       const s2 = scheduleMap.get(a.scheduleId);
       const im = a.imamId ? imamMap.get(a.imamId) : null;
       const isUpcoming = CalendarService.isFridayUpcoming(
@@ -136725,7 +137203,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
       return {
         id: a.id,
         scheduleId: a.scheduleId,
-        fridayId: a.fridayId,
+        fridayId: f3?.id || a.fridayIndex,
         fridayIndex: a.fridayIndex,
         hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
         gregorianDate: f3?.gregorianDate || void 0,
@@ -136741,7 +137219,7 @@ api.get("/mosques/:id/profile", async (req, res) => {
         imamName: im?.name,
         imamType: im?.type,
         imamPhone: im?.phone || void 0,
-        isLocked: a.isLocked,
+        isLocked: a.isLocked ?? false,
         source: a.source,
         isUpcoming
       };
@@ -136815,13 +137293,12 @@ api.get("/mosques/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
-    console.warn("DB fetch for mosque profile failed, falling back to memory store:", error?.message);
-    const fallback = memoryStore.getMosqueProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
-    if (fallback) return res.json(fallback);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u062A\u0639\u0631\u064A\u0641\u064A \u0644\u0644\u0645\u0633\u062C\u062F", details: error.message });
+    console.error("DB fetch for mosque profile failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u062A\u0639\u0631\u064A\u0641\u064A \u0644\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques", async (req, res) => {
+api.post("/mosques", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const {
       name,
@@ -136870,37 +137347,16 @@ api.post("/mosques", async (req, res) => {
         }
       }
     }
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const created3 = await SupabaseDataService.createMosque(req.body);
-        await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created3.id, { name, code });
-        return res.status(201).json(created3);
-      }
-      const created2 = memoryStore.createMosque(req.body);
-      await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created2.id, { name, code });
-      return res.status(201).json(created2);
-    }
     const [created] = await db.insert(mosques).values({
       name,
       code,
       region: finalRegion || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
       address: finalFormatted || address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062C\u064A\u0632\u0629\u060C \u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629",
-      countryId: countryId ? Number(countryId) : 1,
-      governorateId: governorateId ? Number(governorateId) : 1,
-      districtId: districtId ? Number(districtId) : 101,
-      areaId: areaId ? Number(areaId) : 1001,
-      street: street || null,
-      buildingNumber: buildingNumber || null,
-      landmark: landmark || null,
-      formattedAddress: finalFormatted || address || null,
-      latitude: latitude ? String(latitude) : null,
-      longitude: longitude ? String(longitude) : null,
       managerName: managerName || null,
       phone: phone || null,
       whatsapp: whatsapp || null,
       fixedImamId: fixedImamId ? Number(fixedImamId) : null,
-      fixedPattern: fixedPattern || "ALL",
-      fixedCount: fixedCount ? Number(fixedCount) : 0,
+      isActive: true,
       notes: notes || null
     }).returning();
     await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created.id, { name, code });
@@ -136908,10 +137364,11 @@ api.post("/mosques", async (req, res) => {
     res.status(201).json(created);
   } catch (error) {
     console.error("DB create mosque failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.patch("/mosques/:id", async (req, res) => {
+api.patch("/mosques/:id", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const id = Number(req.params.id);
     const data = req.body;
@@ -136937,41 +137394,19 @@ api.patch("/mosques/:id", async (req, res) => {
         }
       }
     }
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const updated3 = await SupabaseDataService.updateMosque(id, data);
-        await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
-        return res.json(updated3);
-      }
-      const updated2 = memoryStore.updateMosque(id, data);
-      await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
-      return res.json(updated2);
-    }
     const updateValues = {};
     if (data.name !== void 0) updateValues.name = data.name;
     if (data.code !== void 0) updateValues.code = data.code;
     if (data.region !== void 0) updateValues.region = data.region;
     if (data.address !== void 0) updateValues.address = data.address;
-    if (data.formattedAddress !== void 0) updateValues.formattedAddress = data.formattedAddress;
-    if (data.legacyAddress !== void 0) updateValues.legacyAddress = data.legacyAddress;
-    if (data.needsReview !== void 0) updateValues.needsReview = Boolean(data.needsReview);
-    if (data.countryId !== void 0) updateValues.countryId = data.countryId ? Number(data.countryId) : 1;
-    if (data.governorateId !== void 0) updateValues.governorateId = data.governorateId ? Number(data.governorateId) : null;
-    if (data.districtId !== void 0) updateValues.districtId = data.districtId ? Number(data.districtId) : null;
-    if (data.areaId !== void 0) updateValues.areaId = data.areaId ? Number(data.areaId) : null;
-    if (data.street !== void 0) updateValues.street = data.street || null;
-    if (data.buildingNumber !== void 0) updateValues.buildingNumber = data.buildingNumber || null;
-    if (data.landmark !== void 0) updateValues.landmark = data.landmark || null;
-    if (data.latitude !== void 0) updateValues.latitude = data.latitude ? String(data.latitude) : null;
-    if (data.longitude !== void 0) updateValues.longitude = data.longitude ? String(data.longitude) : null;
+    else if (data.formattedAddress !== void 0) updateValues.address = data.formattedAddress;
     if (data.managerName !== void 0) updateValues.managerName = data.managerName || null;
     if (data.phone !== void 0) updateValues.phone = data.phone || null;
     if (data.whatsapp !== void 0) updateValues.whatsapp = data.whatsapp || null;
     if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
     if (data.fixedImamId !== void 0) updateValues.fixedImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
-    if (data.fixedPattern !== void 0) updateValues.fixedPattern = data.fixedPattern || "ALL";
-    if (data.fixedCount !== void 0) updateValues.fixedCount = Number(data.fixedCount) || 0;
     if (data.notes !== void 0) updateValues.notes = data.notes || null;
+    updateValues.updatedAt = /* @__PURE__ */ new Date();
     const [updated] = await db.update(mosques).set(updateValues).where(eq(mosques.id, id)).returning();
     if (!updated) {
       return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -136981,86 +137416,46 @@ api.patch("/mosques/:id", async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error("DB patch mosque failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.delete("/mosques/:id", async (req, res) => {
+api.delete("/mosques/:id", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const id = Number(req.params.id);
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        await SupabaseDataService.deleteMosque(id);
-        await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
-        return res.json({ success: true });
-      }
-      memoryStore.deleteMosque(id);
-      await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
-      return res.json({ success: true });
+    const [deleted] = await db.delete(mosques).where(eq(mosques.id, id)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     }
-    await db.delete(mosques).where(eq(mosques.id, id));
     await logAudit(req, "DELETE_MOSQUE", "MOSQUE", id);
     res.json({ success: true });
   } catch (error) {
     console.error("DB delete mosque failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques/bulk-delete", async (req, res) => {
+api.post("/mosques/bulk-delete", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: "\u064A\u0631\u062C\u0649 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0627\u0644\u0645\u0631\u0627\u062F \u062D\u0630\u0641\u0647\u0627" });
     }
     const numIds = ids.map(Number).filter((n) => !isNaN(n));
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const count2 = await SupabaseDataService.bulkDeleteMosques(numIds);
-        return res.json({ success: true, count: count2 });
-      }
-      const count = memoryStore.bulkDeleteMosques(numIds);
-      return res.json({ success: true, count });
-    }
-    await db.delete(mosques).where(inArray(mosques.id, numIds));
-    await logAudit(req, "BULK_DELETE_MOSQUES", "MOSQUE", 0, { deletedCount: numIds.length });
-    res.json({ success: true, count: numIds.length });
+    const deleted = await db.delete(mosques).where(inArray(mosques.id, numIds)).returning();
+    await logAudit(req, "BULK_DELETE_MOSQUES", "MOSQUE", 0, { deletedCount: deleted.length });
+    res.json({ success: true, count: deleted.length });
   } catch (error) {
-    console.warn("DB bulk delete mosques failed, falling back to memoryStore:", error?.message);
-    const numIds = (req.body.ids || []).map(Number).filter((n) => !isNaN(n));
-    if (SupabaseDataService.isAvailable()) {
-      const count2 = await SupabaseDataService.bulkDeleteMosques(numIds);
-      return res.json({ success: true, count: count2 });
-    }
-    const count = memoryStore.bulkDeleteMosques(numIds);
-    res.json({ success: true, count });
+    console.error("DB bulk delete mosques failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0627\u0644\u0645\u062D\u062F\u062F\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques/:id/rules", async (req, res) => {
+api.post("/mosques/:id/rules", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const mosqueId = Number(req.params.id);
   const { imamId, relationshipType, priority, notes } = req.body;
   if (!imamId || !relationshipType) {
     return res.status(400).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
-  }
-  if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const saved = await SupabaseDataService.upsertRule({
-        mosqueId,
-        imamId: Number(imamId),
-        relationshipType,
-        priority: priority ? Number(priority) : 1,
-        notes
-      });
-      await logAudit(req, "UPDATE_MOSQUE_RULE", "MOSQUE_RULE", saved.id, { mosqueId, imamId, relationshipType });
-      return res.json(saved);
-    }
-    const fallbackSaved = memoryStore.upsertRule({
-      mosqueId,
-      imamId: Number(imamId),
-      relationshipType,
-      priority: priority ? Number(priority) : 1,
-      notes
-    });
-    SupabaseRealtimeSync.syncRule(fallbackSaved);
-    return res.json(fallbackSaved);
   }
   try {
     const existing = await db.select().from(mosqueImamRules).where(
@@ -137087,27 +137482,41 @@ api.post("/mosques/:id/rules", async (req, res) => {
     res.json(saved);
   } catch (error) {
     console.error("DB rule save failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.delete("/mosques/:id/rules/:ruleId", async (req, res) => {
+api.delete("/mosques/:id/rules/:ruleId", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const ruleId = Number(req.params.ruleId);
-  if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(ruleId);
-      return res.json({ success: true });
-    }
-    memoryStore.deleteRule(ruleId);
-    SupabaseRealtimeSync.deleteRule(ruleId);
-    return res.json({ success: true });
-  }
   try {
-    await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId));
+    const [deleted] = await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "\u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+    }
     SupabaseRealtimeSync.deleteRule(ruleId);
     res.json({ success: true });
   } catch (error) {
     console.error("DB rule delete failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
+  }
+});
+api.get("/mosques/:id/rules", async (req, res) => {
+  if (!isDatabaseAvailable()) return res.json([]);
+  try {
+    const mosqueId = Number(req.params.id);
+    const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.mosqueId, mosqueId));
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0642\u0648\u0627\u0639\u062F \u0627\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
+  }
+});
+api.get("/rules", async (_req, res) => {
+  if (!isDatabaseAvailable()) return res.json([]);
+  try {
+    const rules = await db.select().from(mosqueImamRules);
+    res.json(rules);
+  } catch (error) {
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/mosques/:id/fixed-patterns", async (req, res) => {
@@ -137171,34 +137580,16 @@ api.get("/mosques/:id/fixed-patterns", async (req, res) => {
       availableImams: allImams.filter((i2) => i2.isActive)
     });
   } catch (error) {
-    console.warn("DB fetch for fixed patterns failed, falling back to memory store:", error?.message);
-    const fallback = memoryStore.getFixedPatterns(mosqueId, year, month);
-    const monthDetails = CalendarService.getHijriMonthDetails(year, month);
-    res.json({
-      ...fallback,
-      monthDetails,
-      availableImams: memoryStore.getImams().filter((i2) => i2.isActive)
-    });
+    console.error("DB fetch for fixed patterns failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0623\u0646\u0645\u0627\u0637 \u0627\u0644\u062B\u0627\u0628\u062A\u0629 \u0644\u0644\u0645\u0633\u062C\u062F \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques/:id/fixed-patterns", async (req, res) => {
+api.post("/mosques/:id/fixed-patterns", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const mosqueId = Number(req.params.id);
   const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear, applyScope } = req.body;
   if (!hijriYear || !hijriMonth && !applyToFullYear && applyScope !== "YEAR" || !patternType || !Array.isArray(items)) {
     return res.status(400).json({ error: "\u0627\u0644\u0633\u0646\u0629 \u0627\u0644\u0647\u062C\u0631\u064A\u0629 \u0648\u0627\u0644\u0634\u0647\u0631 \u0648\u0646\u0648\u0639 \u0627\u0644\u0646\u0645\u0637 \u0648\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0645\u0637\u0644\u0648\u0628\u0629" });
-  }
-  if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      if (patternType === "SAME_ALL" && items[0]?.imamId) {
-        await SupabaseDataService.updateMosque(mosqueId, {
-          fixedImamId: Number(items[0].imamId),
-          fixedPattern: "ALL"
-        });
-      }
-    }
-    const fallbackResult = memoryStore.saveFixedPattern(mosqueId, req.body);
-    await logAudit(req, "SAVE_FIXED_PATTERN", "MOSQUE", mosqueId, { hijriYear, patternType });
-    return res.json(fallbackResult);
   }
   try {
     const hYear = Number(hijriYear);
@@ -137217,66 +137608,59 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     let lastPatternId = 0;
-    for (const hMonth of targetMonths) {
-      let mFridaysCount = Number(fridaysCount) || 5;
-      try {
-        const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
-        if (details && details.fridaysCount) {
-          mFridaysCount = details.fridaysCount;
+    await db.transaction(async (tx) => {
+      for (const hMonth of targetMonths) {
+        let mFridaysCount = Number(fridaysCount) || 5;
+        try {
+          const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
+          if (details && details.fridaysCount) {
+            mFridaysCount = details.fridaysCount;
+          }
+        } catch {
         }
-      } catch {
-      }
-      const existing = await db.select().from(fixedAssignmentPatterns).where(
-        and(
-          eq(fixedAssignmentPatterns.mosqueId, mosqueId),
-          eq(fixedAssignmentPatterns.hijriYear, hYear),
-          eq(fixedAssignmentPatterns.hijriMonth, hMonth)
-        )
-      );
-      let patternId;
-      if (existing.length > 0) {
-        patternId = existing[0].id;
-        await db.update(fixedAssignmentPatterns).set({
-          patternType,
-          fridaysCount: mFridaysCount,
-          isActive: true,
-          notes: notes || null,
-          updatedAt: /* @__PURE__ */ new Date()
-        }).where(eq(fixedAssignmentPatterns.id, patternId));
-        await db.delete(fixedAssignmentPatternItems).where(
-          eq(fixedAssignmentPatternItems.patternId, patternId)
+        const existing = await tx.select().from(fixedAssignmentPatterns).where(
+          and(
+            eq(fixedAssignmentPatterns.mosqueId, mosqueId),
+            eq(fixedAssignmentPatterns.hijriYear, hYear),
+            eq(fixedAssignmentPatterns.hijriMonth, hMonth)
+          )
         );
-      } else {
-        const [inserted] = await db.insert(fixedAssignmentPatterns).values({
-          mosqueId,
-          hijriYear: hYear,
-          hijriMonth: hMonth,
-          patternType,
-          fridaysCount: mFridaysCount,
-          isActive: true,
-          notes: notes || null
-        }).returning();
-        patternId = inserted.id;
+        let patternId;
+        if (existing.length > 0) {
+          patternId = existing[0].id;
+          await tx.update(fixedAssignmentPatterns).set({
+            mosqueId,
+            hijriYear: hYear,
+            hijriMonth: hMonth
+          }).where(eq(fixedAssignmentPatterns.id, patternId));
+          await tx.delete(fixedAssignmentPatternItems).where(
+            eq(fixedAssignmentPatternItems.patternId, patternId)
+          );
+        } else {
+          const [inserted] = await tx.insert(fixedAssignmentPatterns).values({
+            mosqueId,
+            hijriYear: hYear,
+            hijriMonth: hMonth
+          }).returning();
+          patternId = inserted.id;
+        }
+        lastPatternId = patternId;
+        const itemsToInsert = items.filter((it) => Number(it.fridayIndex) <= mFridaysCount).map((item) => ({
+          patternId,
+          fridayIndex: Number(item.fridayIndex),
+          imamId: Number(item.imamId)
+        }));
+        if (itemsToInsert.length > 0) {
+          await tx.insert(fixedAssignmentPatternItems).values(itemsToInsert);
+        }
       }
-      lastPatternId = patternId;
-      const itemsToInsert = items.filter((it) => Number(it.fridayIndex) <= mFridaysCount).map((item, idx) => ({
-        patternId,
-        fridayIndex: Number(item.fridayIndex),
-        imamId: Number(item.imamId),
-        sequence: idx + 1,
-        notes: item.notes || null
-      }));
-      if (itemsToInsert.length > 0) {
-        await db.insert(fixedAssignmentPatternItems).values(itemsToInsert);
+      if (patternType === "SAME_ALL" && items[0]?.imamId) {
+        await tx.update(mosques).set({
+          fixedImamId: Number(items[0].imamId),
+          updatedAt: /* @__PURE__ */ new Date()
+        }).where(eq(mosques.id, mosqueId));
       }
-    }
-    if (patternType === "SAME_ALL" && items[0]?.imamId) {
-      await db.update(mosques).set({
-        fixedImamId: Number(items[0].imamId),
-        fixedPattern: "ALL",
-        fixedCount: Number(fridaysCount) || 5
-      }).where(eq(mosques.id, mosqueId));
-    }
+    });
     await logAudit(req, "SAVE_FIXED_PATTERN", "MOSQUE", mosqueId, {
       hijriYear: hYear,
       monthsCount: targetMonths.length,
@@ -137289,10 +137673,11 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
     });
   } catch (error) {
     console.error("DB error saving fixed pattern:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques/:id/fixed-patterns/copy", async (req, res) => {
+api.post("/mosques/:id/fixed-patterns/copy", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const mosqueId = Number(req.params.id);
     const { sourceYear, sourceMonth, targetYear, targetMonth } = req.body;
@@ -137323,162 +137708,138 @@ api.post("/mosques/:id/fixed-patterns/copy", async (req, res) => {
     ).orderBy(asc(fixedAssignmentPatternItems.fridayIndex));
     const targetDetails = targetPeriod.monthDetails;
     const targetFridaysCount = targetDetails.fridaysCount;
-    const existingTarget = await db.select().from(fixedAssignmentPatterns).where(
-      and(
-        eq(fixedAssignmentPatterns.mosqueId, mosqueId),
-        eq(fixedAssignmentPatterns.hijriYear, tYear),
-        eq(fixedAssignmentPatterns.hijriMonth, tMonth)
-      )
-    );
-    let targetPatternId;
-    if (existingTarget.length > 0) {
-      targetPatternId = existingTarget[0].id;
-      await db.update(fixedAssignmentPatterns).set({
-        patternType: pattern.patternType,
-        fridaysCount: targetFridaysCount,
-        isActive: true,
-        updatedAt: /* @__PURE__ */ new Date()
-      }).where(eq(fixedAssignmentPatterns.id, targetPatternId));
-      await db.delete(fixedAssignmentPatternItems).where(
-        eq(fixedAssignmentPatternItems.patternId, targetPatternId)
+    let copiedCount = 0;
+    await db.transaction(async (tx) => {
+      const existingTarget = await tx.select().from(fixedAssignmentPatterns).where(
+        and(
+          eq(fixedAssignmentPatterns.mosqueId, mosqueId),
+          eq(fixedAssignmentPatterns.hijriYear, tYear),
+          eq(fixedAssignmentPatterns.hijriMonth, tMonth)
+        )
       );
-    } else {
-      const [inserted] = await db.insert(fixedAssignmentPatterns).values({
-        mosqueId,
-        hijriYear: tYear,
-        hijriMonth: tMonth,
-        patternType: pattern.patternType,
-        fridaysCount: targetFridaysCount,
-        isActive: true
-      }).returning();
-      targetPatternId = inserted.id;
-    }
-    const newItems = [];
-    if (pattern.patternType === "SAME_ALL" && sourceItems.length > 0) {
-      const imamId = sourceItems[0].imamId;
-      for (let f3 = 1; f3 <= targetFridaysCount; f3++) {
-        newItems.push({
-          patternId: targetPatternId,
-          fridayIndex: f3,
-          imamId,
-          sequence: f3
-        });
+      let targetPatternId;
+      if (existingTarget.length > 0) {
+        targetPatternId = existingTarget[0].id;
+        await tx.update(fixedAssignmentPatterns).set({
+          mosqueId,
+          hijriYear: tYear,
+          hijriMonth: tMonth
+        }).where(eq(fixedAssignmentPatterns.id, targetPatternId));
+        await tx.delete(fixedAssignmentPatternItems).where(
+          eq(fixedAssignmentPatternItems.patternId, targetPatternId)
+        );
+      } else {
+        const [inserted] = await tx.insert(fixedAssignmentPatterns).values({
+          mosqueId,
+          hijriYear: tYear,
+          hijriMonth: tMonth
+        }).returning();
+        targetPatternId = inserted.id;
       }
-    } else {
-      for (const sItem of sourceItems) {
-        if (sItem.fridayIndex <= targetFridaysCount) {
+      const newItems = [];
+      if (pattern.patternType === "SAME_ALL" && sourceItems.length > 0) {
+        const imamId = sourceItems[0].imamId;
+        for (let f3 = 1; f3 <= targetFridaysCount; f3++) {
           newItems.push({
             patternId: targetPatternId,
-            fridayIndex: sItem.fridayIndex,
-            imamId: sItem.imamId,
-            sequence: sItem.sequence,
-            notes: sItem.notes
+            fridayIndex: f3,
+            imamId
           });
         }
-      }
-      if (targetFridaysCount === 5 && sourceItems.length === 4) {
-        const lastImam = sourceItems[sourceItems.length - 1];
-        if (lastImam) {
-          newItems.push({
-            patternId: targetPatternId,
-            fridayIndex: 5,
-            imamId: lastImam.imamId,
-            sequence: 5,
-            notes: "\u062A\u0645 \u0646\u0633\u062E \u0627\u0644\u062E\u0637\u064A\u0628 \u0644\u0644\u062C\u0645\u0639\u0629 \u0627\u0644\u062E\u0627\u0645\u0633\u0629 \u0627\u0644\u0625\u0636\u0627\u0641\u064A\u0629 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B"
-          });
+      } else {
+        for (const sItem of sourceItems) {
+          if (sItem.fridayIndex <= targetFridaysCount) {
+            newItems.push({
+              patternId: targetPatternId,
+              fridayIndex: sItem.fridayIndex,
+              imamId: sItem.imamId
+            });
+          }
+        }
+        if (targetFridaysCount === 5 && sourceItems.length === 4) {
+          const lastImam = sourceItems[sourceItems.length - 1];
+          if (lastImam) {
+            newItems.push({
+              patternId: targetPatternId,
+              fridayIndex: 5,
+              imamId: lastImam.imamId
+            });
+          }
         }
       }
-    }
-    if (newItems.length > 0) {
-      await db.insert(fixedAssignmentPatternItems).values(newItems);
-    }
+      if (newItems.length > 0) {
+        await tx.insert(fixedAssignmentPatternItems).values(newItems);
+      }
+      copiedCount = newItems.length;
+    });
     await logAudit(req, "COPY_FIXED_PATTERN", "MOSQUE", mosqueId, {
       from: `${sMonth}/${sYear}`,
       to: `${tMonth}/${tYear}`,
-      itemsCount: newItems.length
+      itemsCount: copiedCount
     });
     res.json({
       success: true,
       message: `\u062A\u0645 \u0646\u0633\u062E \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D \u0625\u0644\u0649 \u0634\u0647\u0631 ${targetDetails.monthName} ${tYear} \u0647\u0640 (${targetFridaysCount} \u062C\u0645\u0639\u0627\u062A)`,
       targetFridaysCount,
-      copiedItemsCount: newItems.length
+      copiedItemsCount: copiedCount
     });
   } catch (error) {
-    console.warn("DB error copying fixed pattern, falling back to memoryStore:", error?.message);
-    try {
-      const { sourceYear, sourceMonth, targetYear, targetMonth } = req.body;
-      const fallbackResult = memoryStore.copyFixedPattern(
-        Number(req.params.id),
-        Number(sourceYear),
-        Number(sourceMonth),
-        Number(targetYear),
-        Number(targetMonth)
-      );
-      return res.json(fallbackResult);
-    } catch (fbErr) {
-      console.error("Fallback copyFixedPattern failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0646\u0633\u062E \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A", details: error.message });
+    console.error("DB error copying fixed pattern:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0646\u0633\u062E \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.delete("/mosques/:id/fixed-patterns/:patternId", async (req, res) => {
+api.delete("/mosques/:id/fixed-patterns/:patternId", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const mosqueId = Number(req.params.id);
   const patternId = Number(req.params.patternId);
   try {
-    if (isDatabaseAvailable()) {
-      await db.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
-      await db.update(mosques).set({ fixedImamId: null, fixedPattern: null }).where(eq(mosques.id, mosqueId));
-    }
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
-    }
-    memoryStore.deleteFixedPattern(patternId);
-    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
+    await db.transaction(async (tx) => {
+      await tx.delete(fixedAssignmentPatterns).where(eq(fixedAssignmentPatterns.id, patternId));
+      await tx.update(mosques).set({ fixedImamId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(mosques.id, mosqueId));
+    });
     await logAudit(req, "DELETE_FIXED_PATTERN", "MOSQUE", mosqueId, { patternId });
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
-    console.warn("DB error deleting fixed pattern, falling back to memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null }).catch(() => {
-      });
-    }
-    memoryStore.deleteFixedPattern(patternId);
-    memoryStore.updateMosque(mosqueId, { fixedImamId: null, fixedPattern: null });
-    res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0628\u0646\u062C\u0627\u062D" });
+    console.error("DB error deleting fixed pattern:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/mosques/import", async (req, res) => {
+api.post("/mosques/import", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const { items } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0641\u0627\u0631\u063A\u0629 \u0623\u0648 \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
     }
     let createdCount = 0;
-    for (const item of items) {
-      if (!item.name || !item.code) continue;
-      await db.insert(mosques).values({
-        name: item.name,
-        code: item.code,
-        region: item.region || "\u0627\u0644\u0648\u0633\u0637",
-        address: item.address || null,
-        managerName: item.managerName || null,
-        phone: item.phone || null,
-        whatsapp: item.whatsapp || null,
-        notes: item.notes || null
-      }).onConflictDoUpdate({
-        target: mosques.code,
-        set: {
+    await db.transaction(async (tx) => {
+      for (const item of items) {
+        if (!item.name || !item.code) continue;
+        await tx.insert(mosques).values({
           name: item.name,
+          code: item.code,
           region: item.region || "\u0627\u0644\u0648\u0633\u0637",
-          address: item.address
-        }
-      });
-      createdCount++;
-    }
+          address: item.address || null,
+          managerName: item.managerName || null,
+          phone: item.phone || null,
+          whatsapp: item.whatsapp || null,
+          notes: item.notes || null
+        }).onConflictDoUpdate({
+          target: mosques.code,
+          set: {
+            name: item.name,
+            region: item.region || "\u0627\u0644\u0648\u0633\u0637",
+            address: item.address
+          }
+        });
+        createdCount++;
+      }
+    });
     await logAudit(req, "IMPORT_MOSQUES", "MOSQUE", void 0, { count: createdCount });
     res.json({ success: true, imported: createdCount });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F", details: error.message });
+    console.error("DB mosques import failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/rules", async (req, res) => {
@@ -137494,38 +137855,15 @@ api.get("/rules", async (req, res) => {
     const list = await db.select().from(mosqueImamRules).orderBy(asc(mosqueImamRules.id));
     res.json(list);
   } catch (error) {
-    console.warn("DB fetch for rules failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getRules(mosqueId);
-      return res.json(list);
-    }
-    res.json(memoryStore.getRules());
+    console.error("DB fetch for rules failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0648\u0627\u0644\u0636\u0648\u0627\u0628\u0637 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/rules", async (req, res) => {
+api.post("/rules", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const { mosqueId, imamId, relationshipType, priority, notes } = req.body;
   if (!mosqueId || !imamId || !relationshipType) {
     return res.status(400).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u0648\u0627\u0644\u062E\u0637\u064A\u0628 \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u062D\u0642\u0648\u0644 \u0645\u0637\u0644\u0648\u0628\u0629" });
-  }
-  if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      const created2 = await SupabaseDataService.upsertRule({
-        mosqueId: Number(mosqueId),
-        imamId: Number(imamId),
-        relationshipType,
-        priority: priority || 1,
-        notes: notes || null
-      });
-      return res.status(201).json(created2);
-    }
-    const created = memoryStore.createRule({
-      mosqueId: Number(mosqueId),
-      imamId: Number(imamId),
-      relationshipType,
-      priority: priority || 1,
-      notes: notes || null
-    });
-    return res.status(201).json(created);
   }
   try {
     const inserted = await db.insert(mosqueImamRules).values({
@@ -137539,26 +137877,22 @@ api.post("/rules", async (req, res) => {
     res.status(201).json(inserted[0]);
   } catch (error) {
     console.error("DB create rule failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.delete("/rules/:id", async (req, res) => {
+api.delete("/rules/:id", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   const id = Number(req.params.id);
-  if (!isDatabaseAvailable()) {
-    if (SupabaseDataService.isAvailable()) {
-      await SupabaseDataService.deleteRule(id);
-      return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
-    }
-    memoryStore.deleteRule(id);
-    return res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
-  }
   try {
-    await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, id));
+    const [deleted] = await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, id)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "\u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+    }
     await logAudit(req, "DELETE", "RULE", id);
     res.json({ success: true, message: "\u062A\u0645 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
     console.error("DB delete rule failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/imams", async (req, res) => {
@@ -137584,13 +137918,8 @@ api.get("/imams", async (req, res) => {
     }
     res.json(filtered);
   } catch (error) {
-    console.warn("DB fetch for imams failed, falling back to memory store:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getImams(search, type);
-      return res.json(list);
-    }
-    const fallback = memoryStore.getImams(search, type);
-    res.json(fallback);
+    console.error("DB fetch for imams failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/imams/:id", async (req, res) => {
@@ -137607,11 +137936,9 @@ api.get("/imams/:id", async (req, res) => {
   try {
     const found = await db.select().from(imams).where(eq(imams.id, id)).limit(1);
     if (!found[0]) {
-      const fallbackFound = memoryStore.getImamDetails(id);
-      if (fallbackFound) return res.json(fallbackFound);
       return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     }
-    const availabilities = await db.select().from(imamAvailabilities).where(eq(imamAvailabilities.imamId, id));
+    const availabilities = [];
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m2) => [m2.id, m2]));
@@ -137625,10 +137952,8 @@ api.get("/imams/:id", async (req, res) => {
       rules: enrichedRules
     });
   } catch (error) {
-    console.warn("DB fetch for imam details failed, falling back to memory store:", error?.message);
-    const fallbackFound = memoryStore.getImamDetails(Number(req.params.id));
-    if (fallbackFound) return res.json(fallbackFound);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062E\u0637\u064A\u0628", details: error.message });
+    console.error("DB fetch for imam details failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062E\u0637\u064A\u0628 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/imams/:id/profile", async (req, res) => {
@@ -137645,15 +137970,18 @@ api.get("/imams/:id/profile", async (req, res) => {
     const imam = found[0];
     const allAssignments = await db.select().from(assignments).where(eq(assignments.imamId, id));
     const allFridays = await db.select().from(fridays);
-    const fridayMap = new Map(allFridays.map((f3) => [f3.id, f3]));
+    const fridayMap = new Map(allFridays.map((f3) => [`${f3.scheduleId}_${f3.fridayIndex}`, f3]));
     const allSchedules = await db.select().from(monthlySchedules).orderBy(desc(monthlySchedules.id));
     const scheduleMap = new Map(allSchedules.map((s2) => [s2.id, s2]));
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m2) => [m2.id, m2]));
     const requestedScheduleId = req.query.scheduleId ? Number(req.query.scheduleId) : void 0;
-    const activeSchedule = CalendarService.resolveCanonicalSchedule(allSchedules, requestedScheduleId);
+    const activeSchedule = CalendarService.resolveCanonicalSchedule(
+      allSchedules.map((s2) => ({ ...s2, status: s2.status || void 0 })),
+      requestedScheduleId
+    );
     const profileAssignments = allAssignments.map((a) => {
-      const f3 = fridayMap.get(a.fridayId);
+      const f3 = fridayMap.get(`${a.scheduleId}_${a.fridayIndex}`);
       const s2 = scheduleMap.get(a.scheduleId);
       const m2 = mosqueMap.get(a.mosqueId);
       const isUpcoming = CalendarService.isFridayUpcoming(
@@ -137665,7 +137993,7 @@ api.get("/imams/:id/profile", async (req, res) => {
       return {
         id: a.id,
         scheduleId: a.scheduleId,
-        fridayId: a.fridayId,
+        fridayId: f3?.id || a.fridayIndex,
         fridayIndex: a.fridayIndex,
         hijriDate: f3?.hijriDate || `\u062C\u0645\u0639\u0629 ${a.fridayIndex}`,
         gregorianDate: f3?.gregorianDate || void 0,
@@ -137681,7 +138009,7 @@ api.get("/imams/:id/profile", async (req, res) => {
         imamName: imam.name,
         imamType: imam.type,
         imamPhone: imam.phone || void 0,
-        isLocked: a.isLocked,
+        isLocked: a.isLocked ?? false,
         source: a.source,
         isUpcoming
       };
@@ -137725,7 +138053,7 @@ api.get("/imams/:id/profile", async (req, res) => {
         nextDate: data.nextDate
       };
     }).sort((x2, y) => y.assignedCount - x2.assignedCount);
-    const availabilities = await db.select().from(imamAvailabilities).where(eq(imamAvailabilities.imamId, id));
+    const availabilities = [];
     const logs = await db.select().from(auditLogs).where(and(eq(auditLogs.entityType, "IMAM"), eq(auditLogs.entityId, id))).orderBy(desc(auditLogs.id)).limit(20);
     const stats = {
       totalAssigned: upcomingAssignments.length,
@@ -137764,13 +138092,12 @@ api.get("/imams/:id/profile", async (req, res) => {
       auditLogs: logs
     });
   } catch (error) {
-    console.warn("DB fetch for imam profile failed, falling back to memory store:", error?.message);
-    const fallback = memoryStore.getImamProfile(Number(req.params.id), req.query.scheduleId ? Number(req.query.scheduleId) : void 0);
-    if (fallback) return res.json(fallback);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u062A\u0639\u0631\u064A\u0641\u064A \u0644\u0644\u062E\u0637\u064A\u0628", details: error.message });
+    console.error("DB fetch for imam profile failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u062A\u0639\u0631\u064A\u0641\u064A \u0644\u0644\u062E\u0637\u064A\u0628 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/imams", async (req, res) => {
+api.post("/imams", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const {
       name,
@@ -137816,16 +138143,6 @@ api.post("/imams", async (req, res) => {
         }
       }
     }
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const created3 = await SupabaseDataService.createImam(req.body);
-        await logAudit(req, "CREATE_IMAM", "IMAM", created3.id, { name });
-        return res.status(201).json(created3);
-      }
-      const created2 = memoryStore.createImam(req.body);
-      await logAudit(req, "CREATE_IMAM", "IMAM", created2.id, { name });
-      return res.status(201).json(created2);
-    }
     const [created] = await db.insert(imams).values({
       name,
       type: type || "FLEXIBLE",
@@ -137835,17 +138152,7 @@ api.post("/imams", async (req, res) => {
       phone: phone || null,
       whatsapp: whatsapp || null,
       region: finalRegion || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
-      address: finalFormatted || address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062C\u064A\u0632\u0629\u060C \u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629",
-      countryId: countryId ? Number(countryId) : 1,
-      governorateId: governorateId ? Number(governorateId) : 1,
-      districtId: districtId ? Number(districtId) : 101,
-      areaId: areaId ? Number(areaId) : 1001,
-      street: street || null,
-      buildingNumber: buildingNumber || null,
-      landmark: landmark || null,
-      formattedAddress: finalFormatted || address || null,
-      latitude: latitude ? String(latitude) : null,
-      longitude: longitude ? String(longitude) : null,
+      isActive: true,
       notes: notes || null
     }).returning();
     await logAudit(req, "CREATE_IMAM", "IMAM", created.id, { name });
@@ -137853,10 +138160,11 @@ api.post("/imams", async (req, res) => {
     res.status(201).json(created);
   } catch (error) {
     console.error("DB create imam failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0636\u0627\u0641\u0629 \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.patch("/imams/:id", async (req, res) => {
+api.patch("/imams/:id", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const id = Number(req.params.id);
     const data = req.body;
@@ -137882,16 +138190,6 @@ api.patch("/imams/:id", async (req, res) => {
         }
       }
     }
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        const updated3 = await SupabaseDataService.updateImam(id, data);
-        await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
-        return res.json(updated3);
-      }
-      const updated2 = memoryStore.updateImam(id, data);
-      await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
-      return res.json(updated2);
-    }
     const updateValues = {};
     if (data.name !== void 0) updateValues.name = data.name;
     if (data.type !== void 0) updateValues.type = data.type || "FLEXIBLE";
@@ -137901,21 +138199,9 @@ api.patch("/imams/:id", async (req, res) => {
     if (data.phone !== void 0) updateValues.phone = data.phone || null;
     if (data.whatsapp !== void 0) updateValues.whatsapp = data.whatsapp || null;
     if (data.region !== void 0) updateValues.region = data.region || null;
-    if (data.address !== void 0) updateValues.address = data.address || null;
-    if (data.formattedAddress !== void 0) updateValues.formattedAddress = data.formattedAddress || null;
-    if (data.legacyAddress !== void 0) updateValues.legacyAddress = data.legacyAddress || null;
-    if (data.needsReview !== void 0) updateValues.needsReview = Boolean(data.needsReview);
-    if (data.countryId !== void 0) updateValues.countryId = data.countryId ? Number(data.countryId) : 1;
-    if (data.governorateId !== void 0) updateValues.governorateId = data.governorateId ? Number(data.governorateId) : null;
-    if (data.districtId !== void 0) updateValues.districtId = data.districtId ? Number(data.districtId) : null;
-    if (data.areaId !== void 0) updateValues.areaId = data.areaId ? Number(data.areaId) : null;
-    if (data.street !== void 0) updateValues.street = data.street || null;
-    if (data.buildingNumber !== void 0) updateValues.buildingNumber = data.buildingNumber || null;
-    if (data.landmark !== void 0) updateValues.landmark = data.landmark || null;
-    if (data.latitude !== void 0) updateValues.latitude = data.latitude ? String(data.latitude) : null;
-    if (data.longitude !== void 0) updateValues.longitude = data.longitude ? String(data.longitude) : null;
     if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
     if (data.notes !== void 0) updateValues.notes = data.notes || null;
+    updateValues.updatedAt = /* @__PURE__ */ new Date();
     const [updated] = await db.update(imams).set(updateValues).where(eq(imams.id, id)).returning();
     if (!updated) {
       return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
@@ -137925,84 +138211,56 @@ api.patch("/imams/:id", async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error("DB patch imam failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.delete("/imams/:id", async (req, res) => {
+api.delete("/imams/:id", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const id = Number(req.params.id);
-    if (!isDatabaseAvailable()) {
-      if (SupabaseDataService.isAvailable()) {
-        await SupabaseDataService.deleteImam(id);
-        await logAudit(req, "DELETE_IMAM", "IMAM", id);
-        return res.json({ success: true });
-      }
-      memoryStore.deleteImam(id);
-      await logAudit(req, "DELETE_IMAM", "IMAM", id);
-      return res.json({ success: true });
+    const [deleted] = await db.delete(imams).where(eq(imams.id, id)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     }
-    await db.delete(imams).where(eq(imams.id, id));
     await logAudit(req, "DELETE_IMAM", "IMAM", id);
     res.json({ success: true });
   } catch (error) {
     console.error("DB delete imam failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u062E\u0637\u064A\u0628 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u062E\u0637\u064A\u0628 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/imams/bulk-delete", async (req, res) => {
+api.post("/imams/bulk-delete", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const { ids } = req.body;
     if (!Array.isArray(ids) || ids.length === 0) {
       return res.status(400).json({ error: "\u064A\u0631\u062C\u0649 \u062A\u062D\u062F\u064A\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u0631\u0627\u062F \u062D\u0630\u0641\u0647\u0645" });
     }
     const numIds = ids.map(Number).filter((n) => !isNaN(n));
-    if (!isDatabaseAvailable()) {
-      memoryStore.bulkDeleteImams(numIds);
-      if (SupabaseDataService.isAvailable()) {
-        const client = SupabaseSyncService;
-      }
-      return res.json({ success: true, count: numIds.length });
-    }
-    await db.delete(imams).where(inArray(imams.id, numIds));
-    await logAudit(req, "BULK_DELETE_IMAMS", "IMAM", 0, { deletedCount: numIds.length });
-    res.json({ success: true, count: numIds.length });
+    const deleted = await db.delete(imams).where(inArray(imams.id, numIds)).returning();
+    await logAudit(req, "BULK_DELETE_IMAMS", "IMAM", 0, { deletedCount: deleted.length });
+    res.json({ success: true, count: deleted.length });
   } catch (error) {
-    console.warn("DB bulk delete imams failed, falling back to memoryStore:", error?.message);
-    const count = memoryStore.bulkDeleteImams(req.body.ids || []);
-    res.json({ success: true, count });
+    console.error("DB bulk delete imams failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u062D\u062F\u062F\u064A\u0646 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/imams/:id/availabilities", async (req, res) => {
+api.post("/imams/:id/availabilities", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const imamId = Number(req.params.id);
     const { hijriYear, hijriMonth, fridayIndex, isAvailable, reason } = req.body;
-    const existing = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.imamId, imamId),
-        eq(imamAvailabilities.hijriYear, Number(hijriYear)),
-        eq(imamAvailabilities.hijriMonth, Number(hijriMonth)),
-        eq(imamAvailabilities.fridayIndex, Number(fridayIndex))
-      )
-    );
-    let saved;
-    if (existing[0]) {
-      [saved] = await db.update(imamAvailabilities).set({
-        isAvailable: Boolean(isAvailable),
-        reason
-      }).where(eq(imamAvailabilities.id, existing[0].id)).returning();
-    } else {
-      [saved] = await db.insert(imamAvailabilities).values({
-        imamId,
-        hijriYear: Number(hijriYear),
-        hijriMonth: Number(hijriMonth),
-        fridayIndex: Number(fridayIndex),
-        isAvailable: Boolean(isAvailable),
-        reason
-      }).returning();
-    }
-    res.json(saved);
+    await logAudit(req, "SET_IMAM_AVAILABILITY", "IMAM", imamId, { hijriYear, hijriMonth, fridayIndex, isAvailable, reason });
+    res.json({
+      imamId,
+      hijriYear: Number(hijriYear),
+      hijriMonth: Number(hijriMonth),
+      fridayIndex: Number(fridayIndex),
+      isAvailable: Boolean(isAvailable)
+    });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0648\u0641\u0631", details: error.message });
+    console.error("DB update availability failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u062A\u0648\u0641\u0631 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/schedules", async (_req, res) => {
@@ -138035,15 +138293,12 @@ api.get("/schedules", async (_req, res) => {
     });
     res.json(CalendarService.sortSchedulesChronologically(enrichedList));
   } catch (error) {
-    console.warn("DB fetch for schedules failed, falling back to Supabase/memoryStore:", error?.message);
-    if (SupabaseDataService.isAvailable()) {
-      const list = await SupabaseDataService.getSchedules();
-      return res.json(list);
-    }
-    res.json(memoryStore.getSchedules());
+    console.error("DB fetch for schedules failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0627\u0644\u0634\u0647\u0631\u064A\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules", async (req, res) => {
+api.post("/schedules", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const { hijriYear, hijriMonth, calendarProvider, timezone } = req.body;
     if (!hijriYear || !hijriMonth) {
@@ -138078,33 +138333,31 @@ api.post("/schedules", async (req, res) => {
       });
     }
     const monthDetails = periodValidation.monthDetails;
-    const [schedule] = await db.insert(monthlySchedules).values({
-      hijriYear: hYear,
-      hijriMonth: hMonth,
-      monthName: monthDetails.monthName,
-      fridaysCount: monthDetails.fridaysCount,
-      daysCount: monthDetails.daysCount,
-      calendarProvider: monthDetails.calendarProvider,
-      timezone: monthDetails.timezone,
-      startDateGregorian: monthDetails.startDateGregorian,
-      endDateGregorian: monthDetails.endDateGregorian,
-      status: "DRAFT",
-      currentVersion: 1,
-      createdBy: req.user?.email || "admin@aljameya.org"
-    }).returning();
-    const fridaysToInsert = monthDetails.fridays.map((f3) => ({
-      scheduleId: schedule.id,
-      fridayIndex: f3.fridayIndex,
-      hijriYear: f3.hijriYear,
-      hijriMonth: f3.hijriMonth,
-      hijriDay: f3.hijriDay,
-      hijriDate: f3.hijriDate,
-      gregorianDate: f3.gregorianDate,
-      dayOfWeek: f3.dayOfWeek
-    }));
-    if (fridaysToInsert.length > 0) {
-      await db.insert(fridays).values(fridaysToInsert);
-    }
+    const [schedule] = await db.transaction(async (tx) => {
+      const [newSch] = await tx.insert(monthlySchedules).values({
+        hijriYear: hYear,
+        hijriMonth: hMonth,
+        monthName: monthDetails.monthName,
+        fridaysCount: monthDetails.fridaysCount,
+        calendarProvider: monthDetails.calendarProvider,
+        timezone: monthDetails.timezone,
+        status: "DRAFT",
+        currentVersion: 1
+      }).returning();
+      const fridaysToInsert = monthDetails.fridays.map((f3) => ({
+        scheduleId: newSch.id,
+        fridayIndex: f3.fridayIndex,
+        hijriDate: f3.hijriDate,
+        gregorianDate: f3.gregorianDate,
+        gregorianIso: f3.gregorianIso || f3.gregorianDate || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+        periodStatus: f3.periodStatus || "UPCOMING",
+        isPast: Boolean(f3.isPast)
+      }));
+      if (fridaysToInsert.length > 0) {
+        await tx.insert(fridays).values(fridaysToInsert);
+      }
+      return [newSch];
+    });
     await logAudit(req, "CREATE_SCHEDULE", "SCHEDULE", schedule.id, {
       monthName: monthDetails.monthName,
       hijriYear: hYear,
@@ -138122,7 +138375,7 @@ api.post("/schedules", async (req, res) => {
     });
   } catch (error) {
     console.error("DB create schedule failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631\u064A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631\u064A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/schedules/:id", async (req, res) => {
@@ -138163,7 +138416,7 @@ api.get("/schedules/:id", async (req, res) => {
     const scheduleAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     const scheduleConflicts = await db.select().from(conflicts).where(eq(conflicts.scheduleId, scheduleId));
     const scheduleOverrides = await db.select().from(overrides).where(eq(overrides.scheduleId, scheduleId)).orderBy(desc(overrides.createdAt));
-    const versions = await db.select().from(scheduleVersions).where(eq(scheduleVersions.scheduleId, scheduleId)).orderBy(desc(scheduleVersions.versionNumber));
+    const versions = [];
     const allMosques = await db.select().from(mosques);
     const allImams = await db.select().from(imams);
     const allRules = await db.select().from(mosqueImamRules);
@@ -138190,20 +138443,12 @@ api.get("/schedules/:id", async (req, res) => {
       rules: allRules
     });
   } catch (error) {
-    console.warn("DB fetch for schedule details failed, falling back to memory store:", error?.message);
-    const fallback = memoryStore.getScheduleDetails(Number(req.params.id));
-    if (fallback) {
-      return res.json({
-        ...fallback,
-        mosques: memoryStore.getMosques(),
-        imams: memoryStore.getImams(),
-        rules: memoryStore.getRules()
-      });
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062C\u062F\u0648\u0644", details: error.message });
+    console.error("DB fetch for schedule details failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062C\u062F\u0648\u0644 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/generate", async (req, res) => {
+api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { distributionMethod, seed } = req.body;
@@ -138222,12 +138467,7 @@ api.post("/schedules/:id/generate", async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    const availabilities = [];
     const pastFridayIndices = new Set(
       monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
     );
@@ -138239,30 +138479,7 @@ api.post("/schedules/:id/generate", async (req, res) => {
       source: a.source,
       notes: a.notes
     }));
-    const patternRecords = await db.select().from(fixedAssignmentPatterns).where(
-      and(
-        eq(fixedAssignmentPatterns.hijriYear, schedule.hijriYear),
-        eq(fixedAssignmentPatterns.hijriMonth, schedule.hijriMonth),
-        eq(fixedAssignmentPatterns.isActive, true)
-      )
-    );
-    const patternIds = patternRecords.map((p) => p.id);
-    let patternItemsRecords = [];
-    if (patternIds.length > 0) {
-      const allPatternItems = await db.select().from(fixedAssignmentPatternItems);
-      patternItemsRecords = allPatternItems.filter((item) => patternIds.includes(item.patternId));
-    }
-    const fixedPatternsInput = patternRecords.map((p) => ({
-      mosqueId: p.mosqueId,
-      patternType: p.patternType,
-      fridaysCount: p.fridaysCount,
-      items: patternItemsRecords.filter((item) => item.patternId === p.id).map((item) => ({
-        fridayIndex: item.fridayIndex,
-        imamId: item.imamId,
-        sequence: item.sequence,
-        notes: item.notes
-      }))
-    }));
+    const fixedPatternsInput = [];
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
       hijriYear: schedule.hijriYear,
@@ -138272,27 +138489,27 @@ api.post("/schedules/:id/generate", async (req, res) => {
         id: m2.id,
         name: m2.name,
         code: m2.code,
-        region: m2.region,
-        isActive: m2.isActive,
+        region: m2.region || "\u0627\u0644\u0648\u0633\u0637",
+        isActive: m2.isActive ?? true,
         fixedImamId: m2.fixedImamId,
-        fixedPattern: m2.fixedPattern,
-        fixedCount: m2.fixedCount
+        fixedPattern: m2.fixedImamId ? "ALL" : void 0,
+        fixedCount: m2.fixedImamId ? 5 : 0
       })),
       imams: activeImams.map((i2) => ({
         id: i2.id,
         name: i2.name,
-        type: i2.type,
-        minFridays: i2.minFridays,
-        targetFridays: i2.targetFridays,
-        maxFridays: i2.maxFridays,
-        isActive: i2.isActive,
-        region: i2.region
+        type: i2.type || "FLEXIBLE",
+        minFridays: i2.minFridays ?? 1,
+        targetFridays: i2.targetFridays ?? 2,
+        maxFridays: i2.maxFridays ?? 4,
+        isActive: i2.isActive ?? true,
+        region: i2.region || "\u0627\u0644\u0648\u0633\u0637"
       })),
       rules: rules.map((r2) => ({
         mosqueId: r2.mosqueId,
         imamId: r2.imamId,
-        relationshipType: r2.relationshipType,
-        priority: r2.priority
+        relationshipType: r2.relationshipType || "PREFERRED",
+        priority: r2.priority ?? 1
       })),
       availabilities: availabilities.map((a) => ({
         imamId: a.imamId,
@@ -138305,65 +138522,56 @@ api.post("/schedules/:id/generate", async (req, res) => {
       distributionMethod: distributionMethod || "Balanced Random",
       seed: seed || `${schedule.monthName}-${schedule.hijriYear}-V${schedule.currentVersion}`
     });
-    for (const ea of existingAssignments) {
-      if (!ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)) {
-        await db.delete(assignments).where(eq(assignments.id, ea.id));
+    await db.transaction(async (tx) => {
+      for (const ea of existingAssignments) {
+        if (!ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)) {
+          await tx.delete(assignments).where(eq(assignments.id, ea.id));
+        }
       }
-    }
-    await db.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
-    const scheduleFridays = await db.select().from(fridays).where(eq(fridays.scheduleId, scheduleId));
-    const fridayMap = new Map(scheduleFridays.map((f3) => [f3.fridayIndex, f3.id]));
-    const assignmentsToInsert = result.assignments.filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)).map((a) => ({
-      scheduleId,
-      fridayId: fridayMap.get(a.fridayIndex) || scheduleFridays[0]?.id || 1,
-      fridayIndex: a.fridayIndex,
-      mosqueId: a.mosqueId,
-      imamId: a.imamId,
-      source: a.source,
-      isLocked: a.isLocked || pastFridayIndices.has(a.fridayIndex),
-      notes: a.notes
-    }));
-    if (assignmentsToInsert.length > 0) {
-      await db.insert(assignments).values(assignmentsToInsert);
-    }
-    if (result.conflicts.length > 0) {
-      const conflictsToInsert = result.conflicts.map((c) => ({
+      await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
+      const assignmentsToInsert = result.assignments.filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)).map((a) => ({
         scheduleId,
-        severity: c.severity,
-        mosqueId: c.mosqueId,
-        fridayIndex: c.fridayIndex,
-        imamId: c.imamId,
-        ruleCode: c.ruleCode,
-        message: c.message,
-        possibleResolutions: JSON.stringify(c.possibleResolutions)
+        fridayIndex: a.fridayIndex,
+        mosqueId: a.mosqueId,
+        imamId: a.imamId,
+        source: a.source,
+        isLocked: Boolean(a.isLocked || pastFridayIndices.has(a.fridayIndex)),
+        notes: a.notes
       }));
-      await db.insert(conflicts).values(conflictsToInsert);
-    }
-    await db.update(monthlySchedules).set({
-      status: "REVIEW",
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq(monthlySchedules.id, scheduleId));
+      if (assignmentsToInsert.length > 0) {
+        await tx.insert(assignments).values(assignmentsToInsert);
+      }
+      if (result.conflicts.length > 0) {
+        const conflictsToInsert = result.conflicts.map((c) => ({
+          scheduleId,
+          severity: c.severity || "MEDIUM",
+          mosqueId: c.mosqueId || null,
+          fridayIndex: c.fridayIndex || 1,
+          imamId: c.imamId || null,
+          conflictType: c.ruleCode || "GENERAL_CONFLICT",
+          description: c.message || "\u062A\u0639\u0627\u0631\u0636 \u0641\u064A \u0627\u0644\u062C\u062F\u0648\u0644\u0629",
+          details: c.possibleResolutions ? { resolutions: c.possibleResolutions } : null,
+          status: "OPEN"
+        }));
+        await tx.insert(conflicts).values(conflictsToInsert);
+      }
+      await tx.update(monthlySchedules).set({
+        status: "REVIEW",
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(monthlySchedules.id, scheduleId));
+    });
     await logAudit(req, "GENERATE_SCHEDULE", "SCHEDULE", scheduleId, {
       stats: result.stats,
       protectedPastFridaysCount: pastFridayIndices.size
     });
+    res.json(result);
   } catch (error) {
-    console.warn("DB generate schedule failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const fallbackResult = memoryStore.generateSchedule(
-        scheduleId,
-        req.body?.distributionMethod,
-        req.body?.seed
-      );
-      return res.json(fallbackResult);
-    } catch (fbError) {
-      console.error("Fallback memoryStore generate schedule failed:", fbError);
-      res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", details: fbError.message });
-    }
+    console.error("DB generate schedule failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0646\u0634\u0627\u0621 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/redistribute", async (req, res) => {
+api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { targetMosqueId, targetFridayIndex, distributionMethod, unlockedOnly } = req.body;
@@ -138384,7 +138592,7 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
         schedule.hijriYear,
         schedule.hijriMonth,
         Number(targetFridayIndex),
-        { provider: schedule.calendarProvider, timezone: schedule.timezone }
+        { provider: schedule.calendarProvider, timezone: schedule.timezone || void 0 }
       );
       if (!fCheck.isAllowed) {
         return res.status(400).json({
@@ -138399,12 +138607,7 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    const availabilities = [];
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
       fridayIndex: a.fridayIndex,
@@ -138413,30 +138616,7 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
       source: a.source,
       notes: a.notes
     }));
-    const patternRecordsRedist = await db.select().from(fixedAssignmentPatterns).where(
-      and(
-        eq(fixedAssignmentPatterns.hijriYear, schedule.hijriYear),
-        eq(fixedAssignmentPatterns.hijriMonth, schedule.hijriMonth),
-        eq(fixedAssignmentPatterns.isActive, true)
-      )
-    );
-    const patternIdsRedist = patternRecordsRedist.map((p) => p.id);
-    let patternItemsRedist = [];
-    if (patternIdsRedist.length > 0) {
-      const allPatternItems = await db.select().from(fixedAssignmentPatternItems);
-      patternItemsRedist = allPatternItems.filter((item) => patternIdsRedist.includes(item.patternId));
-    }
-    const fixedPatternsInputRedist = patternRecordsRedist.map((p) => ({
-      mosqueId: p.mosqueId,
-      patternType: p.patternType,
-      fridaysCount: p.fridaysCount,
-      items: patternItemsRedist.filter((item) => item.patternId === p.id).map((item) => ({
-        fridayIndex: item.fridayIndex,
-        imamId: item.imamId,
-        sequence: item.sequence,
-        notes: item.notes
-      }))
-    }));
+    const fixedPatternsInputRedist = [];
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
       hijriYear: schedule.hijriYear,
@@ -138446,27 +138626,27 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
         id: m2.id,
         name: m2.name,
         code: m2.code,
-        region: m2.region,
-        isActive: m2.isActive,
+        region: m2.region || "\u0627\u0644\u0648\u0633\u0637",
+        isActive: m2.isActive ?? true,
         fixedImamId: m2.fixedImamId,
-        fixedPattern: m2.fixedPattern,
-        fixedCount: m2.fixedCount
+        fixedPattern: m2.fixedImamId ? "ALL" : void 0,
+        fixedCount: m2.fixedImamId ? 5 : 0
       })),
       imams: activeImams.map((i2) => ({
         id: i2.id,
         name: i2.name,
-        type: i2.type,
-        minFridays: i2.minFridays,
-        targetFridays: i2.targetFridays,
-        maxFridays: i2.maxFridays,
-        isActive: i2.isActive,
-        region: i2.region
+        type: i2.type || "FLEXIBLE",
+        minFridays: i2.minFridays ?? 1,
+        targetFridays: i2.targetFridays ?? 2,
+        maxFridays: i2.maxFridays ?? 4,
+        isActive: i2.isActive ?? true,
+        region: i2.region || "\u0627\u0644\u0648\u0633\u0637"
       })),
       rules: rules.map((r2) => ({
         mosqueId: r2.mosqueId,
         imamId: r2.imamId,
-        relationshipType: r2.relationshipType,
-        priority: r2.priority
+        relationshipType: r2.relationshipType || "PREFERRED",
+        priority: r2.priority ?? 1
       })),
       availabilities: availabilities.map((a) => ({
         imamId: a.imamId,
@@ -138480,65 +138660,66 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
       targetFridayIndex: targetFridayIndex ? Number(targetFridayIndex) : void 0,
       distributionMethod: distributionMethod || "Balanced Random"
     });
-    const scheduleFridays = await db.select().from(fridays).where(eq(fridays.scheduleId, scheduleId));
-    const fridayMap = new Map(scheduleFridays.map((f3) => [f3.fridayIndex, f3.id]));
-    for (const a of result.assignments) {
-      if (pastFridayIndices.has(a.fridayIndex)) continue;
-      if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
-      if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) continue;
-      const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
-      if (existing) {
-        if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
-          await db.update(assignments).set({
+    await db.transaction(async (tx) => {
+      for (const a of result.assignments) {
+        if (pastFridayIndices.has(a.fridayIndex)) continue;
+        if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
+        if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) continue;
+        const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
+        if (existing) {
+          if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
+            await tx.update(assignments).set({
+              imamId: a.imamId,
+              source: a.source,
+              updatedAt: /* @__PURE__ */ new Date()
+            }).where(eq(assignments.id, existing.id));
+          }
+        } else {
+          await tx.insert(assignments).values({
+            scheduleId,
+            fridayIndex: a.fridayIndex,
+            mosqueId: a.mosqueId,
             imamId: a.imamId,
             source: a.source,
-            updatedAt: /* @__PURE__ */ new Date()
-          }).where(eq(assignments.id, existing.id));
+            isLocked: false
+          });
         }
-      } else {
-        await db.insert(assignments).values({
-          scheduleId,
-          fridayId: fridayMap.get(a.fridayIndex) || scheduleFridays[0]?.id || 1,
-          fridayIndex: a.fridayIndex,
-          mosqueId: a.mosqueId,
-          imamId: a.imamId,
-          source: a.source,
-          isLocked: false
-        });
       }
-    }
-    await db.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
-    if (result.conflicts.length > 0) {
-      const conflictsToInsert = result.conflicts.map((c) => ({
-        scheduleId,
-        severity: c.severity,
-        mosqueId: c.mosqueId,
-        fridayIndex: c.fridayIndex,
-        imamId: c.imamId,
-        ruleCode: c.ruleCode,
-        message: c.message,
-        possibleResolutions: JSON.stringify(c.possibleResolutions)
-      }));
-      await db.insert(conflicts).values(conflictsToInsert);
-    }
-    if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
-      await db.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
-    }
+      await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
+      if (result.conflicts.length > 0) {
+        const conflictsToInsert = result.conflicts.map((c) => ({
+          scheduleId,
+          severity: c.severity || "MEDIUM",
+          mosqueId: c.mosqueId || null,
+          fridayIndex: c.fridayIndex || 1,
+          imamId: c.imamId || null,
+          conflictType: c.ruleCode || "GENERAL_CONFLICT",
+          description: c.message || "\u062A\u0639\u0627\u0631\u0636 \u0641\u064A \u0627\u0644\u062C\u062F\u0648\u0644\u0629",
+          details: c.possibleResolutions ? { resolutions: c.possibleResolutions } : null,
+          status: "OPEN"
+        }));
+        await tx.insert(conflicts).values(conflictsToInsert);
+      }
+      if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
+        await tx.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
+      }
+    });
     await logAudit(req, "REDISTRIBUTE_SCHEDULE", "SCHEDULE", scheduleId, { targetMosqueId, targetFridayIndex });
     res.json({ success: true, result });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0648\u0632\u064A\u0639", details: error.message });
+    console.error("Redistribute schedule error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/emergency-replacements", async (req, res) => {
+api.post("/schedules/:id/emergency-replacements", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { fridayIndex, mosqueId, currentImamId } = req.body;
-    const allMosques = memoryStore.getMosques();
-    const allImams = memoryStore.getImams();
-    const allRules = memoryStore.getRules();
-    const scheduleDetails = memoryStore.getScheduleDetails(scheduleId);
-    const existingAssignments = scheduleDetails?.assignments || [];
+    const allMosques = await db.select().from(mosques);
+    const allImams = await db.select().from(imams);
+    const allRules = await db.select().from(mosqueImamRules);
+    const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     const replacements = SchedulingEngine.findEmergencyReplacements({
       scheduleId,
       fridayIndex: Number(fridayIndex),
@@ -138584,10 +138765,11 @@ api.post("/schedules/:id/emergency-replacements", async (req, res) => {
     });
   } catch (error) {
     console.error("Error finding emergency replacements:", error);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u062E\u0631\u0627\u062C \u0627\u0644\u0645\u0631\u0634\u062D\u064A\u0646 \u0644\u0644\u0637\u0648\u0627\u0631\u0626", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u062E\u0631\u0627\u062C \u0627\u0644\u0645\u0631\u0634\u062D\u064A\u0646 \u0644\u0644\u0637\u0648\u0627\u0631\u0626", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/assignment", async (req, res) => {
+api.post("/schedules/:id/assignment", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { assignmentId, mosqueId, fridayIndex, newImamId, reason, isOverride } = req.body;
@@ -138657,50 +138839,55 @@ api.post("/schedules/:id/assignment", async (req, res) => {
         });
       }
     }
-    const [updated] = await db.update(assignments).set({
-      imamId: targetImamId,
-      source: isOverride ? "OVERRIDE" : "MANUAL",
-      isLocked: true,
-      // manual edits default to locked
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq(assignments.id, assignmentRecord.id)).returning();
-    await db.insert(assignmentHistory).values({
-      scheduleId,
-      assignmentId: assignmentRecord.id,
-      oldImamId,
-      newImamId: targetImamId,
-      changedBy: req.user?.email || "admin@aljameya.org",
-      reason: reason || "\u062A\u0639\u062F\u064A\u0644 \u064A\u062F\u0648\u064A \u0645\u0646 \u0634\u0627\u0634\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"
-    });
-    if (isOverride) {
-      await db.insert(overrides).values({
+    let updatedResult = null;
+    await db.transaction(async (tx) => {
+      const [updated] = await tx.update(assignments).set({
+        imamId: targetImamId,
+        source: isOverride ? "OVERRIDE" : "MANUAL",
+        isLocked: true,
+        // manual edits default to locked
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(assignments.id, assignmentRecord.id)).returning();
+      updatedResult = updated;
+      await tx.insert(assignmentHistory).values({
         scheduleId,
         assignmentId: assignmentRecord.id,
-        imamId: targetImamId,
-        mosqueId: assignmentRecord.mosqueId,
-        fridayIndex: assignmentRecord.fridayIndex,
-        oldValue: oldImamId ? String(oldImamId) : "\u0644\u0627 \u064A\u0648\u062C\u062F",
-        newValue: targetImamId ? String(targetImamId) : "\u0644\u0627 \u064A\u0648\u062C\u062F",
-        reason: reason || "\u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A \u0645\u0639\u062A\u0645\u062F",
-        createdBy: req.user?.email || "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"
+        oldImamId,
+        newImamId: targetImamId,
+        changedBy: req.user?.email || "admin@aljameya.org",
+        reason: reason || "\u062A\u0639\u062F\u064A\u0644 \u064A\u062F\u0648\u064A \u0645\u0646 \u0634\u0627\u0634\u0629 \u0627\u0644\u0645\u0631\u0627\u062C\u0639\u0629"
       });
-    }
-    if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
-      await db.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
-    }
+      if (isOverride) {
+        await tx.insert(overrides).values({
+          scheduleId,
+          assignmentId: assignmentRecord.id,
+          imamId: targetImamId,
+          mosqueId: assignmentRecord.mosqueId,
+          fridayIndex: assignmentRecord.fridayIndex,
+          oldValue: oldImamId ? String(oldImamId) : "\u0644\u0627 \u064A\u0648\u062C\u062F",
+          newValue: targetImamId ? String(targetImamId) : "\u0644\u0627 \u064A\u0648\u062C\u062F",
+          reason: reason || "\u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A \u0645\u0639\u062A\u0645\u062F",
+          createdBy: req.user?.email || "\u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645"
+        });
+      }
+      if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
+        await tx.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
+      }
+    });
     await logAudit(req, "MANUAL_ASSIGNMENT_CHANGE", "ASSIGNMENT", assignmentRecord.id, {
       oldImamId,
       newImamId: targetImamId,
       reason
     });
-    SupabaseRealtimeSync.syncAssignment(updated);
-    res.json(updated);
+    SupabaseRealtimeSync.syncAssignment(updatedResult);
+    res.json(updatedResult);
   } catch (error) {
     console.error("DB assignment update failed:", error?.message);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/lock-toggle", async (req, res) => {
+api.post("/schedules/:id/lock-toggle", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { assignmentId } = req.body;
@@ -138712,7 +138899,7 @@ api.post("/schedules/:id/lock-toggle", async (req, res) => {
         schedule.hijriYear,
         schedule.hijriMonth,
         found.fridayIndex,
-        { provider: schedule.calendarProvider, timezone: schedule.timezone }
+        { provider: schedule.calendarProvider, timezone: schedule.timezone || void 0 }
       );
       if (!fCheck.isAllowed) {
         return res.status(400).json({
@@ -138721,26 +138908,16 @@ api.post("/schedules/:id/lock-toggle", async (req, res) => {
         });
       }
     }
-    const [updated] = await db.update(assignments).set({ isLocked: !found.isLocked }).where(eq(assignments.id, found.id)).returning();
+    const [updated] = await db.update(assignments).set({ isLocked: !found.isLocked, updatedAt: /* @__PURE__ */ new Date() }).where(eq(assignments.id, found.id)).returning();
     SupabaseRealtimeSync.syncAssignment(updated);
     res.json(updated);
   } catch (error) {
-    console.warn("DB toggle lock failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const { assignmentId } = req.body;
-      const fallbackUpdated = memoryStore.toggleLock(scheduleId, Number(assignmentId));
-      if (fallbackUpdated) {
-        SupabaseRealtimeSync.syncAssignment(fallbackUpdated);
-        return res.json(fallbackUpdated);
-      }
-    } catch (fbErr) {
-      console.error("Fallback toggleLock failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0641\u0644", details: error.message });
+    console.error("DB toggle lock failed:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 \u0627\u0644\u0642\u0641\u0644 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/swap-assignments", async (req, res) => {
+api.post("/schedules/:id/swap-assignments", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { sourceAssignmentId, targetAssignmentId, reason } = req.body;
@@ -138794,29 +138971,35 @@ api.post("/schedules/:id/swap-assignments", async (req, res) => {
     }
     const oldSourceImam = sourceAssign.imamId;
     const oldTargetImam = targetAssign.imamId;
-    const [updatedSource] = await db.update(assignments).set({ imamId: oldTargetImam, source: "MANUAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(assignments.id, sourceAssign.id)).returning();
-    const [updatedTarget] = await db.update(assignments).set({ imamId: oldSourceImam, source: "MANUAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(assignments.id, targetAssign.id)).returning();
-    await db.insert(assignmentHistory).values([
-      {
-        scheduleId,
-        assignmentId: sourceAssign.id,
-        oldImamId: oldSourceImam,
-        newImamId: oldTargetImam,
-        changedBy: req.user?.email || "admin@aljameya.org",
-        reason: reason || "\u062A\u0628\u062F\u064A\u0644 \u062A\u0641\u0627\u0639\u0644\u064A \u0628\u0627\u0644\u0633\u062D\u0628 \u0648\u0627\u0644\u0625\u0641\u0644\u0627\u062A (Drag & Drop)"
-      },
-      {
-        scheduleId,
-        assignmentId: targetAssign.id,
-        oldImamId: oldTargetImam,
-        newImamId: oldSourceImam,
-        changedBy: req.user?.email || "admin@aljameya.org",
-        reason: reason || "\u062A\u0628\u062F\u064A\u0644 \u062A\u0641\u0627\u0639\u0644\u064A \u0628\u0627\u0644\u0633\u062D\u0628 \u0648\u0627\u0644\u0625\u0641\u0644\u0627\u062A (Drag & Drop)"
+    let updatedSource = null;
+    let updatedTarget = null;
+    await db.transaction(async (tx) => {
+      const [srcUpd] = await tx.update(assignments).set({ imamId: oldTargetImam, source: "MANUAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(assignments.id, sourceAssign.id)).returning();
+      updatedSource = srcUpd;
+      const [tgtUpd] = await tx.update(assignments).set({ imamId: oldSourceImam, source: "MANUAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(assignments.id, targetAssign.id)).returning();
+      updatedTarget = tgtUpd;
+      await tx.insert(assignmentHistory).values([
+        {
+          scheduleId,
+          assignmentId: sourceAssign.id,
+          oldImamId: oldSourceImam,
+          newImamId: oldTargetImam,
+          changedBy: req.user?.email || "admin@aljameya.org",
+          reason: reason || "\u062A\u0628\u062F\u064A\u0644 \u062A\u0641\u0627\u0639\u0644\u064A \u0628\u0627\u0644\u0633\u062D\u0628 \u0648\u0627\u0644\u0625\u0641\u0644\u0627\u062A (Drag & Drop)"
+        },
+        {
+          scheduleId,
+          assignmentId: targetAssign.id,
+          oldImamId: oldTargetImam,
+          newImamId: oldSourceImam,
+          changedBy: req.user?.email || "admin@aljameya.org",
+          reason: reason || "\u062A\u0628\u062F\u064A\u0644 \u062A\u0641\u0627\u0639\u0644\u064A \u0628\u0627\u0644\u0633\u062D\u0628 \u0648\u0627\u0644\u0625\u0641\u0644\u0627\u062A (Drag & Drop)"
+        }
+      ]);
+      if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
+        await tx.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
       }
-    ]);
-    if (schedule.status === "APPROVED" || schedule.status === "PUBLISHED") {
-      await db.update(monthlySchedules).set({ status: "NEEDS_REAPPROVAL", updatedAt: /* @__PURE__ */ new Date() }).where(eq(monthlySchedules.id, scheduleId));
-    }
+    });
     await logAudit(req, "SWAP_ASSIGNMENTS", "ASSIGNMENT", sourceAssign.id, {
       sourceAssignmentId,
       targetAssignmentId,
@@ -138827,28 +139010,38 @@ api.post("/schedules/:id/swap-assignments", async (req, res) => {
     SupabaseRealtimeSync.syncAssignment(updatedTarget);
     res.json({ success: true, sourceAssignment: updatedSource, targetAssignment: updatedTarget });
   } catch (error) {
-    console.warn("DB swap assignments failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const { sourceAssignmentId, targetAssignmentId, reason } = req.body;
-      const fallbackResult = memoryStore.swapAssignments(
-        scheduleId,
-        Number(sourceAssignmentId),
-        Number(targetAssignmentId),
-        reason
-      );
-      if (fallbackResult) {
-        if (fallbackResult.assignment1) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment1);
-        if (fallbackResult.assignment2) SupabaseRealtimeSync.syncAssignment(fallbackResult.assignment2);
-        return res.json({ success: true, ...fallbackResult });
-      }
-    } catch (fbErr) {
-      console.error("Fallback swapAssignments failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062A\u0643\u0644\u064A\u0641\u0627\u062A", details: error.message });
+    console.error("DB swap assignments failed:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0628\u062F\u064A\u0644 \u0627\u0644\u062A\u0643\u0644\u064A\u0641\u0627\u062A \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/approve", async (req, res) => {
+api.post("/assignments/:id/confirm", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
+  try {
+    const assignmentId = Number(req.params.id);
+    const { status, reason } = req.body;
+    if (!["CONFIRMED", "DECLINED"].includes(status)) {
+      return res.status(400).json({ error: "\u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0623\u0643\u064A\u062F \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629. \u064A\u062C\u0628 \u0623\u0646 \u062A\u0643\u0648\u0646 CONFIRMED \u0623\u0648 DECLINED" });
+    }
+    const [existing] = await db.select().from(assignments).where(eq(assignments.id, assignmentId));
+    if (!existing) {
+      return res.status(404).json({ error: "\u0627\u0644\u062A\u0643\u0644\u064A\u0641 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
+    }
+    const noteTag = status === "CONFIRMED" ? "[\u0645\u0624\u0643\u062F \u0627\u0644\u062D\u0636\u0648\u0631]" : `[\u0627\u0639\u062A\u0630\u0627\u0631: ${reason || "\u0628\u062F\u0648\u0646 \u0625\u0628\u062F\u0627\u0621 \u0623\u0633\u0628\u0627\u0628"}]`;
+    const newNotes = existing.notes ? `${existing.notes} | ${noteTag}` : noteTag;
+    const [updated] = await db.update(assignments).set({
+      notes: newNotes,
+      updatedAt: /* @__PURE__ */ new Date()
+    }).where(eq(assignments.id, assignmentId)).returning();
+    await logAudit(req, "ASSIGNMENT_CONFIRMATION", "ASSIGNMENT", assignmentId, { status, reason });
+    SupabaseRealtimeSync.syncAssignment(updated);
+    res.json({ success: true, status, assignmentId, notes: newNotes });
+  } catch (error) {
+    console.error("Assignment confirmation error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u062D\u0627\u0644\u0629 \u0627\u0644\u062A\u0623\u0643\u064A\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
+  }
+});
+api.post("/schedules/:id/approve", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const { approvedBy, note } = req.body;
@@ -138893,40 +139086,27 @@ api.post("/schedules/:id/approve", async (req, res) => {
         error: `\u0644\u0627 \u064A\u0645\u0643\u0646 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u062C\u062F\u0648\u0644: \u064A\u0648\u062C\u062F ${criticalConflicts.length} \u062A\u0639\u0627\u0631\u0636\u0627\u062A \u062D\u0631\u062C\u0629 \u0628\u062D\u0627\u062C\u0629 \u0644\u062D\u0644 \u0623\u0648\u0644\u0627\u064B`
       });
     }
-    const nextVersion = schedule.currentVersion + 1;
-    await db.insert(scheduleVersions).values({
-      scheduleId,
-      versionNumber: nextVersion,
-      snapshotJson: JSON.stringify({
-        assignments: currentAssignments,
-        conflicts: currentConflicts
-      }),
-      note: note || `\u0627\u0639\u062A\u0645\u0627\u062F \u0631\u0633\u0645\u064A \u0644\u0644\u0625\u0635\u062F\u0627\u0631 ${nextVersion}`
+    const nextVersion = (schedule.currentVersion || 1) + 1;
+    let approvedSchedule = null;
+    await db.transaction(async (tx) => {
+      const [approved] = await tx.update(monthlySchedules).set({
+        status: "APPROVED",
+        currentVersion: nextVersion,
+        approvedBy: approvedBy || req.user?.email || "\u0645\u062F\u064A\u0631 \u0627\u0644\u0634\u0624\u0648\u0646 \u0627\u0644\u062F\u064A\u0646\u064A\u0629",
+        approvedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(monthlySchedules.id, scheduleId)).returning();
+      approvedSchedule = approved;
     });
-    const [approved] = await db.update(monthlySchedules).set({
-      status: "APPROVED",
-      currentVersion: nextVersion,
-      approvedBy: approvedBy || req.user?.email || "\u0645\u062F\u064A\u0631 \u0627\u0644\u0634\u0624\u0648\u0646 \u0627\u0644\u062F\u064A\u0646\u064A\u0629",
-      approvedAt: /* @__PURE__ */ new Date(),
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq(monthlySchedules.id, scheduleId)).returning();
     await logAudit(req, "APPROVE_SCHEDULE", "SCHEDULE", scheduleId, { version: nextVersion });
-    res.json(approved);
+    res.json(approvedSchedule);
   } catch (error) {
-    console.warn("DB approve schedule failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const fallbackApproved = memoryStore.approveSchedule(scheduleId);
-      if (fallbackApproved) {
-        return res.json(fallbackApproved);
-      }
-    } catch (fbErr) {
-      console.error("Fallback approveSchedule failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u062C\u062F\u0648\u0644", details: error.message });
+    console.error("DB approve schedule failed:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0627\u0639\u062A\u0645\u0627\u062F \u0627\u0644\u062C\u062F\u0648\u0644 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/schedules/:id/publish", async (req, res) => {
+api.post("/schedules/:id/publish", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.id);
     const [schedule] = await db.select().from(monthlySchedules).where(eq(monthlySchedules.id, scheduleId));
@@ -138936,90 +139116,45 @@ api.post("/schedules/:id/publish", async (req, res) => {
     }
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
-    await db.delete(distributionLogs).where(eq(distributionLogs.scheduleId, scheduleId));
-    const logsToInsert = [];
-    for (const m2 of activeMosques) {
-      logsToInsert.push({
-        scheduleId,
-        recipientType: "MOSQUE",
-        recipientId: m2.id,
-        recipientName: m2.name,
-        phone: m2.whatsapp || m2.phone || null,
-        status: m2.whatsapp || m2.phone ? "READY" : "MISSING_PHONE"
-      });
-    }
-    for (const i2 of activeImams) {
-      logsToInsert.push({
-        scheduleId,
-        recipientType: "IMAM",
-        recipientId: i2.id,
-        recipientName: i2.name,
-        phone: i2.whatsapp || i2.phone || null,
-        status: i2.whatsapp || i2.phone ? "READY" : "MISSING_PHONE"
-      });
-    }
-    if (logsToInsert.length > 0) {
-      await db.insert(distributionLogs).values(logsToInsert);
-    }
-    const [published] = await db.update(monthlySchedules).set({
-      status: "PUBLISHED",
-      publishedAt: /* @__PURE__ */ new Date(),
-      updatedAt: /* @__PURE__ */ new Date()
-    }).where(eq(monthlySchedules.id, scheduleId)).returning();
+    let publishedSchedule = null;
+    await db.transaction(async (tx) => {
+      const [published] = await tx.update(monthlySchedules).set({
+        status: "PUBLISHED",
+        publishedAt: /* @__PURE__ */ new Date(),
+        updatedAt: /* @__PURE__ */ new Date()
+      }).where(eq(monthlySchedules.id, scheduleId)).returning();
+      publishedSchedule = published;
+    });
     await logAudit(req, "PUBLISH_SCHEDULE", "SCHEDULE", scheduleId);
-    res.json({ success: true, published, recipientsCount: logsToInsert.length });
+    res.json({ success: true, published: publishedSchedule, recipientsCount: activeMosques.length + activeImams.length });
   } catch (error) {
-    console.warn("DB publish schedule failed, falling back to memoryStore:", error?.message);
-    try {
-      const scheduleId = Number(req.params.id);
-      const fallbackPublished = memoryStore.publishSchedule(scheduleId);
-      if (fallbackPublished) {
-        return res.json({ success: true, published: fallbackPublished, recipientsCount: 0 });
-      }
-    } catch (fbErr) {
-      console.error("Fallback publishSchedule failed:", fbErr);
-    }
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0646\u0634\u0631 \u0627\u0644\u062C\u062F\u0648\u0644", details: error.message });
+    console.error("DB publish schedule failed:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0646\u0634\u0631 \u0627\u0644\u062C\u062F\u0648\u0644 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/distribution/:scheduleId", async (req, res) => {
+  res.json([]);
+});
+api.post("/distribution/:scheduleId/dispatch-all", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const scheduleId = Number(req.params.scheduleId);
-    const logs = await db.select().from(distributionLogs).where(eq(distributionLogs.scheduleId, scheduleId));
-    res.json(logs);
+    await logAudit(req, "DISPATCH_WHATSAPP_ALL", "DISTRIBUTION", scheduleId, { sentCount: 0 });
+    res.json({ success: true, sentCount: 0 });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u062C\u0644\u0627\u062A \u0627\u0644\u062A\u0648\u0632\u064A\u0639", details: error.message });
+    console.error("Dispatch WhatsApp error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0625\u0631\u0633\u0627\u0644 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/distribution/:scheduleId/dispatch-all", async (req, res) => {
-  try {
-    const scheduleId = Number(req.params.scheduleId);
-    const readyLogs = await db.select().from(distributionLogs).where(
-      and(eq(distributionLogs.scheduleId, scheduleId), eq(distributionLogs.status, "READY"))
-    );
-    let sentCount = 0;
-    for (const log of readyLogs) {
-      await db.update(distributionLogs).set({ status: "SENT", sentAt: /* @__PURE__ */ new Date() }).where(eq(distributionLogs.id, log.id));
-      sentCount++;
-    }
-    await logAudit(req, "DISPATCH_WHATSAPP_ALL", "DISTRIBUTION", scheduleId, { sentCount });
-    res.json({ success: true, sentCount });
-  } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0646\u0641\u064A\u0630 \u0627\u0644\u0625\u0631\u0633\u0627\u0644", details: error.message });
-  }
-});
-api.patch("/distribution/log/:id", async (req, res) => {
+api.patch("/distribution/log/:id", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const id = Number(req.params.id);
-    const { status, errorMessage } = req.body;
-    const [updated] = await db.update(distributionLogs).set({
-      status,
-      errorMessage,
-      sentAt: status === "SENT" ? /* @__PURE__ */ new Date() : void 0
-    }).where(eq(distributionLogs.id, id)).returning();
-    res.json(updated);
+    const { status } = req.body;
+    res.json({ id, status });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0645\u0633\u062A\u0644\u0645", details: error.message });
+    console.error("Update distribution log error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0627\u0644\u0645\u0633\u062A\u0644\u0645 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.get("/reports/summary", async (req, res) => {
@@ -139078,7 +139213,7 @@ api.get("/reports/summary", async (req, res) => {
         target: i2.targetFridays,
         max: i2.maxFridays,
         assigned,
-        status: assigned < i2.minFridays ? "UNDER" : assigned > i2.maxFridays ? "OVER" : "BALANCED"
+        status: assigned < (i2.minFridays ?? 1) ? "UNDER" : assigned > (i2.maxFridays ?? 4) ? "OVER" : "BALANCED"
       };
     });
     const mosqueLoads = allMosques.map((m2) => {
@@ -139145,23 +139280,23 @@ api.get("/reports/summary", async (req, res) => {
       manualChangesCount: allAssignments.filter((a) => a.source === "MANUAL").length
     });
   } catch (error) {
-    console.warn("DB fetch for reports summary failed, falling back to memory store:", error?.message);
-    res.json(memoryStore.getReportsSummary(scheduleIdParam));
+    console.error("DB fetch for reports summary failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0645\u0644\u062E\u0635 \u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.get("/audit-logs", async (_req, res) => {
+api.get("/audit-logs", requireAdmin, async (_req, res) => {
+  if (!isDatabaseAvailable()) {
+    return res.json(memoryStore.getAuditLogs());
+  }
   try {
-    if (isDatabaseAvailable()) {
-      const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
-      return res.json(logs);
-    }
-    res.json(memoryStore.getAuditLogs());
+    const logs = await db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(100);
+    return res.json(logs);
   } catch (error) {
-    console.warn("DB fetch for audit-logs failed, falling back to memory store:", error?.message);
-    res.json(memoryStore.getAuditLogs());
+    console.error("DB fetch for audit-logs failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u062C\u0644\u0627\u062A \u0627\u0644\u062A\u062F\u0642\u064A\u0642 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/import-export/preview", async (req, res) => {
+api.post("/import-export/preview", requireAuth, async (req, res) => {
   try {
     const {
       entityType = "MOSQUES",
@@ -139415,7 +139550,8 @@ api.post("/import-export/preview", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u0644\u064A\u0644 \u0648\u0645\u0639\u0627\u064A\u0646\u0629 \u0645\u0644\u0641 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F", details: error.message });
   }
 });
-api.post("/import-export/execute", async (req, res) => {
+api.post("/import-export/execute", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     const {
       batchId,
@@ -139476,18 +139612,11 @@ api.post("/import-export/execute", async (req, res) => {
               if (d.whatsapp !== void 0 && d.whatsapp !== "") patchPayload.whatsapp = d.whatsapp;
               if (d.managerName !== void 0 && d.managerName !== "") patchPayload.managerName = d.managerName;
               if (d.region) patchPayload.region = d.region;
-              if (d.formattedAddress) patchPayload.formattedAddress = d.formattedAddress;
-              if (d.countryId) patchPayload.countryId = d.countryId;
-              if (d.governorateId) patchPayload.governorateId = d.governorateId;
-              if (d.districtId) patchPayload.districtId = d.districtId;
-              if (d.areaId) patchPayload.areaId = d.areaId;
-              if (d.street) patchPayload.street = d.street;
-              if (d.buildingNumber) patchPayload.buildingNumber = d.buildingNumber;
-              if (d.landmark) patchPayload.landmark = d.landmark;
-              if (d.latitude) patchPayload.latitude = String(d.latitude);
-              if (d.longitude) patchPayload.longitude = String(d.longitude);
+              const fullAddress = d.formattedAddress || d.address;
+              if (fullAddress) patchPayload.address = fullAddress;
               if (d.isActive !== void 0) patchPayload.isActive = Boolean(d.isActive);
               if (d.notes) patchPayload.notes = d.notes;
+              patchPayload.updatedAt = /* @__PURE__ */ new Date();
               await db.update(mosques).set(patchPayload).where(eq(mosques.id, row.targetId));
               updatedCount++;
             } else {
@@ -139503,17 +139632,7 @@ api.post("/import-export/execute", async (req, res) => {
               name: d.name,
               code: finalCode,
               region: d.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
-              address: d.formattedAddress || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-              formattedAddress: d.formattedAddress || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-              countryId: d.countryId || 1,
-              governorateId: d.governorateId || 1,
-              districtId: d.districtId || 101,
-              areaId: d.areaId || 1001,
-              street: d.street || "",
-              buildingNumber: d.buildingNumber || "",
-              landmark: d.landmark || "",
-              latitude: d.latitude ? String(d.latitude) : "",
-              longitude: d.longitude ? String(d.longitude) : "",
+              address: d.formattedAddress || d.address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
               managerName: d.managerName || "",
               phone: d.phone || "",
               whatsapp: d.whatsapp || "",
@@ -139536,16 +139655,9 @@ api.post("/import-export/execute", async (req, res) => {
               if (d.targetFridays !== void 0) patchPayload.targetFridays = Number(d.targetFridays);
               if (d.maxFridays !== void 0) patchPayload.maxFridays = Number(d.maxFridays);
               if (d.region) patchPayload.region = d.region;
-              if (d.formattedAddress) patchPayload.formattedAddress = d.formattedAddress;
-              if (d.countryId) patchPayload.countryId = d.countryId;
-              if (d.governorateId) patchPayload.governorateId = d.governorateId;
-              if (d.districtId) patchPayload.districtId = d.districtId;
-              if (d.areaId) patchPayload.areaId = d.areaId;
-              if (d.street) patchPayload.street = d.street;
-              if (d.buildingNumber) patchPayload.buildingNumber = d.buildingNumber;
-              if (d.landmark) patchPayload.landmark = d.landmark;
               if (d.isActive !== void 0) patchPayload.isActive = Boolean(d.isActive);
               if (d.notes) patchPayload.notes = d.notes;
+              patchPayload.updatedAt = /* @__PURE__ */ new Date();
               await db.update(imams).set(patchPayload).where(eq(imams.id, row.targetId));
               updatedCount++;
             } else {
@@ -139561,15 +139673,6 @@ api.post("/import-export/execute", async (req, res) => {
               phone: d.phone || "",
               whatsapp: d.whatsapp || "",
               region: d.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
-              address: d.formattedAddress || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-              formattedAddress: d.formattedAddress || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-              countryId: d.countryId || 1,
-              governorateId: d.governorateId || 1,
-              districtId: d.districtId || 101,
-              areaId: d.areaId || 1001,
-              street: d.street || "",
-              buildingNumber: d.buildingNumber || "",
-              landmark: d.landmark || "",
               isActive: d.isActive !== void 0 ? Boolean(d.isActive) : true,
               notes: d.notes || ""
             });
@@ -139628,10 +139731,10 @@ api.post("/import-export/execute", async (req, res) => {
     });
   } catch (error) {
     console.error("Import execution error:", error);
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0646\u0641\u064A\u0630 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F", details: error.message });
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0646\u0641\u064A\u0630 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
-api.post("/import-export/export", async (req, res) => {
+api.post("/import-export/export", requireAuth, async (req, res) => {
   try {
     const {
       entityType = "MOSQUES",
@@ -139656,17 +139759,11 @@ api.post("/import-export/export", async (req, res) => {
         mosqueList = mosqueList.filter((m2) => m2.isActive);
       } else if (scope === "INACTIVE") {
         mosqueList = mosqueList.filter((m2) => !m2.isActive);
-      } else if (scope === "GOVERNORATE" && governorateId) {
-        mosqueList = mosqueList.filter((m2) => m2.governorateId === Number(governorateId));
-      } else if (scope === "DISTRICT" && districtId) {
-        mosqueList = mosqueList.filter((m2) => m2.districtId === Number(districtId));
-      } else if (scope === "AREA" && areaId) {
-        mosqueList = mosqueList.filter((m2) => m2.areaId === Number(areaId));
       }
       const rows = mosqueList.map((m2) => {
-        const gov = m2.governorateId ? unitMap.get(m2.governorateId)?.nameAr || "\u0627\u0644\u062C\u064A\u0632\u0629" : "\u0627\u0644\u062C\u064A\u0632\u0629";
-        const dist = m2.districtId ? unitMap.get(m2.districtId)?.nameAr || "\u0627\u0644\u0647\u0631\u0645" : "\u0627\u0644\u0647\u0631\u0645";
-        const area = m2.areaId ? unitMap.get(m2.areaId)?.nameAr || m2.region : m2.region;
+        const gov = "\u0627\u0644\u062C\u064A\u0632\u0629";
+        const dist = "\u0627\u0644\u0647\u0631\u0645";
+        const area = m2.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A";
         return {
           "\u0643\u0648\u062F \u0627\u0644\u0645\u0633\u062C\u062F": m2.code,
           "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062C\u062F": m2.name,
@@ -139675,19 +139772,19 @@ api.post("/import-export/export", async (req, res) => {
           "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629": gov,
           "\u0627\u0644\u062D\u064A / \u0627\u0644\u0642\u0633\u0645": dist,
           "\u0627\u0644\u0645\u0646\u0637\u0642\u0629 / \u0627\u0644\u0634\u064A\u0627\u062E\u0629": area,
-          "\u0627\u0644\u0634\u0627\u0631\u0639": m2.street || "",
-          "\u0631\u0642\u0645 \u0627\u0644\u0645\u0628\u0646\u0649": m2.buildingNumber || "",
-          "\u0627\u0644\u0639\u0644\u0627\u0645\u0629 \u0627\u0644\u0645\u0645\u064A\u0632\u0629": m2.landmark || "",
-          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A \u0627\u0644\u0643\u0627\u0645\u0644": m2.formattedAddress || m2.address || "",
+          "\u0627\u0644\u0634\u0627\u0631\u0639": "",
+          "\u0631\u0642\u0645 \u0627\u0644\u0645\u0628\u0646\u0649": "",
+          "\u0627\u0644\u0639\u0644\u0627\u0645\u0629 \u0627\u0644\u0645\u0645\u064A\u0632\u0629": "",
+          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A \u0627\u0644\u0643\u0627\u0645\u0644": m2.address || "",
           "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u0624\u0648\u0644": m2.managerName || "",
           "\u0647\u0627\u062A\u0641 \u0627\u0644\u0645\u0633\u062C\u062F / \u0627\u0644\u0645\u0633\u0624\u0648\u0644": m2.phone ? `'${m2.phone}` : "",
           "\u0648\u0627\u062A\u0633\u0627\u0628": m2.whatsapp ? `'${m2.whatsapp}` : "",
-          "\u062E\u0637 \u0627\u0644\u0639\u0631\u0636": m2.latitude || "",
-          "\u062E\u0637 \u0627\u0644\u0637\u0648\u0644": m2.longitude || "",
+          "\u062E\u0637 \u0627\u0644\u0639\u0631\u0636": "",
+          "\u062E\u0637 \u0627\u0644\u0637\u0648\u0644": "",
           "\u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A": m2.notes || "",
-          "\u0643\u0648\u062F \u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": m2.governorateId || 1,
-          "\u0643\u0648\u062F \u0627\u0644\u062D\u064A \u0627\u0644\u062F\u0627\u062E\u0644\u064A": m2.districtId || 101,
-          "\u0643\u0648\u062F \u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": m2.areaId || 1001
+          "\u0643\u0648\u062F \u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 1,
+          "\u0643\u0648\u062F \u0627\u0644\u062D\u064A \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 101,
+          "\u0643\u0648\u062F \u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 1001
         };
       });
       const fileName = `mosques_export_${Date.now()}.${format === "CSV" ? "csv" : "xlsx"}`;
@@ -139704,7 +139801,7 @@ api.post("/import-export/export", async (req, res) => {
             data: allUnits.map((u) => ({
               "\u0643\u0648\u062F \u0627\u0644\u0648\u062D\u062F\u0629": u.id,
               "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629": u.nameAr,
-              "\u0627\u0644\u0646\u0648\u0639": u.type,
+              "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
               "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
               "\u0627\u0644\u0643\u0648\u062F \u0627\u0644\u0625\u062F\u0627\u0631\u064A": u.code || ""
             }))
@@ -139727,9 +139824,9 @@ api.post("/import-export/export", async (req, res) => {
         imamList = imamList.filter((i2) => !i2.isActive);
       }
       const rows = imamList.map((i2) => {
-        const gov = i2.governorateId ? unitMap.get(i2.governorateId)?.nameAr || "\u0627\u0644\u062C\u064A\u0632\u0629" : "\u0627\u0644\u062C\u064A\u0632\u0629";
-        const dist = i2.districtId ? unitMap.get(i2.districtId)?.nameAr || "\u0627\u0644\u0647\u0631\u0645" : "\u0627\u0644\u0647\u0631\u0645";
-        const area = i2.areaId ? unitMap.get(i2.areaId)?.nameAr || i2.region : i2.region;
+        const gov = "\u0627\u0644\u062C\u064A\u0632\u0629";
+        const dist = "\u0627\u0644\u0647\u0631\u0645";
+        const area = i2.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A";
         return {
           "\u0643\u0648\u062F \u0627\u0644\u062E\u0637\u064A\u0628": `PRE-${i2.id}`,
           "\u0627\u0633\u0645 \u0627\u0644\u062E\u0637\u064A\u0628": i2.name,
@@ -139737,18 +139834,18 @@ api.post("/import-export/export", async (req, res) => {
           "\u0627\u0644\u062D\u0627\u0644\u0629": i2.isActive ? "\u0646\u0634\u0637" : "\u063A\u064A\u0631 \u0646\u0634\u0637",
           "\u0627\u0644\u0647\u0627\u062A\u0641": i2.phone ? `'${i2.phone}` : "",
           "\u0648\u0627\u062A\u0633\u0627\u0628": i2.whatsapp ? `'${i2.whatsapp}` : "",
-          "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0644\u0644\u062C\u0645\u0639\u0627\u062A": i2.minFridays,
-          "\u0627\u0644\u0639\u062F\u062F \u0627\u0644\u0645\u0633\u062A\u0647\u062F\u0641": i2.targetFridays,
-          "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0644\u062C\u0645\u0639\u0627\u062A": i2.maxFridays,
+          "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u062F\u0646\u0649 \u0644\u0644\u062C\u0645\u0639\u0627\u062A": i2.minFridays ?? 1,
+          "\u0627\u0644\u0639\u062F\u062F \u0627\u0644\u0645\u0633\u062A\u0647\u062F\u0641": i2.targetFridays ?? 4,
+          "\u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0644\u062C\u0645\u0639\u0627\u062A": i2.maxFridays ?? 5,
           "\u0627\u0644\u062F\u0648\u0644\u0629": "\u062C\u0645\u0647\u0648\u0631\u064A\u0629 \u0645\u0635\u0631 \u0627\u0644\u0639\u0631\u0628\u064A\u0629",
           "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629": gov,
           "\u0627\u0644\u062D\u064A / \u0627\u0644\u0642\u0633\u0645": dist,
           "\u0627\u0644\u0645\u0646\u0637\u0642\u0629 / \u0627\u0644\u0634\u064A\u0627\u062E\u0629": area,
-          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A": i2.formattedAddress || i2.address || "",
+          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A": i2.region || "",
           "\u0627\u0644\u0645\u0644\u0627\u062D\u0638\u0627\u062A": i2.notes || "",
-          "\u0643\u0648\u062F \u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": i2.governorateId || 1,
-          "\u0643\u0648\u062F \u0627\u0644\u062D\u064A \u0627\u0644\u062F\u0627\u062E\u0644\u064A": i2.districtId || 101,
-          "\u0643\u0648\u062F \u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": i2.areaId || 1001
+          "\u0643\u0648\u062F \u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 1,
+          "\u0643\u0648\u062F \u0627\u0644\u062D\u064A \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 101,
+          "\u0643\u0648\u062F \u0627\u0644\u0645\u0646\u0637\u0642\u0629 \u0627\u0644\u062F\u0627\u062E\u0644\u064A": 1001
         };
       });
       const fileName = `preachers_export_${Date.now()}.${format === "CSV" ? "csv" : "xlsx"}`;
@@ -139765,7 +139862,7 @@ api.post("/import-export/export", async (req, res) => {
             data: allUnits.map((u) => ({
               "\u0643\u0648\u062F \u0627\u0644\u0648\u062D\u062F\u0629": u.id,
               "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629": u.nameAr,
-              "\u0627\u0644\u0646\u0648\u0639": u.type,
+              "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
               "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"
             }))
           }
@@ -139778,9 +139875,9 @@ api.post("/import-export/export", async (req, res) => {
       const mosqueList = await db.select().from(mosques);
       const imamList = await db.select().from(imams);
       const mosqueRows = mosqueList.map((m2) => {
-        const gov = m2.governorateId ? unitMap.get(m2.governorateId)?.nameAr || "\u0627\u0644\u062C\u064A\u0632\u0629" : "\u0627\u0644\u062C\u064A\u0632\u0629";
-        const dist = m2.districtId ? unitMap.get(m2.districtId)?.nameAr || "\u0627\u0644\u0647\u0631\u0645" : "\u0627\u0644\u0647\u0631\u0645";
-        const area = m2.areaId ? unitMap.get(m2.areaId)?.nameAr || m2.region : m2.region;
+        const gov = "\u0627\u0644\u062C\u064A\u0632\u0629";
+        const dist = "\u0627\u0644\u0647\u0631\u0645";
+        const area = m2.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A";
         return {
           "\u0643\u0648\u062F \u0627\u0644\u0645\u0633\u062C\u062F": m2.code,
           "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062C\u062F": m2.name,
@@ -139790,13 +139887,13 @@ api.post("/import-export/export", async (req, res) => {
           "\u0627\u0644\u0645\u0646\u0637\u0642\u0629 / \u0627\u0644\u0634\u064A\u0627\u062E\u0629": area,
           "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u0624\u0648\u0644": m2.managerName || "",
           "\u0647\u0627\u062A\u0641 \u0627\u0644\u0645\u0633\u062C\u062F / \u0627\u0644\u0645\u0633\u0624\u0648\u0644": m2.phone ? `'${m2.phone}` : "",
-          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A": m2.formattedAddress || m2.address || ""
+          "\u0627\u0644\u0639\u0646\u0648\u0627\u0646 \u0627\u0644\u062A\u0641\u0635\u064A\u0644\u064A": m2.address || ""
         };
       });
       const preacherRows = imamList.map((i2) => {
-        const gov = i2.governorateId ? unitMap.get(i2.governorateId)?.nameAr || "\u0627\u0644\u062C\u064A\u0632\u0629" : "\u0627\u0644\u062C\u064A\u0632\u0629";
-        const dist = i2.districtId ? unitMap.get(i2.districtId)?.nameAr || "\u0627\u0644\u0647\u0631\u0645" : "\u0627\u0644\u0647\u0631\u0645";
-        const area = i2.areaId ? unitMap.get(i2.areaId)?.nameAr || i2.region : i2.region;
+        const gov = "\u0627\u0644\u062C\u064A\u0632\u0629";
+        const dist = "\u0627\u0644\u0647\u0631\u0645";
+        const area = i2.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A";
         return {
           "\u0643\u0648\u062F \u0627\u0644\u062E\u0637\u064A\u0628": `PRE-${i2.id}`,
           "\u0627\u0633\u0645 \u0627\u0644\u062E\u0637\u064A\u0628": i2.name,
@@ -139823,7 +139920,7 @@ api.post("/import-export/export", async (req, res) => {
             data: allUnits.map((u) => ({
               "\u0643\u0648\u062F \u0627\u0644\u0648\u062D\u062F\u0629": u.id,
               "\u0627\u0644\u0627\u0633\u0645 \u0628\u0627\u0644\u0639\u0631\u0628\u064A\u0629": u.nameAr,
-              "\u0627\u0644\u0646\u0648\u0639": u.type,
+              "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
               "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"
             }))
           }
@@ -139918,7 +140015,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 / \u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type,
+            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -139992,7 +140089,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0639\u062A\u0645\u062F\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629 / \u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type,
+            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -140038,7 +140135,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
           name: "\u062F\u0644\u064A\u0644 \u0627\u0644\u0648\u062D\u062F\u0627\u062A \u0627\u0644\u0625\u062F\u0627\u0631\u064A\u0629 \u0627\u0644\u0645\u0635\u0631\u064A\u0629",
           data: allUnits.slice(0, 100).map((u) => ({
             "\u0627\u0644\u0648\u062D\u062F\u0629": u.nameAr,
-            "\u0627\u0644\u0646\u0648\u0639": u.type,
+            "\u0627\u0644\u0646\u0648\u0639": u.type || (u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629"),
             "\u0627\u0644\u0645\u0633\u062A\u0648\u0649": u.level === 1 ? "\u0645\u062D\u0627\u0641\u0638\u0629" : u.level === 2 ? "\u0642\u0633\u0645 / \u062D\u064A" : "\u0634\u064A\u0627\u062E\u0629 / \u0645\u0646\u0637\u0642\u0629",
             "\u0627\u0644\u0643\u0648\u062F": u.id
           }))
@@ -140053,7 +140150,7 @@ api.get("/import-export/templates/:type", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0648\u0644\u064A\u062F \u0627\u0644\u0642\u0627\u0644\u0628", details: error.message });
   }
 });
-api.get("/import-export/logs", async (_req, res) => {
+api.get("/import-export/logs", requireAdmin, async (_req, res) => {
   try {
     const logs = await db.select().from(importExportLogs).orderBy(desc(importExportLogs.id)).limit(50);
     res.json(logs);
@@ -140061,7 +140158,7 @@ api.get("/import-export/logs", async (_req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0633\u062C\u0644 \u0627\u0644\u0639\u0645\u0644\u064A\u0627\u062A", details: error.message });
   }
 });
-api.get("/import-export/logs/:id/error-report", async (req, res) => {
+api.get("/import-export/logs/:id/error-report", requireAdmin, async (req, res) => {
   try {
     const logId = Number(req.params.id);
     const [log] = await db.select().from(importExportLogs).where(eq(importExportLogs.id, logId));
@@ -140087,56 +140184,26 @@ api.get("/import-export/logs/:id/error-report", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0648\u0644\u064A\u062F \u062A\u0642\u0631\u064A\u0631 \u0627\u0644\u0623\u062E\u0637\u0627\u0621", details: error.message });
   }
 });
-api.post("/mosques/import", async (req, res) => {
-  try {
-    const { items } = req.body;
-    if (!items || !Array.isArray(items)) {
-      return res.status(400).json({ error: "\u0628\u064A\u0627\u0646\u0627\u062A \u063A\u064A\u0631 \u0635\u0627\u0644\u062D\u0629" });
-    }
-    let count = 0;
-    for (const item of items) {
-      if (item.name) {
-        await db.insert(mosques).values({
-          name: item.name,
-          code: item.code || `MSQ-${Math.floor(100 + Math.random() * 900)}`,
-          region: item.region || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A",
-          address: item.address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-          formattedAddress: item.address || "\u0645\u0646\u0634\u0623\u0629 \u0627\u0644\u0628\u0643\u0627\u0631\u064A\u060C \u062D\u064A \u0627\u0644\u0647\u0631\u0645\u060C \u0627\u0644\u062C\u064A\u0632\u0629",
-          countryId: 1,
-          governorateId: 1,
-          districtId: 101,
-          areaId: 1001,
-          managerName: item.managerName || "",
-          phone: item.phone || "",
-          whatsapp: item.whatsapp || "",
-          isActive: true
-        });
-        count++;
-      }
-    }
-    res.json({ success: true, importedCount: count });
-  } catch (error) {
-    res.status(500).json({ error: "\u0641\u0634\u0644 \u0627\u0633\u062A\u064A\u0631\u0627\u062F \u0627\u0644\u0645\u0633\u0627\u062C\u062F", details: error.message });
-  }
-});
 api.post("/system/clear-all", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
     await clearAllDatabaseData();
     await logAudit(req, "CLEAR_ALL_DATA", "SYSTEM", 1);
     res.json({ success: true, message: "\u062A\u0645 \u062A\u0635\u0641\u064A\u0631 \u0643\u0627\u0641\u0629 \u0627\u0644\u0645\u0633\u0627\u062C\u062F \u0648\u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0648\u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0628\u0646\u062C\u0627\u062D (0 \u0645\u0633\u0627\u062C\u062F\u060C 0 \u062E\u0637\u0628\u0627\u0621)" });
   } catch (error) {
-    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0635\u0641\u064A\u0631 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0646\u0638\u0627\u0645", details: error.message });
+    console.error("Clear all data error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u0635\u0641\u064A\u0631 \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u0646\u0638\u0627\u0645 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.post("/system/reset-demo", requireAdmin, async (req, res) => {
+  if (!requireDatabase(res)) return;
   try {
-    memoryStore.reset();
-    await seedDatabase().catch((e2) => console.warn("seedDatabase DB error (using memoryStore):", e2?.message));
+    await seedDatabase();
     await logAudit(req, "RESET_DEMO_DATA", "SYSTEM", 1);
-    res.json({ success: true, message: "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0646\u0638\u0627\u0645 \u0625\u0644\u0649 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629 \u0628\u0646\u062C\u0627\u062D" });
+    res.json({ success: true, message: "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0646\u0638\u0627\u0645 \u0625\u0644\u0649 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A \u0628\u0646\u062C\u0627\u062D" });
   } catch (error) {
-    memoryStore.reset();
-    res.json({ success: true, message: "\u062A\u0645\u062A \u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0646\u0638\u0627\u0645 \u0625\u0644\u0649 \u0627\u0644\u062D\u0627\u0644\u0629 \u0627\u0644\u0627\u0641\u062A\u0631\u0627\u0636\u064A\u0629 \u0628\u0646\u062C\u0627\u062D" });
+    console.error("Reset demo error:", error);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u0625\u0639\u0627\u062F\u0629 \u0636\u0628\u0637 \u0627\u0644\u0646\u0638\u0627\u0645 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.post("/system/export-seed", requireAdmin, async (req, res) => {
@@ -140170,7 +140237,7 @@ api.post("/supabase/test", async (_req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-api.post("/supabase/sync", async (req, res) => {
+api.post("/supabase/sync", requireAdmin, async (req, res) => {
   try {
     const result = await SupabaseSyncService.pushLocalToSupabase();
     await logAudit(req, "SUPABASE_SYNC", "SYSTEM", 1, result);

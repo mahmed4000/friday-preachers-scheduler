@@ -1,9 +1,23 @@
+let inMemoryToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  inMemoryToken = token;
+}
+
+export function getAuthToken(): string | null {
+  return inMemoryToken;
+}
+
 export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const url = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   
   const headers = new Headers(options.headers || {});
   if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
+  }
+
+  if (inMemoryToken && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${inMemoryToken}`);
   }
 
   const controller = new AbortController();
@@ -16,6 +30,7 @@ export async function fetchApi<T>(endpoint: string, options: RequestInit = {}): 
   try {
     response = await fetch(url, {
       ...options,
+      credentials: options.credentials || 'same-origin',
       headers,
       signal: options.signal || controller.signal,
     });

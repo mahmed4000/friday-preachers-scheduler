@@ -201,27 +201,37 @@ export function ScheduleReviewBoard({
   // Handler: Manual Assignment Change
   const handleSaveCellChange = async (newImamId: number | null, reason: string, isOverride: boolean) => {
     if (!activeAssignment || !selectedCell) return;
-    await fetchApi(`/api/schedules/${schedule.id}/assignment`, {
-      method: 'POST',
-      body: JSON.stringify({
-        assignmentId: activeAssignment.id,
-        mosqueId: selectedCell.mosqueId,
-        fridayIndex: selectedCell.fridayIndex,
-        newImamId,
-        reason,
-        isOverride,
-      }),
-    });
-    onRefreshData();
+    try {
+      await fetchApi(`/api/schedules/${schedule.id}/assignment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          assignmentId: activeAssignment.id,
+          mosqueId: selectedCell.mosqueId,
+          fridayIndex: selectedCell.fridayIndex,
+          newImamId,
+          reason,
+          isOverride,
+        }),
+      });
+      onRefreshData();
+    } catch (err: any) {
+      setActionError(err.message || 'تعذر تعديل التعيين في الخادم');
+      setTimeout(() => setActionError(null), 5000);
+    }
   };
 
   // Handler: Toggle Lock
   const handleToggleLock = async (assignmentId: number) => {
-    await fetchApi(`/api/schedules/${schedule.id}/lock-toggle`, {
-      method: 'POST',
-      body: JSON.stringify({ assignmentId }),
-    });
-    onRefreshData();
+    try {
+      await fetchApi(`/api/schedules/${schedule.id}/lock-toggle`, {
+        method: 'POST',
+        body: JSON.stringify({ assignmentId }),
+      });
+      onRefreshData();
+    } catch (err: any) {
+      setActionError(err.message || 'تعذر تغيير حالة القفل في الخادم');
+      setTimeout(() => setActionError(null), 5000);
+    }
   };
 
   // Handler: Redistribute

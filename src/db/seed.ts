@@ -56,13 +56,8 @@ export async function seedDatabase() {
   const existingCountries = await db.select().from(countries);
   if (existingCountries.length === 0) {
     await db.insert(countries).values({
-      id: 1,
       code: 'EG',
       nameAr: 'جمهورية مصر العربية',
-      nameEn: 'Arab Republic of Egypt',
-      defaultTimezone: 'Africa/Cairo',
-      isDefault: true,
-      isActive: true,
     }).onConflictDoNothing();
     console.log('تم إدراج جمهورية مصر العربية في جدول الدول.');
   }
@@ -72,37 +67,17 @@ export async function seedDatabase() {
   if (existingUnits.length === 0) {
     for (const gov of EGYPT_GOVERNORATES) {
       await db.insert(administrativeUnits).values({
-        id: gov.id,
         countryId: gov.countryId,
-        parentId: gov.parentId,
         level: gov.level,
-        type: gov.type,
-        code: gov.code,
         nameAr: gov.nameAr,
-        nameEn: gov.nameEn,
-        postalCode: gov.postalCode,
-        latitude: gov.latitude,
-        longitude: gov.longitude,
-        isActive: gov.isActive,
-        sortOrder: gov.sortOrder,
       }).onConflictDoNothing();
     }
 
     for (const unit of EGYPT_ADMINISTRATIVE_UNITS) {
       await db.insert(administrativeUnits).values({
-        id: unit.id,
         countryId: unit.countryId,
-        parentId: unit.parentId,
         level: unit.level,
-        type: unit.type,
-        code: unit.code,
         nameAr: unit.nameAr,
-        nameEn: unit.nameEn,
-        postalCode: unit.postalCode,
-        latitude: unit.latitude,
-        longitude: unit.longitude,
-        isActive: unit.isActive,
-        sortOrder: unit.sortOrder,
       }).onConflictDoNothing();
     }
     console.log(`تم إدراج التقسيمات الإدارية المصرية (${EGYPT_GOVERNORATES.length + EGYPT_ADMINISTRATIVE_UNITS.length} وحدة إدارية).`);

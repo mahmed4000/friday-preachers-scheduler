@@ -23,6 +23,7 @@ import { ReportsView } from './components/reports/ReportsView.tsx';
 import { AuditLogsView } from './components/audit/AuditLogsView.tsx';
 import { SettingsView } from './components/settings/SettingsView.tsx';
 import { SupabaseCloudSettings } from './components/settings/SupabaseCloudSettings.tsx';
+import { LoginModal } from './components/auth/LoginModal.tsx';
 import { MosqueProfileView, clearMosqueProfileCache } from './components/profiles/MosqueProfileView.tsx';
 import { ImamProfileView } from './components/profiles/ImamProfileView.tsx';
 import { ProfileNavigationContext } from './context/ProfileNavigationContext.tsx';
@@ -148,11 +149,10 @@ export default function App() {
       localStorage.setItem('sharia_org_settings', JSON.stringify(saved));
       setToastMessage({ text: 'تم حفظ إعدادات وهوية الجمعية بنجاح!', type: 'success' });
       setTimeout(() => setToastMessage(null), 4000);
-    } catch {
-      setOrganizationSettings(newSettings);
-      localStorage.setItem('sharia_org_settings', JSON.stringify(newSettings));
-      setToastMessage({ text: 'تم حفظ إعدادات الجمعية محلياً', type: 'success' });
-      setTimeout(() => setToastMessage(null), 4000);
+    } catch (err: any) {
+      console.error('Failed to save settings to server:', err);
+      setToastMessage({ text: err.message || 'تعذر حفظ إعدادات وهوية الجمعية في الخادم', type: 'error' });
+      setTimeout(() => setToastMessage(null), 5000);
     }
   };
 
@@ -338,13 +338,13 @@ export default function App() {
     } catch (err) {
       console.warn('Error fetching schedule details, checking seed data:', err);
     }
-    // Fallback to seed schedule if match
-    const seedSched = initialSeed.monthlySchedules?.find((s: any) => s.id === scheduleId) || initialSeed.monthlySchedules?.[0];
+    // Fallback to seed schedule only if ID matches an existing seed schedule
+    const seedSched = initialSeed.monthlySchedules?.find((s: any) => s.id === scheduleId);
     if (seedSched) {
       setActiveScheduleData({
         schedule: seedSched as any,
-        fridays: (initialSeed.fridays || []) as any,
-        assignments: (initialSeed.assignments || []) as any,
+        fridays: ((initialSeed.fridays || []) as any).filter((f: any) => f.scheduleId === scheduleId),
+        assignments: ((initialSeed.assignments || []) as any).filter((a: any) => a.scheduleId === scheduleId),
         conflicts: [],
         overrides: [],
       });
@@ -820,6 +820,9 @@ export default function App() {
         imam={editingImam}
         onSaved={handleImamSaved}
       />
+
+      {/* 5. Authentication & Login Modal */}
+      <LoginModal />
     </div>
     </ProfileNavigationContext.Provider>
   );

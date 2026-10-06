@@ -38,9 +38,24 @@ console.log('--- بدء اختبارات تشديد الأمان والمصاد�
   });
 
   assert.strictEqual(nextCalled, false, 'requireAdmin must not call next() without confirmation or secret');
-  assert.strictEqual(getStatus(), 403, 'requireAdmin must respond with 403 Forbidden');
+  assert.strictEqual(getStatus(), 401, 'requireAdmin must respond with 401 Unauthorized for unauthenticated requests');
   assert.ok(getJson()?.error, 'requireAdmin must return error message');
-  console.log('✅ [PASS] 1. requireAdmin يرفض الطلبات غير المصرحة برمز 403 Forbidden');
+  console.log('✅ [PASS] 1. requireAdmin يرفض الطلبات غير المصادقة برمز 401 Unauthorized');
+}
+
+// 1b. Test requireAdmin blocks authenticated non-admin with 403 Forbidden
+{
+  const { req, res, getStatus, getJson } = createMockReqRes();
+  req.user = { uid: 'u1', email: 'viewer@aljameya.org', role: 'viewer', name: 'مشاهد' };
+  let nextCalled = false;
+  requireAdmin(req, res, () => {
+    nextCalled = true;
+  });
+
+  assert.strictEqual(nextCalled, false, 'requireAdmin must not call next() for non-admin user');
+  assert.strictEqual(getStatus(), 403, 'requireAdmin must respond with 403 Forbidden for non-admin user');
+  assert.ok(getJson()?.error, 'requireAdmin must return error message');
+  console.log('✅ [PASS] 1b. requireAdmin يرفض المستخدم غير المصرح له برمز 403 Forbidden');
 }
 
 // 2. Test requireAdmin accepts x-admin-action confirmation in dev
@@ -80,3 +95,4 @@ console.log('--- بدء اختبارات تشديد الأمان والمصاد�
 }
 
 console.log('--- اكتملت جميع اختبارات تشديد الأمان بنجاح 4/4 ---');
+process.exit(0);
