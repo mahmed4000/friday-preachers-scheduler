@@ -21,6 +21,7 @@ import {
   X,
   Layers,
   ShieldAlert,
+  Users2,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { fetchApi } from '../../lib/api.ts';
@@ -69,7 +70,7 @@ export function ImportWizardModal({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Table Preview Filters
-  const [previewFilter, setPreviewFilter] = useState<'ALL' | 'NEW' | 'UPDATE' | 'NEEDS_REVIEW' | 'ERROR'>('ALL');
+  const [previewFilter, setPreviewFilter] = useState<'ALL' | 'NEW' | 'UPDATE' | 'DUPLICATES' | 'NEEDS_REVIEW' | 'ERROR'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedRowDetail, setSelectedRowDetail] = useState<ParsedImportRow | null>(null);
 
@@ -223,9 +224,91 @@ export function ImportWizardModal({
     XLSX.writeFile(wb, `import-errors-${executeResult.batchId}.xlsx`);
   };
 
+  const handleBulkDuplicateResolution = (resolution: 'MERGE' | 'DUPLICATE') => {
+    if (!previewResult) return;
+    const updatedRows = previewResult.rows.map((row) => {
+      if (row.duplicateMatch?.isDuplicate) {
+        if (resolution === 'MERGE') {
+          return {
+            ...row,
+            resolution: 'MERGE' as const,
+            status: 'UPDATE' as const,
+            targetId: row.duplicateMatch.existingRecord?.id || row.targetId,
+          };
+        } else {
+          return {
+            ...row,
+            resolution: 'DUPLICATE' as const,
+            status: 'NEW' as const,
+            targetId: undefined,
+          };
+        }
+      }
+      return row;
+    });
+
+    const newCount = updatedRows.filter((r) => r.status === 'NEW').length;
+    const updateCount = updatedRows.filter((r) => r.status === 'UPDATE').length;
+    const reviewCount = updatedRows.filter((r) => r.status === 'NEEDS_REVIEW').length;
+    const errorCount = updatedRows.filter((r) => r.status === 'ERROR').length;
+
+    setPreviewResult({
+      ...previewResult,
+      rows: updatedRows,
+      newCount,
+      updateCount,
+      reviewCount,
+      errorCount,
+    });
+  };
+
+  const handleRowDuplicateResolution = (rowNumber: number, resolution: 'MERGE' | 'DUPLICATE') => {
+    if (!previewResult) return;
+    const updatedRows = previewResult.rows.map((row) => {
+      if (row.rowNumber === rowNumber) {
+        if (resolution === 'MERGE') {
+          return {
+            ...row,
+            resolution: 'MERGE' as const,
+            status: 'UPDATE' as const,
+            targetId: row.duplicateMatch?.existingRecord?.id || row.targetId,
+          };
+        } else {
+          return {
+            ...row,
+            resolution: 'DUPLICATE' as const,
+            status: 'NEW' as const,
+            targetId: undefined,
+          };
+        }
+      }
+      return row;
+    });
+
+    const newCount = updatedRows.filter((r) => r.status === 'NEW').length;
+    const updateCount = updatedRows.filter((r) => r.status === 'UPDATE').length;
+    const reviewCount = updatedRows.filter((r) => r.status === 'NEEDS_REVIEW').length;
+    const errorCount = updatedRows.filter((r) => r.status === 'ERROR').length;
+
+    setPreviewResult({
+      ...previewResult,
+      rows: updatedRows,
+      newCount,
+      updateCount,
+      reviewCount,
+      errorCount,
+    });
+  };
+
   // Filtered rows for Preview
   const filteredRows = (previewResult?.rows || []).filter((r) => {
-    const matchFilter = previewFilter === 'ALL' || r.status === previewFilter;
+    let matchFilter = true;
+    if (previewFilter === 'DUPLICATES') {
+      matchFilter = Boolean(r.duplicateMatch?.isDuplicate);
+    } else if (previewFilter !== 'ALL') {
+      matchFilter = r.status === previewFilter;
+    }
+
     const matchSearch =
       !searchTerm ||
       r.displayName.includes(searchTerm) ||
@@ -463,7 +546,7 @@ export function ImportWizardModal({
         {step === 3 && previewResult && (
           <div className="space-y-4">
             {/* Top Counters Bar */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-center">
               <div
                 onClick={() => setPreviewFilter('ALL')}
                 className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
@@ -495,6 +578,16 @@ export function ImportWizardModal({
               </div>
 
               <div
+                onClick={() => setPreviewFilter('DUPLICATES')}
+                className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
+                  previewFilter === 'DUPLICATES' ? 'bg-amber-600 text-white border-amber-600 shadow-2xs' : 'bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100'
+                }`}
+              >
+                <span className="block text-[11px]">أسماء مكررة</span>
+                <span className="text-lg font-bold font-mono">{previewResult.duplicateCount || 0}</span>
+              </div>
+
+              <div
                 onClick={() => setPreviewFilter('NEEDS_REVIEW')}
                 className={`p-2.5 rounded-xl border cursor-pointer transition-all ${
                   previewFilter === 'NEEDS_REVIEW' ? 'bg-amber-800 text-white border-amber-800 shadow-2xs' : 'bg-amber-50/70 border-amber-200 text-amber-900 hover:bg-amber-100'
@@ -514,6 +607,46 @@ export function ImportWizardModal({
                 <span className="text-lg font-bold font-mono">✕ {previewResult.errorCount}</span>
               </div>
             </div>
+
+            {/* Duplicate Names Prompt Banner */}
+            {Boolean(previewResult.duplicateCount && previewResult.duplicateCount > 0) && (
+              <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl p-3.5 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">
+                    <Users2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h5 className="font-bold text-amber-950 font-heading text-xs sm:text-sm flex items-center gap-1.5">
+                      <span>تنبيه: تم اكتشاف {previewResult.duplicateCount} اسم مكرر أثناء فحص الملف</span>
+                    </h5>
+                    <p className="text-[11px] text-amber-900 mt-0.5 leading-relaxed">
+                      هل ترغب في <strong>دمج البيانات (Merge)</strong> مع السجلات الموجودة لتحديثها، أم <strong>السماح بالتكرار (Duplicate)</strong> وإضافتها كسجلات جديدة؟ يمكنك الاختيار جماعياً من الأزرار أو تخصيص كل اسم في الجدول أدناه:
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+                  <button
+                    type="button"
+                    onClick={() => handleBulkDuplicateResolution('MERGE')}
+                    className="px-2.5 py-1.5 bg-blue-700 hover:bg-blue-800 text-white font-bold rounded-lg text-xs transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                    title="تطبيق خيار الدمج والتحديث على جميع الأسماء المكررة"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>دمج الكل (Merge)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleBulkDuplicateResolution('DUPLICATE')}
+                    className="px-2.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg text-xs transition-all shadow-2xs flex items-center gap-1 cursor-pointer"
+                    title="تطبيق خيار التكرار وإضافة سجل جديد لجميع الأسماء المكررة"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>تكرار الكل كجديد (Duplicate)</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Mode Selector & Filter Bar */}
             <div className="bg-white p-3 rounded-xl border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-2xs">
@@ -577,25 +710,63 @@ export function ImportWizardModal({
                           </td>
                           <td className="p-2.5 font-mono text-slate-700 text-[11px]">{row.data.phone || '—'}</td>
                           <td className="p-2.5">
-                            {row.status === 'NEW' && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                                ✓ إضافة جديد
-                              </span>
-                            )}
-                            {row.status === 'UPDATE' && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
-                                ↻ تحديث موجود
-                              </span>
-                            )}
-                            {row.status === 'NEEDS_REVIEW' && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                ⚠ مطابقة تقريبية
-                              </span>
-                            )}
-                            {row.status === 'ERROR' && (
-                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
-                                ✕ خطأ بالصف
-                              </span>
+                            {row.duplicateMatch?.isDuplicate ? (
+                              <div className="flex flex-col gap-1 items-start">
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 flex items-center gap-1">
+                                  <AlertTriangle className="w-3 h-3 text-amber-700 shrink-0" />
+                                  <span>اسم مكرر ({row.duplicateMatch.type === 'DB_MATCH' ? 'بالنظام' : `صف #${row.duplicateMatch.existingRecord?.rowNumber}`})</span>
+                                </span>
+
+                                <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRowDuplicateResolution(row.rowNumber, 'MERGE')}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      row.status === 'UPDATE' || row.resolution === 'MERGE'
+                                        ? 'bg-blue-700 text-white shadow-2xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title="دمج البيانات مع السجل الموجود وتحديثه"
+                                  >
+                                    ↻ دمج (Merge)
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRowDuplicateResolution(row.rowNumber, 'DUPLICATE')}
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer ${
+                                      row.status === 'NEW' || row.resolution === 'DUPLICATE'
+                                        ? 'bg-emerald-700 text-white shadow-2xs'
+                                        : 'text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title="السماح بالتكرار وإضافة سجل جديد"
+                                  >
+                                    ＋ تكرار (Duplicate)
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                {row.status === 'NEW' && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                    ✓ إضافة جديد
+                                  </span>
+                                )}
+                                {row.status === 'UPDATE' && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200">
+                                    ↻ تحديث موجود
+                                  </span>
+                                )}
+                                {row.status === 'NEEDS_REVIEW' && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                    ⚠ مطابقة تقريبية
+                                  </span>
+                                )}
+                                {row.status === 'ERROR' && (
+                                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200">
+                                    ✕ خطأ بالصف
+                                  </span>
+                                )}
+                              </>
                             )}
                           </td>
                           <td className="p-2.5 text-center">
@@ -731,6 +902,60 @@ export function ImportWizardModal({
                 </div>
               )}
             </div>
+
+            {selectedRowDetail.duplicateMatch?.isDuplicate && (
+              <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-950 flex items-center gap-1.5 text-xs">
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                    <span>تطابق اسم مكرر ({selectedRowDetail.duplicateMatch.type === 'DB_MATCH' ? 'مسجل مسبقاً في النظام' : `مكرر مع الصف #${selectedRowDetail.duplicateMatch.existingRecord?.rowNumber}`})</span>
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-200 text-amber-900 border border-amber-300">
+                    {selectedRowDetail.status === 'UPDATE' ? 'الإجراء الحالي: دمج' : 'الإجراء الحالي: تكرار كجديد'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-900 bg-white/70 p-2 rounded-lg border border-amber-200 space-y-0.5">
+                  <p>الاسم المطابق: <strong className="text-slate-900">{selectedRowDetail.duplicateMatch.existingRecord?.name}</strong></p>
+                  {selectedRowDetail.duplicateMatch.existingRecord?.code && (
+                    <p>الكود: <strong className="font-mono">{selectedRowDetail.duplicateMatch.existingRecord.code}</strong></p>
+                  )}
+                  {selectedRowDetail.duplicateMatch.existingRecord?.phone && (
+                    <p>الهاتف: <strong className="font-mono">{selectedRowDetail.duplicateMatch.existingRecord.phone}</strong></p>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="text-[11px] font-bold text-slate-700">تغيير الإجراء لهذا الاسم:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRowDuplicateResolution(selectedRowDetail.rowNumber, 'MERGE');
+                      setSelectedRowDetail((prev) => prev ? { ...prev, status: 'UPDATE', resolution: 'MERGE' } : null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs cursor-pointer transition-all ${
+                      selectedRowDetail.status === 'UPDATE' || selectedRowDetail.resolution === 'MERGE'
+                        ? 'bg-blue-700 text-white shadow-2xs'
+                        : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ↻ دمج البيانات (Merge)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRowDuplicateResolution(selectedRowDetail.rowNumber, 'DUPLICATE');
+                      setSelectedRowDetail((prev) => prev ? { ...prev, status: 'NEW', resolution: 'DUPLICATE' } : null);
+                    }}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs cursor-pointer transition-all ${
+                      selectedRowDetail.status === 'NEW' || selectedRowDetail.resolution === 'DUPLICATE'
+                        ? 'bg-emerald-700 text-white shadow-2xs'
+                        : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    ＋ السماح بالتكرار (Duplicate)
+                  </button>
+                </div>
+              </div>
+            )}
 
             {selectedRowDetail.diffSummary && selectedRowDetail.diffSummary.length > 0 && (
               <div className="space-y-2">

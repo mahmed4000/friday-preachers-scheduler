@@ -44,7 +44,7 @@ import {
   MOSQUE_FIELDS,
   PREACHER_FIELDS,
 } from '../services/importExportService.ts';
-import { ParsedImportRow, ImportPreviewResult } from '../types/importExport.ts';
+import { ParsedImportRow, ImportPreviewResult, DuplicateMatchInfo } from '../types/importExport.ts';
 import * as XLSX from 'xlsx';
 import { SupabaseSyncService, SupabaseRealtimeSync } from '../services/supabaseSyncService.ts';
 import { SupabaseDataService } from '../services/supabaseDataService.ts';
@@ -3467,6 +3467,9 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
     const existingMosques = await db.select().from(mosques);
     const existingImams = await db.select().from(imams);
 
+    const seenFileMosqueNames = new Map<string, { rowNumber: number; displayName: string; code?: string; phone?: string }>();
+    const seenFileImamNames = new Map<string, { rowNumber: number; displayName: string; phone?: string }>();
+
     const parsedRows: ParsedImportRow[] = [];
     let newCount = 0;
     let updateCount = 0;
@@ -3539,9 +3542,25 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           if (existing) matchedBy = 'NAME_ADDRESS';
         }
 
+        let duplicateMatch: DuplicateMatchInfo | undefined = undefined;
+        let resolution: 'MERGE' | 'DUPLICATE' | undefined = undefined;
+        const normMosqueName = name ? normalizeArabicText(name) : '';
+
         if (existing) {
           status = 'UPDATE';
           targetId = existing.id;
+          resolution = 'MERGE';
+          duplicateMatch = {
+            isDuplicate: true,
+            type: 'DB_MATCH',
+            matchedField: matchedBy === 'CODE' ? 'CODE' : 'NAME',
+            existingRecord: {
+              id: existing.id,
+              name: existing.name,
+              code: existing.code,
+              phone: existing.phone,
+            },
+          };
           if (!code) code = existing.code;
 
           // Diff calculation (Blank != Delete)
@@ -3557,11 +3576,37 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           if (adminMatch.governorateId !== existing.governorateId) {
             diffSummary.push({ field: 'governorateId', label: 'المحافظة', oldValue: existing.region || '—', newValue: adminMatch.governorateName });
           }
+        } else if (normMosqueName && seenFileMosqueNames.has(normMosqueName)) {
+          const prevRow = seenFileMosqueNames.get(normMosqueName)!;
+          status = 'NEEDS_REVIEW';
+          resolution = 'DUPLICATE';
+          duplicateMatch = {
+            isDuplicate: true,
+            type: 'IN_FILE_MATCH',
+            matchedField: 'NAME',
+            existingRecord: {
+              rowNumber: prevRow.rowNumber,
+              name: prevRow.displayName,
+              code: prevRow.code,
+              phone: prevRow.phone,
+            },
+          };
+          warnings.push(`الاسم مكرر في الملف مع الصف #${prevRow.rowNumber}`);
         } else {
           status = adminMatch.needsReview ? 'NEEDS_REVIEW' : 'NEW';
+          resolution = 'DUPLICATE';
           if (!code) {
             code = `MSQ-${Math.floor(100 + Math.random() * 900)}`;
           }
+        }
+
+        if (normMosqueName) {
+          seenFileMosqueNames.set(normMosqueName, {
+            rowNumber: rowNum,
+            displayName: name,
+            code,
+            phone: mappedData.phone,
+          });
         }
 
         if (errors.length > 0) {
@@ -3601,6 +3646,8 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           adminMatch,
           errors,
           warnings,
+          duplicateMatch,
+          resolution,
         });
       } else {
         // PREACHERS (IMAMS)
@@ -3633,9 +3680,25 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           if (existing) matchedBy = 'NAME_PHONE';
         }
 
+        let duplicateMatch: DuplicateMatchInfo | undefined = undefined;
+        let resolution: 'MERGE' | 'DUPLICATE' | undefined = undefined;
+        const normImamName = name ? normalizeArabicText(name) : '';
+
         if (existing) {
           status = 'UPDATE';
           targetId = existing.id;
+          resolution = 'MERGE';
+          duplicateMatch = {
+            isDuplicate: true,
+            type: 'DB_MATCH',
+            matchedField: matchedBy === 'CODE' ? 'CODE' : matchedBy === 'PHONE' ? 'PHONE' : 'NAME',
+            existingRecord: {
+              id: existing.id,
+              name: existing.name,
+              code: (existing as any).code,
+              phone: existing.phone,
+            },
+          };
           if (name && name !== existing.name) {
             diffSummary.push({ field: 'name', label: 'اسم الخطيب', oldValue: existing.name, newValue: name });
           }
@@ -3645,11 +3708,35 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           if (mappedData.type && mappedData.type !== existing.type) {
             diffSummary.push({ field: 'type', label: 'نوع الخطيب', oldValue: existing.type, newValue: mappedData.type });
           }
+        } else if (normImamName && seenFileImamNames.has(normImamName)) {
+          const prevRow = seenFileImamNames.get(normImamName)!;
+          status = 'NEEDS_REVIEW';
+          resolution = 'DUPLICATE';
+          duplicateMatch = {
+            isDuplicate: true,
+            type: 'IN_FILE_MATCH',
+            matchedField: 'NAME',
+            existingRecord: {
+              rowNumber: prevRow.rowNumber,
+              name: prevRow.displayName,
+              phone: prevRow.phone,
+            },
+          };
+          warnings.push(`الاسم مكرر في الملف مع الصف #${prevRow.rowNumber}`);
         } else {
           status = adminMatch.needsReview ? 'NEEDS_REVIEW' : 'NEW';
+          resolution = 'DUPLICATE';
           if (!code) {
             code = `PRE-${Math.floor(100 + Math.random() * 900)}`;
           }
+        }
+
+        if (normImamName) {
+          seenFileImamNames.set(normImamName, {
+            rowNumber: rowNum,
+            displayName: name,
+            phone: cleanPhone,
+          });
         }
 
         if (errors.length > 0) {
@@ -3701,6 +3788,8 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
           adminMatch,
           errors,
           warnings,
+          duplicateMatch,
+          resolution,
         });
       }
     }
@@ -3715,6 +3804,7 @@ api.post('/import-export/preview', requireAuth, async (req: AuthRequest, res: Re
       updateCount,
       reviewCount,
       errorCount,
+      duplicateCount: parsedRows.filter((r) => r.duplicateMatch?.isDuplicate).length,
       columnMappings,
       unmappedHeaders: [],
       rows: parsedRows,

@@ -33,6 +33,19 @@ export interface AdministrativeMatchResult {
   };
 }
 
+export interface DuplicateMatchInfo {
+  isDuplicate: boolean;
+  type: 'DB_MATCH' | 'IN_FILE_MATCH';
+  matchedField: 'NAME' | 'PHONE' | 'CODE';
+  existingRecord?: {
+    id?: number;
+    name: string;
+    code?: string;
+    phone?: string;
+    rowNumber?: number;
+  };
+}
+
 export interface ParsedImportRow {
   rowNumber: number;
   raw: Record<string, any>;
@@ -52,6 +65,8 @@ export interface ParsedImportRow {
   errors: string[];
   warnings: string[];
   userReviewConfirmed?: boolean;
+  duplicateMatch?: DuplicateMatchInfo;
+  resolution?: 'MERGE' | 'DUPLICATE';
 }
 
 export interface ImportPreviewResult {
@@ -64,6 +79,7 @@ export interface ImportPreviewResult {
   updateCount: number;
   reviewCount: number;
   errorCount: number;
+  duplicateCount?: number;
   columnMappings: ColumnMappingItem[];
   unmappedHeaders: string[];
   rows: ParsedImportRow[];

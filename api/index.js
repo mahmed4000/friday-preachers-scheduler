@@ -139332,6 +139332,8 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
     }
     const existingMosques = await db.select().from(mosques);
     const existingImams = await db.select().from(imams);
+    const seenFileMosqueNames = /* @__PURE__ */ new Map();
+    const seenFileImamNames = /* @__PURE__ */ new Map();
     const parsedRows = [];
     let newCount = 0;
     let updateCount = 0;
@@ -139392,9 +139394,24 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           existing = existingMosques.find((m2) => normalizeArabicText(m2.name) === normName);
           if (existing) matchedBy = "NAME_ADDRESS";
         }
+        let duplicateMatch = void 0;
+        let resolution = void 0;
+        const normMosqueName = name ? normalizeArabicText(name) : "";
         if (existing) {
           status = "UPDATE";
           targetId = existing.id;
+          resolution = "MERGE";
+          duplicateMatch = {
+            isDuplicate: true,
+            type: "DB_MATCH",
+            matchedField: matchedBy === "CODE" ? "CODE" : "NAME",
+            existingRecord: {
+              id: existing.id,
+              name: existing.name,
+              code: existing.code,
+              phone: existing.phone
+            }
+          };
           if (!code) code = existing.code;
           if (name && name !== existing.name) {
             diffSummary.push({ field: "name", label: "\u0627\u0633\u0645 \u0627\u0644\u0645\u0633\u062C\u062F", oldValue: existing.name, newValue: name });
@@ -139408,11 +139425,36 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           if (adminMatch.governorateId !== existing.governorateId) {
             diffSummary.push({ field: "governorateId", label: "\u0627\u0644\u0645\u062D\u0627\u0641\u0638\u0629", oldValue: existing.region || "\u2014", newValue: adminMatch.governorateName });
           }
+        } else if (normMosqueName && seenFileMosqueNames.has(normMosqueName)) {
+          const prevRow = seenFileMosqueNames.get(normMosqueName);
+          status = "NEEDS_REVIEW";
+          resolution = "DUPLICATE";
+          duplicateMatch = {
+            isDuplicate: true,
+            type: "IN_FILE_MATCH",
+            matchedField: "NAME",
+            existingRecord: {
+              rowNumber: prevRow.rowNumber,
+              name: prevRow.displayName,
+              code: prevRow.code,
+              phone: prevRow.phone
+            }
+          };
+          warnings.push(`\u0627\u0644\u0627\u0633\u0645 \u0645\u0643\u0631\u0631 \u0641\u064A \u0627\u0644\u0645\u0644\u0641 \u0645\u0639 \u0627\u0644\u0635\u0641 #${prevRow.rowNumber}`);
         } else {
           status = adminMatch.needsReview ? "NEEDS_REVIEW" : "NEW";
+          resolution = "DUPLICATE";
           if (!code) {
             code = `MSQ-${Math.floor(100 + Math.random() * 900)}`;
           }
+        }
+        if (normMosqueName) {
+          seenFileMosqueNames.set(normMosqueName, {
+            rowNumber: rowNum,
+            displayName: name,
+            code,
+            phone: mappedData.phone
+          });
         }
         if (errors.length > 0) {
           status = "ERROR";
@@ -139449,7 +139491,9 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           diffSummary,
           adminMatch,
           errors,
-          warnings
+          warnings,
+          duplicateMatch,
+          resolution
         });
       } else {
         const name = mappedData.name || "";
@@ -139476,9 +139520,24 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           existing = existingImams.find((i2) => normalizeArabicText(i2.name) === normName);
           if (existing) matchedBy = "NAME_PHONE";
         }
+        let duplicateMatch = void 0;
+        let resolution = void 0;
+        const normImamName = name ? normalizeArabicText(name) : "";
         if (existing) {
           status = "UPDATE";
           targetId = existing.id;
+          resolution = "MERGE";
+          duplicateMatch = {
+            isDuplicate: true,
+            type: "DB_MATCH",
+            matchedField: matchedBy === "CODE" ? "CODE" : matchedBy === "PHONE" ? "PHONE" : "NAME",
+            existingRecord: {
+              id: existing.id,
+              name: existing.name,
+              code: existing.code,
+              phone: existing.phone
+            }
+          };
           if (name && name !== existing.name) {
             diffSummary.push({ field: "name", label: "\u0627\u0633\u0645 \u0627\u0644\u062E\u0637\u064A\u0628", oldValue: existing.name, newValue: name });
           }
@@ -139488,11 +139547,34 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           if (mappedData.type && mappedData.type !== existing.type) {
             diffSummary.push({ field: "type", label: "\u0646\u0648\u0639 \u0627\u0644\u062E\u0637\u064A\u0628", oldValue: existing.type, newValue: mappedData.type });
           }
+        } else if (normImamName && seenFileImamNames.has(normImamName)) {
+          const prevRow = seenFileImamNames.get(normImamName);
+          status = "NEEDS_REVIEW";
+          resolution = "DUPLICATE";
+          duplicateMatch = {
+            isDuplicate: true,
+            type: "IN_FILE_MATCH",
+            matchedField: "NAME",
+            existingRecord: {
+              rowNumber: prevRow.rowNumber,
+              name: prevRow.displayName,
+              phone: prevRow.phone
+            }
+          };
+          warnings.push(`\u0627\u0644\u0627\u0633\u0645 \u0645\u0643\u0631\u0631 \u0641\u064A \u0627\u0644\u0645\u0644\u0641 \u0645\u0639 \u0627\u0644\u0635\u0641 #${prevRow.rowNumber}`);
         } else {
           status = adminMatch.needsReview ? "NEEDS_REVIEW" : "NEW";
+          resolution = "DUPLICATE";
           if (!code) {
             code = `PRE-${Math.floor(100 + Math.random() * 900)}`;
           }
+        }
+        if (normImamName) {
+          seenFileImamNames.set(normImamName, {
+            rowNumber: rowNum,
+            displayName: name,
+            phone: cleanPhone
+          });
         }
         if (errors.length > 0) {
           status = "ERROR";
@@ -139539,7 +139621,9 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
           diffSummary,
           adminMatch,
           errors,
-          warnings
+          warnings,
+          duplicateMatch,
+          resolution
         });
       }
     }
@@ -139553,6 +139637,7 @@ api.post("/import-export/preview", requireAuth, async (req, res) => {
       updateCount,
       reviewCount,
       errorCount,
+      duplicateCount: parsedRows.filter((r2) => r2.duplicateMatch?.isDuplicate).length,
       columnMappings,
       unmappedHeaders: [],
       rows: parsedRows
