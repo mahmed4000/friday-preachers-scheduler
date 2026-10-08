@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Imam, ImamAvailability } from '../../types/index.ts';
+import { Imam, ImamAvailability, Mosque, MosqueImamRule, RelationshipType } from '../../types/index.ts';
 import { Modal } from '../common/Modal.tsx';
 import {
   Users2,
@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Plus,
   Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api.ts';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
@@ -19,6 +20,7 @@ interface ImamProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
   imam: Imam | null;
+  mosques?: Mosque[];
   onSaved: (updatedImam?: Imam) => void;
 }
 
@@ -26,6 +28,7 @@ export function ImamProfileModal({
   isOpen,
   onClose,
   imam,
+  mosques = [],
   onSaved,
 }: ImamProfileModalProps) {
   const [activeTab, setActiveTab] = useState<'info' | 'limits' | 'availability' | 'mosques'>('info');
@@ -54,6 +57,12 @@ export function ImamProfileModal({
   const [minFridays, setMinFridays] = useState<number>(1);
   const [targetFridays, setTargetFridays] = useState<number>(4);
   const [maxFridays, setMaxFridays] = useState<number>(5);
+
+  // Mosque Linkage & Rules State
+  const [fixedMosqueId, setFixedMosqueId] = useState<number | ''>('');
+  const [rules, setRules] = useState<MosqueImamRule[]>([]);
+  const [selectedPreferredMosque, setSelectedPreferredMosque] = useState<number | ''>('');
+  const [selectedForbiddenMosque, setSelectedForbiddenMosque] = useState<number | ''>('');
 
   // Availabilities
   const [availabilities, setAvailabilities] = useState<ImamAvailability[]>([]);
@@ -91,9 +100,17 @@ export function ImamProfileModal({
       setTargetFridays(imam.targetFridays);
       setMaxFridays(imam.maxFridays);
 
+      setFixedMosqueId(imam.fixedMosqueId ? Number(imam.fixedMosqueId) : '');
+      setSelectedPreferredMosque('');
+      setSelectedForbiddenMosque('');
+
       fetchApi<any>(`/api/imams/${imam.id}`)
         .then((res) => {
           if (res.availabilities) setAvailabilities(res.availabilities);
+          if (res.rules) setRules(res.rules);
+          if (res.fixedMosqueId !== undefined) {
+            setFixedMosqueId(res.fixedMosqueId ? Number(res.fixedMosqueId) : '');
+          }
         })
         .catch(() => {});
     } else {
@@ -120,6 +137,10 @@ export function ImamProfileModal({
       setTargetFridays(4);
       setMaxFridays(5);
       setAvailabilities([]);
+      setFixedMosqueId('');
+      setRules([]);
+      setSelectedPreferredMosque('');
+      setSelectedForbiddenMosque('');
     }
     setActiveTab('info');
     setFeedback(null);
@@ -145,6 +166,61 @@ export function ImamProfileModal({
     }
   };
 
+  // Preference and restriction rules handlers
+  const preferredRules = rules.filter((r) => r.relationshipType === 'PREFERRED').sort((a, b) => a.priority - b.priority);
+  const restrictionRules = rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED');
+
+  const handleAddRule = async (relType: RelationshipType) => {
+    const targetMosqueId = relType === 'PREFERRED' ? selectedPreferredMosque : selectedForbiddenMosque;
+    if (!imam || !targetMosqueId) return;
+    setErrorMessage(null);
+    try {
+      const highestPriority = preferredRules.length > 0 ? Math.max(...preferredRules.map((r) => r.priority)) + 1 : 1;
+      const savedRule = await fetchApi<MosqueImamRule>(`/api/imams/${imam.id}/rules`, {
+        method: 'POST',
+        body: JSON.stringify({
+          mosqueId: Number(targetMosqueId),
+          relationshipType: relType,
+          priority: relType === 'PREFERRED' ? highestPriority : 1,
+        }),
+      });
+
+      const targetMosque = (mosques || []).find((m) => m.id === Number(targetMosqueId));
+      const enrichedSavedRule: MosqueImamRule = {
+        ...savedRule,
+        mosqueId: Number(targetMosqueId),
+        mosque: targetMosque,
+      };
+
+      const nextRules = [...rules.filter((r) => r.mosqueId !== Number(targetMosqueId)), enrichedSavedRule];
+      setRules(nextRules);
+
+      if (relType === 'PREFERRED') {
+        setSelectedPreferredMosque('');
+      } else {
+        setSelectedForbiddenMosque('');
+      }
+      setFeedback('تم حفظ قاعدة الارتباط بالمسجد بنجاح ✓');
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'تعذر إضافة القاعدة');
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: number) => {
+    if (!imam) return;
+    setErrorMessage(null);
+    try {
+      await fetchApi(`/api/imams/${imam.id}/rules/${ruleId}`, { method: 'DELETE' });
+      const nextRules = rules.filter((r) => r.id !== ruleId);
+      setRules(nextRules);
+      setFeedback('تم حذف القاعدة بنجاح ✓');
+      setTimeout(() => setFeedback(null), 3000);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'تعذر حذف القاعدة');
+    }
+  };
+
   const handleSave = async () => {
     setErrorMessage(null);
     if (!name) {
@@ -161,6 +237,7 @@ export function ImamProfileModal({
     setErrorMessage(null);
 
     try {
+      const finalType = fixedMosqueId ? 'FIXED' : type;
       const payload = {
         name,
         phone,
@@ -179,7 +256,8 @@ export function ImamProfileModal({
         longitude,
         isActive,
         notes,
-        type,
+        type: finalType,
+        fixedMosqueId: fixedMosqueId ? Number(fixedMosqueId) : null,
         minFridays: Number(minFridays),
         targetFridays: Number(targetFridays),
         maxFridays: Number(maxFridays),
@@ -198,6 +276,7 @@ export function ImamProfileModal({
         });
       }
 
+      const selectedMosque = fixedMosqueId ? (mosques || []).find((m) => m.id === Number(fixedMosqueId)) : null;
       const confirmedImam: Imam = {
         ...(imam || {}),
         ...savedResponse,
@@ -219,7 +298,13 @@ export function ImamProfileModal({
         longitude,
         isActive,
         notes,
-        type,
+        type: finalType,
+        fixedMosqueId: fixedMosqueId ? Number(fixedMosqueId) : null,
+        fixedMosqueName: selectedMosque?.name || savedResponse?.fixedMosqueName || null,
+        fixedMosqueCode: selectedMosque?.code || savedResponse?.fixedMosqueCode || null,
+        preferencesCount: rules.filter((r) => r.relationshipType === 'PREFERRED').length,
+        forbiddenCount: rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length,
+        linkedMosquesCount: rules.length,
         minFridays: Number(minFridays),
         targetFridays: Number(targetFridays),
         maxFridays: Number(maxFridays),
@@ -227,7 +312,7 @@ export function ImamProfileModal({
 
       // Confirmed server success: notify parent view and display success feedback
       onSaved(confirmedImam);
-      setFeedback('تم حفظ بيانات الخطيب بنجاح ✓');
+      setFeedback('تم حفظ بيانات الخطيب وارتباط المساجد بنجاح ✓');
 
       setTimeout(() => {
         onClose();
@@ -305,7 +390,7 @@ export function ImamProfileModal({
 
           <button
             onClick={() => setActiveTab('limits')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'limits'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -315,10 +400,27 @@ export function ImamProfileModal({
             <span>حدود التوزيع والأحمال</span>
           </button>
 
+          <button
+            onClick={() => setActiveTab('mosques')}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
+              activeTab === 'mosques'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 text-emerald-500" />
+            <span>
+              المساجد والارتباط
+              {fixedMosqueId || rules.length > 0
+                ? ` (${fixedMosqueId ? 'راتب' : ''}${rules.length > 0 ? (fixedMosqueId ? ` + ${rules.length}` : rules.length) : ''})`
+                : ''}
+            </span>
+          </button>
+
           {imam && (
             <button
               onClick={() => setActiveTab('availability')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === 'availability'
                   ? 'bg-slate-900 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -590,6 +692,262 @@ export function ImamProfileModal({
           </div>
         )}
 
+        {/* Tab 4: Mosques & Relationship Rules */}
+        {activeTab === 'mosques' && (
+          <div className="space-y-5">
+            {/* 1. Fixed Mosque Section */}
+            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-800 text-white flex items-center justify-center shrink-0">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 font-heading">
+                      تعيين المسجد الراتب (تثبيت دائم للخطيب)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      عند تحديد مسجد راتب، يتم تثبيت الخطيب تلقائياً في هذا المسجد بكل جمعات الشهر بدلاً من التوزيع العشوائي
+                    </p>
+                  </div>
+                </div>
+                {fixedMosqueId ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-bold text-[10px] border border-emerald-300">
+                    خطيب راتب مثبت ✓
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="pt-1">
+                <label className="block text-xs font-bold text-slate-800 mb-1">
+                  اختر المسجد الراتب المرتبط بالخطيب:
+                </label>
+                <select
+                  value={fixedMosqueId}
+                  onChange={(e) => {
+                    const val = e.target.value ? Number(e.target.value) : '';
+                    setFixedMosqueId(val);
+                    if (val) {
+                      setType('FIXED');
+                    } else if (type === 'FIXED') {
+                      setType('FLEXIBLE');
+                    }
+                  }}
+                  className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                >
+                  <option value="">بدون مسجد راتب (خطيب مرن خاضع للتوزيع العام)</option>
+                  {mosques.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} ({m.code}) — {m.region || 'المنطقة غير محددة'}
+                      {m.fixedImamId && m.fixedImamId !== imam?.id ? ` [مرتبط حالياً بـ: ${m.fixedImamName || 'خطيب آخر'}]` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Informative Mosque Card if selected */}
+              {fixedMosqueId ? (() => {
+                const selectedM = mosques.find((m) => m.id === Number(fixedMosqueId));
+                if (!selectedM) return null;
+                const hasOtherImam = selectedM.fixedImamId && selectedM.fixedImamId !== imam?.id;
+                return (
+                  <div className="p-3 bg-white border border-emerald-200 rounded-lg space-y-2 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-emerald-950 font-heading text-sm">
+                        {selectedM.name}
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                        كود: {selectedM.code}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                      <div>
+                        <strong>المنطقة:</strong> {selectedM.region || 'منشأة البكاري'}
+                      </div>
+                      <div>
+                        <strong>العنوان:</strong> {selectedM.formattedAddress || selectedM.address || '—'}
+                      </div>
+                      {selectedM.managerName && (
+                        <div>
+                          <strong>مشرف المسجد:</strong> {selectedM.managerName}
+                        </div>
+                      )}
+                      {selectedM.phone && (
+                        <div>
+                          <strong>هاتف التواصل:</strong> {selectedM.phone}
+                        </div>
+                      )}
+                    </div>
+
+                    {hasOtherImam && (
+                      <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>
+                          <strong>تنبيه:</strong> هذا المسجد كان مرتبطاً بـ ({selectedM.fixedImamName}). عند الحفظ سيتم نقله رسمياً لفضيلة الشيخ الحالي.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })() : null}
+            </div>
+
+            {/* 2. Preferred Mosques (المساجد المفضلة) */}
+            {imam ? (
+              <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 font-heading">
+                      المساجد المفضلة للخطيب (أولوية التوزيع)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      يمنح محرك الجدولة أولوية عليا (+1000 نقطة) لتكليف الخطيب في هذه المساجد تلقائياً
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-sky-50 text-sky-800 border border-sky-200 text-[10px] font-bold">
+                    {preferredRules.length} مساجد مفضلة
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <select
+                    value={selectedPreferredMosque}
+                    onChange={(e) => setSelectedPreferredMosque(e.target.value ? Number(e.target.value) : '')}
+                    className="flex-1 text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">اختر مسجداً لإضافته إلى قائمة التفضيل...</option>
+                    {mosques
+                      .filter((m) => !preferredRules.some((r) => r.mosqueId === m.id) && m.id !== fixedMosqueId)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.code}) — {m.region || '—'}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedPreferredMosque}
+                    onClick={() => handleAddRule('PREFERRED')}
+                    className="px-3.5 py-2 bg-sky-700 hover:bg-sky-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة تفضيل</span>
+                  </button>
+                </div>
+
+                {preferredRules.length === 0 ? (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-xs text-slate-400">
+                    لا توجد مساجد مفضلة مضافة حالياً.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                    {preferredRules.map((r, idx) => {
+                      const m = r.mosque || mosques.find((x) => x.id === r.mosqueId);
+                      return (
+                        <div key={r.id} className="p-2.5 flex items-center justify-between text-xs bg-white hover:bg-slate-50/50">
+                          <div className="flex items-center gap-2">
+                            <span className="w-5 h-5 rounded-full bg-sky-100 text-sky-800 text-[10px] font-bold flex items-center justify-center shrink-0">
+                              {idx + 1}
+                            </span>
+                            <span className="font-bold text-slate-900">{m?.name || `مسجد #${r.mosqueId}`}</span>
+                            <span className="text-slate-400 font-mono text-[11px]">({m?.code || '—'})</span>
+                            <span className="text-slate-500 text-[11px]">· {m?.region || '—'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRule(r.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                            title="حذف التفضيل"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+
+            {/* 3. Forbidden / Restricted Mosques (المساجد المحظورة / المستبعدة) */}
+            {imam ? (
+              <div className="p-4 bg-white border border-rose-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-rose-950 font-heading">
+                      المساجد المستبعدة / المحظورة (قيد صارم Hard Constraint)
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      قيد قطعي يمنع محرك الجدولة تماماً من تكليف الخطيب في هذه المساجد بأي جمعة
+                    </p>
+                  </div>
+                  <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 text-[10px] font-bold">
+                    {restrictionRules.length} مساجد محظورة
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <select
+                    value={selectedForbiddenMosque}
+                    onChange={(e) => setSelectedForbiddenMosque(e.target.value ? Number(e.target.value) : '')}
+                    className="flex-1 text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                  >
+                    <option value="">اختر مسجداً لإضافته إلى قائمة الاستبعاد / الحظر...</option>
+                    {mosques
+                      .filter((m) => !restrictionRules.some((r) => r.mosqueId === m.id) && m.id !== fixedMosqueId)
+                      .map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.name} ({m.code}) — {m.region || '—'}
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={!selectedForbiddenMosque}
+                    onClick={() => handleAddRule('FORBIDDEN')}
+                    className="px-3.5 py-2 bg-rose-700 hover:bg-rose-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>إضافة استبعاد</span>
+                  </button>
+                </div>
+
+                {restrictionRules.length === 0 ? (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-center text-xs text-slate-400">
+                    لا توجد مساجد مستبعدة مسجلة للخطيب.
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                    {restrictionRules.map((r) => {
+                      const m = r.mosque || mosques.find((x) => x.id === r.mosqueId);
+                      return (
+                        <div key={r.id} className="p-2.5 flex items-center justify-between text-xs bg-rose-50/20 hover:bg-rose-50/40">
+                          <div className="flex items-center gap-2">
+                            <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-900 text-[10px] font-bold">
+                              محظور
+                            </span>
+                            <span className="font-bold text-slate-900">{m?.name || `مسجد #${r.mosqueId}`}</span>
+                            <span className="text-slate-400 font-mono text-[11px]">({m?.code || '—'})</span>
+                            <span className="text-slate-500 text-[11px]">· {m?.region || '—'}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteRule(r.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                            title="إلغاء الاستبعاد"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+
         {/* Sticky Footer Actions (Always visible at the bottom of the modal) */}
         <div className="sticky bottom-0 -mx-3.5 sm:-mx-6 -mb-3.5 sm:-mb-6 p-3 sm:p-4 bg-white/95 backdrop-blur-xs border-t border-slate-200 flex items-center justify-between z-20 shadow-xs">
           <button
@@ -600,7 +958,7 @@ export function ImamProfileModal({
             إلغاء وإغلاق
           </button>
 
-          {(activeTab === 'info' || activeTab === 'limits') && (
+          {(activeTab === 'info' || activeTab === 'limits' || activeTab === 'mosques') && (
             <button
               type="button"
               disabled={saving}

@@ -11,16 +11,19 @@ import {
   Download,
   Upload,
   CheckSquare,
+  Building2,
+  FileText,
+  Sparkles,
+  Smartphone,
 } from 'lucide-react';
 import { Imam, Mosque, MonthlyScheduleData, Assignment, Friday, MonthlySchedule, ProfileAssignmentItem } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { Badge } from '../common/Badge.tsx';
-import { ClickableImam } from '../../context/ProfileNavigationContext.tsx';
+import { ClickableImam, ClickableMosque } from '../../context/ProfileNavigationContext.tsx';
 import { ImportWizardModal } from '../import-export/ImportWizardModal.tsx';
 import { ExportModal } from '../import-export/ExportModal.tsx';
 import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
 import { PreacherMobileCardModal, PreacherCardAssignmentItem } from '../portal/PreacherMobileCardModal.tsx';
-import { FileText, Sparkles, Smartphone } from 'lucide-react';
 
 interface ImamsViewProps {
   imams: Imam[];
@@ -298,6 +301,7 @@ export function ImamsView({
                 <th className="py-3 px-4">كود الخطيب</th>
                 <th className="py-3 px-4">اسم الخطيب</th>
                 <th className="py-3 px-4">النوع والتصنيف</th>
+                <th className="py-3 px-4">المسجد الراتب / الارتباط</th>
                 <th className="py-3 px-4">حدود الجمعات (أدنى / مستهدف / أقصى)</th>
                 <th className="py-3 px-4">رقم الهاتف والتواصل</th>
                 <th className="py-3 px-4">المنطقة والسكن</th>
@@ -308,7 +312,7 @@ export function ImamsView({
             <tbody className="divide-y divide-slate-100">
               {filteredImams.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
                     <Users2 className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                     <p className="text-sm">لا يوجد خطباء مطابقون للبحث</p>
                   </td>
@@ -347,6 +351,44 @@ export function ImamsView({
                         ) : (
                           <Badge variant="default">مرن</Badge>
                         )}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {imam.fixedMosqueId ? (
+                          <div className="space-y-0.5">
+                            <ClickableMosque
+                              id={imam.fixedMosqueId}
+                              name={imam.fixedMosqueName || 'المسجد الراتب'}
+                              code={imam.fixedMosqueCode || ''}
+                              className="font-bold text-emerald-900 hover:text-emerald-700"
+                            />
+                            <div className="flex items-center gap-1">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/80 font-semibold">
+                                <Building2 className="w-2.5 h-2.5 text-amber-600" />
+                                مسجد راتب
+                              </span>
+                              {imam.fixedMosqueCode && (
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  ({imam.fixedMosqueCode})
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-slate-400 text-xs italic">مرن (بدون مسجد راتب)</span>
+                        )}
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          {imam.preferencesCount && imam.preferencesCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-sky-800 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                              ⭐ {imam.preferencesCount} مفضلة
+                            </span>
+                          ) : null}
+                          {imam.forbiddenCount && imam.forbiddenCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-rose-800 bg-rose-50 px-1.5 py-0.2 rounded border border-rose-200">
+                              ⛔ {imam.forbiddenCount} محظورة
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="py-3 px-4 font-mono whitespace-nowrap">
                         <div className="flex items-center gap-1 text-slate-700">

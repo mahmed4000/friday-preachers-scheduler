@@ -837,6 +837,7 @@ export default function App() {
           setEditingImam(null);
         }}
         imam={editingImam}
+        mosques={mosques}
         onSaved={handleImamSaved}
       />
 

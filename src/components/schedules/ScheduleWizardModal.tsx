@@ -98,6 +98,25 @@ export function ScheduleWizardModal({
   const activeMosques = mosques.filter((m) => m.isActive);
   const activeImams = imams.filter((i) => i.isActive);
 
+  // Relationship rules counts
+  const totalPreferences = useMemo(() => {
+    if (rules && rules.length > 0) {
+      return rules.filter((r) => r.relationshipType === 'PREFERRED').length;
+    }
+    const mosquePrefs = mosques.reduce((sum, m) => sum + (m.preferencesCount || 0), 0);
+    const imamPrefs = imams.reduce((sum, i) => sum + (i.preferencesCount || 0), 0);
+    return Math.max(mosquePrefs, imamPrefs);
+  }, [rules, mosques, imams]);
+
+  const totalRestrictions = useMemo(() => {
+    if (rules && rules.length > 0) {
+      return rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length;
+    }
+    const mosqueRestr = mosques.reduce((sum, m) => sum + (m.forbiddenCount || 0), 0);
+    const imamRestr = imams.reduce((sum, i) => sum + (i.forbiddenCount || 0), 0);
+    return Math.max(mosqueRestr, imamRestr);
+  }, [rules, mosques, imams]);
+
   // Health check assessment
   const blockingErrors: string[] = [];
   const warnings: string[] = [];
@@ -166,6 +185,7 @@ export function ScheduleWizardModal({
 
       const newSchedule = await fetchApi<any>('/api/schedules', {
         method: 'POST',
+        timeoutMs: 60000,
         body: JSON.stringify({
           hijriYear,
           hijriMonth,
@@ -183,9 +203,10 @@ export function ScheduleWizardModal({
       setGenerationPhase(4);
       setGenerationLog((prev) => [...prev, '✓ تطبيق التفضيلات وقواعد المنع وعدالة الأحمال...']);
 
-      // 2. Call backend generate
+      // 2. Call backend generate with extended timeout
       const genRes = await fetchApi<any>(`/api/schedules/${newSchedule.id}/generate`, {
         method: 'POST',
+        timeoutMs: 90000,
         body: JSON.stringify({
           distributionMethod,
           seed: `${monthName}-${hijriYear}-V1`,
@@ -200,7 +221,7 @@ export function ScheduleWizardModal({
         '✅ اكتمل التوزيع بنجاح وفق تقويم أم القرى!',
       ]);
 
-      setGenerationResult(genRes.result);
+      setGenerationResult(genRes?.result || genRes);
       setStep(5);
     } catch (err: any) {
       console.error('Schedule generation failed on server:', err);
@@ -669,6 +690,39 @@ export function ScheduleWizardModal({
                   ))}
                 </tbody>
               </table>
+            </div>
+
+            {/* Mosque-Imam Bidirectional Rules Summary Card */}
+            <div className="p-3.5 bg-gradient-to-r from-emerald-50/80 to-sky-50/80 border border-emerald-200/90 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900 font-heading flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-700" />
+                  <span>ترابط الخطباء والمساجد والضوابط المعتمدة</span>
+                </span>
+                <span className="text-[10px] text-emerald-800 bg-emerald-100/70 px-2 py-0.5 rounded-md font-bold">
+                  محسوبة تلقائياً في التوليد ✓
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                <div className="p-2 bg-white rounded-lg border border-slate-200 text-center">
+                  <span className="text-slate-500 text-[10px] block">المساجد الراتبة الثابتة</span>
+                  <span className="text-sm font-bold text-amber-900 font-heading">{fixedMosques.length} مساجد</span>
+                  <span className="text-[9px] text-slate-400 block">قفل حتمي في كل الجمعات</span>
+                </div>
+                <div className="p-2 bg-white rounded-lg border border-slate-200 text-center">
+                  <span className="text-slate-500 text-[10px] block">قواعد التفضيل النشطة</span>
+                  <span className="text-sm font-bold text-sky-800 font-heading">{totalPreferences} تفضيلات</span>
+                  <span className="text-[9px] text-sky-600 block">أولوية عليا (+1000 نقطة)</span>
+                </div>
+                <div className="p-2 bg-white rounded-lg border border-slate-200 text-center">
+                  <span className="text-slate-500 text-[10px] block">الموانع والاستبعادات</span>
+                  <span className="text-sm font-bold text-rose-800 font-heading">{totalRestrictions} قيود مانعة</span>
+                  <span className="text-[9px] text-rose-600 block">قيد قطعي يمنع التكليف</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed pt-0.5">
+                💡 كافة العلاقات المتبادلة (المسجلة في بطاقة المسجد أو ملف الخطيب) يتم مراعاتها وتطبيقها بدقة خوارزمية أثناء التوزيع.
+              </p>
             </div>
 
             {/* Distribution method select */}

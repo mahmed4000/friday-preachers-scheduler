@@ -37192,9 +37192,9 @@ var init_db2 = __esm({
           config = {
             connectionString,
             ssl: connectionString.includes("localhost") || connectionString.includes("127.0.0.1") ? false : { rejectUnauthorized: false },
-            max: 5,
-            connectionTimeoutMillis: 1e4,
-            idleTimeoutMillis: 1e4
+            max: 10,
+            connectionTimeoutMillis: 2e4,
+            idleTimeoutMillis: 3e4
           };
           global._isDbAlive = true;
         } else {
@@ -137369,6 +137369,9 @@ api.post("/mosques", requireAuth, async (req, res) => {
       isActive: true,
       notes: notes || null
     }).returning();
+    if (created.fixedImamId) {
+      await db.update(imams).set({ type: "FIXED", updatedAt: /* @__PURE__ */ new Date() }).where(eq(imams.id, created.fixedImamId));
+    }
     await logAudit(req, "CREATE_MOSQUE", "MOSQUE", created.id, { name, code });
     SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
@@ -137414,7 +137417,21 @@ api.patch("/mosques/:id", requireAuth, async (req, res) => {
     if (data.phone !== void 0) updateValues.phone = data.phone || null;
     if (data.whatsapp !== void 0) updateValues.whatsapp = data.whatsapp || null;
     if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
-    if (data.fixedImamId !== void 0) updateValues.fixedImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
+    if (data.fixedImamId !== void 0) {
+      const targetImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
+      updateValues.fixedImamId = targetImamId;
+      if (targetImamId) {
+        await db.update(imams).set({ type: "FIXED", updatedAt: /* @__PURE__ */ new Date() }).where(eq(imams.id, targetImamId));
+      } else {
+        const [prevMosque] = await db.select({ fixedImamId: mosques.fixedImamId }).from(mosques).where(eq(mosques.id, id));
+        if (prevMosque?.fixedImamId) {
+          const others = await db.select().from(mosques).where(and(eq(mosques.fixedImamId, prevMosque.fixedImamId), ne(mosques.id, id)));
+          if (others.length === 0) {
+            await db.update(imams).set({ type: "FLEXIBLE", updatedAt: /* @__PURE__ */ new Date() }).where(eq(imams.id, prevMosque.fixedImamId));
+          }
+        }
+      }
+    }
     if (data.notes !== void 0) updateValues.notes = data.notes || null;
     updateValues.updatedAt = /* @__PURE__ */ new Date();
     const [updated] = await db.update(mosques).set(updateValues).where(eq(mosques.id, id)).returning();
@@ -137917,6 +137934,14 @@ api.get("/imams", async (req, res) => {
   }
   try {
     const list = await db.select().from(imams).orderBy(asc(imams.id));
+    const allMosques = await db.select().from(mosques);
+    const allRules = await db.select().from(mosqueImamRules);
+    const fixedMosqueByImamId = /* @__PURE__ */ new Map();
+    for (const m2 of allMosques) {
+      if (m2.fixedImamId) {
+        fixedMosqueByImamId.set(m2.fixedImamId, m2);
+      }
+    }
     let filtered = list;
     if (search) {
       filtered = filtered.filter(
@@ -137926,7 +137951,20 @@ api.get("/imams", async (req, res) => {
     if (type && type !== "ALL") {
       filtered = filtered.filter((i2) => i2.type === type);
     }
-    res.json(filtered);
+    const enhanced = filtered.map((i2) => {
+      const fixedM = fixedMosqueByImamId.get(i2.id);
+      const imamRules = allRules.filter((r2) => r2.imamId === i2.id);
+      return {
+        ...i2,
+        fixedMosqueId: fixedM?.id || null,
+        fixedMosqueName: fixedM?.name || null,
+        fixedMosqueCode: fixedM?.code || null,
+        preferencesCount: imamRules.filter((r2) => r2.relationshipType === "PREFERRED").length,
+        forbiddenCount: imamRules.filter((r2) => r2.relationshipType === "FORBIDDEN").length,
+        linkedMosquesCount: imamRules.length
+      };
+    });
+    res.json(enhanced);
   } catch (error) {
     console.error("DB fetch for imams failed:", error?.message);
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
@@ -137952,12 +137990,16 @@ api.get("/imams/:id", async (req, res) => {
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m2) => [m2.id, m2]));
+    const fixedMosque = allMosques.find((m2) => m2.fixedImamId === id);
     const enrichedRules = rules.map((r2) => ({
       ...r2,
       mosque: mosqueMap.get(r2.mosqueId)
     }));
     res.json({
       ...found[0],
+      fixedMosqueId: fixedMosque?.id || null,
+      fixedMosqueName: fixedMosque?.name || null,
+      fixedMosqueCode: fixedMosque?.code || null,
       availabilities,
       rules: enrichedRules
     });
@@ -138082,8 +138124,15 @@ api.get("/imams/:id/profile", async (req, res) => {
       targetFridays: imam.targetFridays,
       maxFridays: imam.maxFridays
     };
+    const fixedMosque = allMosques.find((m2) => m2.fixedImamId === id) || null;
     res.json({
-      imam,
+      imam: {
+        ...imam,
+        fixedMosqueId: fixedMosque?.id || null,
+        fixedMosqueName: fixedMosque?.name || null,
+        fixedMosqueCode: fixedMosque?.code || null
+      },
+      fixedMosque,
       activeSchedule,
       availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules).map((s2) => ({
         id: s2.id,
@@ -138155,7 +138204,7 @@ api.post("/imams", requireAuth, async (req, res) => {
     }
     const [created] = await db.insert(imams).values({
       name,
-      type: type || "FLEXIBLE",
+      type: type || (req.body.fixedMosqueId ? "FIXED" : "FLEXIBLE"),
       minFridays: minFridays ? Number(minFridays) : 1,
       targetFridays: targetFridays ? Number(targetFridays) : 4,
       maxFridays: maxFridays ? Number(maxFridays) : 5,
@@ -138165,6 +138214,10 @@ api.post("/imams", requireAuth, async (req, res) => {
       isActive: true,
       notes: notes || null
     }).returning();
+    if (req.body.fixedMosqueId) {
+      const targetMosqueId = Number(req.body.fixedMosqueId);
+      await db.update(mosques).set({ fixedImamId: created.id, updatedAt: /* @__PURE__ */ new Date() }).where(eq(mosques.id, targetMosqueId));
+    }
     await logAudit(req, "CREATE_IMAM", "IMAM", created.id, { name });
     SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
@@ -138211,17 +138264,88 @@ api.patch("/imams/:id", requireAuth, async (req, res) => {
     if (data.region !== void 0) updateValues.region = data.region || null;
     if (data.isActive !== void 0) updateValues.isActive = Boolean(data.isActive);
     if (data.notes !== void 0) updateValues.notes = data.notes || null;
+    if (data.fixedMosqueId !== void 0) {
+      const targetMosqueId = data.fixedMosqueId ? Number(data.fixedMosqueId) : null;
+      if (targetMosqueId) {
+        await db.update(mosques).set({ fixedImamId: id, updatedAt: /* @__PURE__ */ new Date() }).where(eq(mosques.id, targetMosqueId));
+        await db.update(mosques).set({ fixedImamId: null, updatedAt: /* @__PURE__ */ new Date() }).where(and(eq(mosques.fixedImamId, id), ne(mosques.id, targetMosqueId)));
+        updateValues.type = "FIXED";
+      } else {
+        await db.update(mosques).set({ fixedImamId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(mosques.fixedImamId, id));
+        if (data.type === void 0 || data.type === "FIXED") {
+          updateValues.type = "FLEXIBLE";
+        }
+      }
+    } else if (data.type === "FLEXIBLE") {
+      await db.update(mosques).set({ fixedImamId: null, updatedAt: /* @__PURE__ */ new Date() }).where(eq(mosques.fixedImamId, id));
+    }
     updateValues.updatedAt = /* @__PURE__ */ new Date();
     const [updated] = await db.update(imams).set(updateValues).where(eq(imams.id, id)).returning();
     if (!updated) {
       return res.status(404).json({ error: "\u0627\u0644\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F" });
     }
+    const fixedMosque = await db.select().from(mosques).where(eq(mosques.fixedImamId, id)).limit(1);
     await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
     SupabaseRealtimeSync.syncImam(updated);
-    res.json(updated);
+    res.json({
+      ...updated,
+      fixedMosqueId: fixedMosque[0]?.id || null,
+      fixedMosqueName: fixedMosque[0]?.name || null,
+      fixedMosqueCode: fixedMosque[0]?.code || null
+    });
   } catch (error) {
     console.error("DB patch imam failed:", error?.message);
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062A\u062D\u062F\u064A\u062B \u0628\u064A\u0627\u0646\u0627\u062A \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
+  }
+});
+api.post("/imams/:id/rules", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
+  const imamId = Number(req.params.id);
+  const { mosqueId, relationshipType, priority, notes } = req.body;
+  if (!mosqueId || !relationshipType) {
+    return res.status(400).json({ error: "\u0627\u0644\u0645\u0633\u062C\u062F \u0648\u0646\u0648\u0639 \u0627\u0644\u0639\u0644\u0627\u0642\u0629 \u0645\u0637\u0644\u0648\u0628\u0627\u0646" });
+  }
+  try {
+    const existing = await db.select().from(mosqueImamRules).where(
+      and(eq(mosqueImamRules.mosqueId, Number(mosqueId)), eq(mosqueImamRules.imamId, imamId))
+    );
+    let saved;
+    if (existing[0]) {
+      [saved] = await db.update(mosqueImamRules).set({
+        relationshipType,
+        priority: priority ? Number(priority) : 1,
+        notes
+      }).where(eq(mosqueImamRules.id, existing[0].id)).returning();
+    } else {
+      [saved] = await db.insert(mosqueImamRules).values({
+        mosqueId: Number(mosqueId),
+        imamId,
+        relationshipType,
+        priority: priority ? Number(priority) : 1,
+        notes
+      }).returning();
+    }
+    await logAudit(req, "UPDATE_IMAM_RULE", "IMAM_RULE", saved.id, { mosqueId, imamId, relationshipType });
+    SupabaseRealtimeSync.syncRule(saved);
+    res.json(saved);
+  } catch (error) {
+    console.error("DB imam rule save failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0641\u0638 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u062E\u0637\u064A\u0628 \u0641\u064A \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
+  }
+});
+api.delete("/imams/:id/rules/:ruleId", requireAuth, async (req, res) => {
+  if (!requireDatabase(res)) return;
+  const ruleId = Number(req.params.ruleId);
+  try {
+    const [deleted] = await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: "\u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629" });
+    }
+    SupabaseRealtimeSync.deleteRule(ruleId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("DB imam rule delete failed:", error?.message);
+    res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062D\u0630\u0641 \u0627\u0644\u0642\u0627\u0639\u062F\u0629 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
 api.delete("/imams/:id", requireAdmin, async (req, res) => {
@@ -138533,10 +138657,9 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
       seed: seed || `${schedule.monthName}-${schedule.hijriYear}-V${schedule.currentVersion}`
     });
     await db.transaction(async (tx) => {
-      for (const ea of existingAssignments) {
-        if (!ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)) {
-          await tx.delete(assignments).where(eq(assignments.id, ea.id));
-        }
+      const idsToDelete = existingAssignments.filter((ea) => !ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)).map((ea) => ea.id);
+      if (idsToDelete.length > 0) {
+        await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
       const assignmentsToInsert = result.assignments.filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)).map((a) => ({
@@ -138671,6 +138794,8 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
       distributionMethod: distributionMethod || "Balanced Random"
     });
     await db.transaction(async (tx) => {
+      const updatePromises = [];
+      const newAssignmentsToInsert = [];
       for (const a of result.assignments) {
         if (pastFridayIndices.has(a.fridayIndex)) continue;
         if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
@@ -138678,14 +138803,18 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
         const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
         if (existing) {
           if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
-            await tx.update(assignments).set({
-              imamId: a.imamId,
-              source: a.source,
-              updatedAt: /* @__PURE__ */ new Date()
-            }).where(eq(assignments.id, existing.id));
+            if (existing.imamId !== a.imamId || existing.source !== a.source) {
+              updatePromises.push(
+                tx.update(assignments).set({
+                  imamId: a.imamId,
+                  source: a.source,
+                  updatedAt: /* @__PURE__ */ new Date()
+                }).where(eq(assignments.id, existing.id))
+              );
+            }
           }
         } else {
-          await tx.insert(assignments).values({
+          newAssignmentsToInsert.push({
             scheduleId,
             fridayIndex: a.fridayIndex,
             mosqueId: a.mosqueId,
@@ -138694,6 +138823,12 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
             isLocked: false
           });
         }
+      }
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+      }
+      if (newAssignmentsToInsert.length > 0) {
+        await tx.insert(assignments).values(newAssignmentsToInsert);
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
       if (result.conflicts.length > 0) {

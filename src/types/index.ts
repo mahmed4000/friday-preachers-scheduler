@@ -98,6 +98,12 @@ export interface Imam {
   structuredAddress?: StructuredAddress | null;
   isActive: boolean;
   notes?: string | null;
+  fixedMosqueId?: number | null;
+  fixedMosqueName?: string | null;
+  fixedMosqueCode?: string | null;
+  preferencesCount?: number;
+  forbiddenCount?: number;
+  linkedMosquesCount?: number;
   availabilities?: ImamAvailability[];
   rules?: MosqueImamRule[];
   createdAt?: string | Date;
@@ -348,6 +354,7 @@ export interface ScheduleSummaryItem {
 
 export interface ImamProfileData {
   imam: Imam;
+  fixedMosque?: Mosque | null;
   activeSchedule?: ScheduleSummaryItem | null;
   availableSchedules?: ScheduleSummaryItem[];
   stats: {

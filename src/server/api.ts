@@ -1076,6 +1076,13 @@ api.post('/mosques', requireAuth, async (req: AuthRequest, res: Response) => {
       notes: notes || null,
     }).returning();
 
+    // Bidirectional sync: mark fixed imam as FIXED
+    if (created.fixedImamId) {
+      await db.update(imams)
+        .set({ type: 'FIXED', updatedAt: new Date() })
+        .where(eq(imams.id, created.fixedImamId));
+    }
+
     await logAudit(req, 'CREATE_MOSQUE', 'MOSQUE', created.id, { name, code });
     SupabaseRealtimeSync.syncMosque(created);
     res.status(201).json(created);
@@ -1126,7 +1133,31 @@ api.patch('/mosques/:id', requireAuth, async (req: AuthRequest, res: Response) =
     if (data.phone !== undefined) updateValues.phone = data.phone || null;
     if (data.whatsapp !== undefined) updateValues.whatsapp = data.whatsapp || null;
     if (data.isActive !== undefined) updateValues.isActive = Boolean(data.isActive);
-    if (data.fixedImamId !== undefined) updateValues.fixedImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
+    
+    // Bidirectional sync for fixed imam
+    if (data.fixedImamId !== undefined) {
+      const targetImamId = data.fixedImamId ? Number(data.fixedImamId) : null;
+      updateValues.fixedImamId = targetImamId;
+
+      if (targetImamId) {
+        // Automatically sync imam type to FIXED
+        await db.update(imams)
+          .set({ type: 'FIXED', updatedAt: new Date() })
+          .where(eq(imams.id, targetImamId));
+      } else {
+        // If mosque previously had a fixed imam, check if they are fixed in other mosques
+        const [prevMosque] = await db.select({ fixedImamId: mosques.fixedImamId }).from(mosques).where(eq(mosques.id, id));
+        if (prevMosque?.fixedImamId) {
+          const others = await db.select().from(mosques).where(and(eq(mosques.fixedImamId, prevMosque.fixedImamId), ne(mosques.id, id)));
+          if (others.length === 0) {
+            await db.update(imams)
+              .set({ type: 'FLEXIBLE', updatedAt: new Date() })
+              .where(eq(imams.id, prevMosque.fixedImamId));
+          }
+        }
+      }
+    }
+
     if (data.notes !== undefined) updateValues.notes = data.notes || null;
     updateValues.updatedAt = new Date();
 
@@ -1735,6 +1766,17 @@ api.get('/imams', async (req: Request, res: Response) => {
 
   try {
     const list = await db.select().from(imams).orderBy(asc(imams.id));
+    const allMosques = await db.select().from(mosques);
+    const allRules = await db.select().from(mosqueImamRules);
+
+    // Map of imamId -> fixed Mosque
+    const fixedMosqueByImamId = new Map<number, typeof allMosques[0]>();
+    for (const m of allMosques) {
+      if (m.fixedImamId) {
+        fixedMosqueByImamId.set(m.fixedImamId, m);
+      }
+    }
+
     let filtered = list;
 
     if (search) {
@@ -1746,7 +1788,21 @@ api.get('/imams', async (req: Request, res: Response) => {
       filtered = filtered.filter((i) => i.type === type);
     }
 
-    res.json(filtered);
+    const enhanced = filtered.map((i) => {
+      const fixedM = fixedMosqueByImamId.get(i.id);
+      const imamRules = allRules.filter((r) => r.imamId === i.id);
+      return {
+        ...i,
+        fixedMosqueId: fixedM?.id || null,
+        fixedMosqueName: fixedM?.name || null,
+        fixedMosqueCode: fixedM?.code || null,
+        preferencesCount: imamRules.filter((r) => r.relationshipType === 'PREFERRED').length,
+        forbiddenCount: imamRules.filter((r) => r.relationshipType === 'FORBIDDEN').length,
+        linkedMosquesCount: imamRules.length,
+      };
+    });
+
+    res.json(enhanced);
   } catch (error: any) {
     console.error('DB fetch for imams failed:', error?.message);
     res.status(500).json({ error: 'تعذر جلب قائمة الخطباء من قاعدة البيانات', details: safeErrorDetails(error) });
@@ -1776,6 +1832,8 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m) => [m.id, m]));
 
+    const fixedMosque = allMosques.find((m) => m.fixedImamId === id);
+
     const enrichedRules = rules.map((r) => ({
       ...r,
       mosque: mosqueMap.get(r.mosqueId),
@@ -1783,6 +1841,9 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
 
     res.json({
       ...found[0],
+      fixedMosqueId: fixedMosque?.id || null,
+      fixedMosqueName: fixedMosque?.name || null,
+      fixedMosqueCode: fixedMosque?.code || null,
       availabilities,
       rules: enrichedRules,
     });
@@ -1930,8 +1991,16 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
       maxFridays: imam.maxFridays,
     };
 
+    const fixedMosque = allMosques.find((m) => m.fixedImamId === id) || null;
+
     res.json({
-      imam,
+      imam: {
+        ...imam,
+        fixedMosqueId: fixedMosque?.id || null,
+        fixedMosqueName: fixedMosque?.name || null,
+        fixedMosqueCode: fixedMosque?.code || null,
+      },
+      fixedMosque,
       activeSchedule,
       availableSchedules: CalendarService.sortSchedulesForSelection(allSchedules as any).map((s: any) => ({
         id: s.id,
@@ -2009,7 +2078,7 @@ api.post('/imams', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const [created] = await db.insert(imams).values({
       name,
-      type: type || 'FLEXIBLE',
+      type: type || (req.body.fixedMosqueId ? 'FIXED' : 'FLEXIBLE'),
       minFridays: minFridays ? Number(minFridays) : 1,
       targetFridays: targetFridays ? Number(targetFridays) : 4,
       maxFridays: maxFridays ? Number(maxFridays) : 5,
@@ -2019,6 +2088,14 @@ api.post('/imams', requireAuth, async (req: AuthRequest, res: Response) => {
       isActive: true,
       notes: notes || null,
     }).returning();
+
+    // Bidirectional sync: if fixedMosqueId specified, assign to mosque
+    if (req.body.fixedMosqueId) {
+      const targetMosqueId = Number(req.body.fixedMosqueId);
+      await db.update(mosques)
+        .set({ fixedImamId: created.id, updatedAt: new Date() })
+        .where(eq(mosques.id, targetMosqueId));
+    }
 
     await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
     SupabaseRealtimeSync.syncImam(created);
@@ -2071,6 +2148,37 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
     if (data.region !== undefined) updateValues.region = data.region || null;
     if (data.isActive !== undefined) updateValues.isActive = Boolean(data.isActive);
     if (data.notes !== undefined) updateValues.notes = data.notes || null;
+
+    // Handle bidirectional synchronization of Fixed Mosque
+    if (data.fixedMosqueId !== undefined) {
+      const targetMosqueId = data.fixedMosqueId ? Number(data.fixedMosqueId) : null;
+      if (targetMosqueId) {
+        // 1. Assign this imam as the fixed imam of the target mosque
+        await db.update(mosques)
+          .set({ fixedImamId: id, updatedAt: new Date() })
+          .where(eq(mosques.id, targetMosqueId));
+        // 2. Clear fixedImamId from any other mosque previously bound to this imam
+        await db.update(mosques)
+          .set({ fixedImamId: null, updatedAt: new Date() })
+          .where(and(eq(mosques.fixedImamId, id), ne(mosques.id, targetMosqueId)));
+        // 3. Mark imam type as FIXED
+        updateValues.type = 'FIXED';
+      } else {
+        // Clear fixedImamId from any mosque where this imam was fixed
+        await db.update(mosques)
+          .set({ fixedImamId: null, updatedAt: new Date() })
+          .where(eq(mosques.fixedImamId, id));
+        if (data.type === undefined || data.type === 'FIXED') {
+          updateValues.type = 'FLEXIBLE';
+        }
+      }
+    } else if (data.type === 'FLEXIBLE') {
+      // If type explicitly changed to FLEXIBLE, clear fixedImamId in any mosque
+      await db.update(mosques)
+        .set({ fixedImamId: null, updatedAt: new Date() })
+        .where(eq(mosques.fixedImamId, id));
+    }
+
     updateValues.updatedAt = new Date();
 
     const [updated] = await db.update(imams)
@@ -2082,12 +2190,80 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
       return res.status(404).json({ error: 'الخطيب غير موجود' });
     }
 
+    // Fetch enriched fixed mosque info
+    const fixedMosque = await db.select().from(mosques).where(eq(mosques.fixedImamId, id)).limit(1);
+
     await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
     SupabaseRealtimeSync.syncImam(updated);
-    res.json(updated);
+    res.json({
+      ...updated,
+      fixedMosqueId: fixedMosque[0]?.id || null,
+      fixedMosqueName: fixedMosque[0]?.name || null,
+      fixedMosqueCode: fixedMosque[0]?.code || null,
+    });
   } catch (error: any) {
     console.error('DB patch imam failed:', error?.message);
     res.status(500).json({ error: 'تعذر تحديث بيانات الخطيب في قاعدة البيانات', details: safeErrorDetails(error) });
+  }
+});
+
+// Imam Rules endpoints (for configuring mosque preferences and restrictions from Imam perspective)
+api.post('/imams/:id/rules', requireAuth, async (req: AuthRequest, res: Response) => {
+  if (!requireDatabase(res)) return;
+  const imamId = Number(req.params.id);
+  const { mosqueId, relationshipType, priority, notes } = req.body;
+  if (!mosqueId || !relationshipType) {
+    return res.status(400).json({ error: 'المسجد ونوع العلاقة مطلوبان' });
+  }
+
+  try {
+    const existing = await db.select().from(mosqueImamRules).where(
+      and(eq(mosqueImamRules.mosqueId, Number(mosqueId)), eq(mosqueImamRules.imamId, imamId))
+    );
+
+    let saved;
+    if (existing[0]) {
+      [saved] = await db.update(mosqueImamRules)
+        .set({
+          relationshipType,
+          priority: priority ? Number(priority) : 1,
+          notes,
+        })
+        .where(eq(mosqueImamRules.id, existing[0].id))
+        .returning();
+    } else {
+      [saved] = await db.insert(mosqueImamRules).values({
+        mosqueId: Number(mosqueId),
+        imamId,
+        relationshipType,
+        priority: priority ? Number(priority) : 1,
+        notes,
+      }).returning();
+    }
+
+    await logAudit(req, 'UPDATE_IMAM_RULE', 'IMAM_RULE', saved.id, { mosqueId, imamId, relationshipType });
+    SupabaseRealtimeSync.syncRule(saved);
+    res.json(saved);
+  } catch (error: any) {
+    console.error('DB imam rule save failed:', error?.message);
+    res.status(500).json({ error: 'تعذر حفظ قاعدة الخطيب في قاعدة البيانات', details: safeErrorDetails(error) });
+  }
+});
+
+api.delete('/imams/:id/rules/:ruleId', requireAuth, async (req: AuthRequest, res: Response) => {
+  if (!requireDatabase(res)) return;
+  const ruleId = Number(req.params.ruleId);
+
+  try {
+    const [deleted] = await db.delete(mosqueImamRules).where(eq(mosqueImamRules.id, ruleId)).returning();
+    if (!deleted) {
+      return res.status(404).json({ error: 'القاعدة غير موجودة' });
+    }
+    SupabaseRealtimeSync.deleteRule(ruleId);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('DB imam rule delete failed:', error?.message);
+    res.status(500).json({ error: 'تعذر حذف القاعدة من قاعدة البيانات', details: safeErrorDetails(error) });
   }
 });
 
@@ -2453,11 +2629,13 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     });
 
     await db.transaction(async (tx) => {
-      // Delete ONLY unlocked assignments on FUTURE fridays (protect past fridays)
-      for (const ea of existingAssignments) {
-        if (!ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)) {
-          await tx.delete(assignments).where(eq(assignments.id, ea.id));
-        }
+      // Delete ONLY unlocked assignments on FUTURE fridays (protect past fridays) in a single batch query
+      const idsToDelete = existingAssignments
+        .filter((ea) => !ea.isLocked && !pastFridayIndices.has(ea.fridayIndex))
+        .map((ea) => ea.id);
+
+      if (idsToDelete.length > 0) {
+        await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
 
@@ -2625,6 +2803,9 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
     // Execute atomic update and conflicts refresh
     await db.transaction(async (tx) => {
       // Update modified assignments for future fridays only
+      const updatePromises: Promise<any>[] = [];
+      const newAssignmentsToInsert: any[] = [];
+
       for (const a of result.assignments) {
         if (pastFridayIndices.has(a.fridayIndex)) continue; // Never overwrite past fridays
         if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
@@ -2633,16 +2814,20 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
         const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
         if (existing) {
           if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
-            await tx.update(assignments)
-              .set({
-                imamId: a.imamId,
-                source: a.source,
-                updatedAt: new Date(),
-              })
-              .where(eq(assignments.id, existing.id));
+            if (existing.imamId !== a.imamId || existing.source !== a.source) {
+              updatePromises.push(
+                tx.update(assignments)
+                  .set({
+                    imamId: a.imamId,
+                    source: a.source,
+                    updatedAt: new Date(),
+                  })
+                  .where(eq(assignments.id, existing.id))
+              );
+            }
           }
         } else {
-          await tx.insert(assignments).values({
+          newAssignmentsToInsert.push({
             scheduleId,
             fridayIndex: a.fridayIndex,
             mosqueId: a.mosqueId,
@@ -2651,6 +2836,13 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
             isLocked: false,
           });
         }
+      }
+
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+      }
+      if (newAssignmentsToInsert.length > 0) {
+        await tx.insert(assignments).values(newAssignmentsToInsert);
       }
 
       // Refresh conflicts

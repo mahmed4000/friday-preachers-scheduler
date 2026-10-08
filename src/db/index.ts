@@ -46,9 +46,9 @@ export const createPool = () => {
           connectionString.includes('localhost') || connectionString.includes('127.0.0.1')
             ? false
             : { rejectUnauthorized: false },
-        max: 5,
-        connectionTimeoutMillis: 10000,
-        idleTimeoutMillis: 10000,
+        max: 10,
+        connectionTimeoutMillis: 20000,
+        idleTimeoutMillis: 30000,
       };
       global._isDbAlive = true;
     } else {

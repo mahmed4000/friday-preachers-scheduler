@@ -240,6 +240,7 @@ export function ScheduleReviewBoard({
     try {
       await fetchApi(`/api/schedules/${schedule.id}/redistribute`, {
         method: 'POST',
+        timeoutMs: 90000,
         body: JSON.stringify({
           unlockedOnly: redistScope === 'UNLOCKED_ONLY',
           targetMosqueId: redistScope === 'SINGLE_MOSQUE' ? targetMosqueId : undefined,
