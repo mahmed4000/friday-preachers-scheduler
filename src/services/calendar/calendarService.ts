@@ -130,35 +130,10 @@ export class CalendarService {
     fridayItem?: FridayCalendarItem;
   } {
     const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-    if (monthDetails.periodStatus === 'PAST') {
-      return {
-        isAllowed: false,
-        isPastFriday: true,
-        reason: 'هذا الشهر انتهى بالكامل وهو متاح للاطلاع والتقارير فقط.',
-      };
-    }
-
     const fridayItem = monthDetails.fridays.find((f) => f.fridayIndex === fridayIndex);
-    if (!fridayItem) {
-      return {
-        isAllowed: false,
-        isPastFriday: false,
-        reason: `الجمعة رقم (${fridayIndex}) غير موجودة في هذا الشهر.`,
-      };
-    }
-
-    if (fridayItem.isPast) {
-      return {
-        isAllowed: false,
-        isPastFriday: true,
-        reason: 'هذه الجمعة انتهت بالفعل ولا يمكن تعديل التعيين من خلال الجدولة الحالية. يمكنك الاطلاع عليها من سجل الجداول والتاريخ.',
-        fridayItem,
-      };
-    }
-
     return {
       isAllowed: true,
-      isPastFriday: false,
+      isPastFriday: Boolean(fridayItem?.isPast || monthDetails.periodStatus === 'PAST'),
       fridayItem,
     };
   }

@@ -125119,32 +125119,10 @@ var CalendarService = class {
    */
   static validateFridayAction(hijriYear, hijriMonth, fridayIndex, options) {
     const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-    if (monthDetails.periodStatus === "PAST") {
-      return {
-        isAllowed: false,
-        isPastFriday: true,
-        reason: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0643\u0627\u0645\u0644 \u0648\u0647\u0648 \u0645\u062A\u0627\u062D \u0644\u0644\u0627\u0637\u0644\u0627\u0639 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0641\u0642\u0637."
-      };
-    }
     const fridayItem = monthDetails.fridays.find((f3) => f3.fridayIndex === fridayIndex);
-    if (!fridayItem) {
-      return {
-        isAllowed: false,
-        isPastFriday: false,
-        reason: `\u0627\u0644\u062C\u0645\u0639\u0629 \u0631\u0642\u0645 (${fridayIndex}) \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F\u0629 \u0641\u064A \u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631.`
-      };
-    }
-    if (fridayItem.isPast) {
-      return {
-        isAllowed: false,
-        isPastFriday: true,
-        reason: "\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0646\u062A\u0647\u062A \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0645\u0646 \u062E\u0644\u0627\u0644 \u0627\u0644\u062C\u062F\u0648\u0644\u0629 \u0627\u0644\u062D\u0627\u0644\u064A\u0629. \u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0627\u0637\u0644\u0627\u0639 \u0639\u0644\u064A\u0647\u0627 \u0645\u0646 \u0633\u062C\u0644 \u0627\u0644\u062C\u062F\u0627\u0648\u0644 \u0648\u0627\u0644\u062A\u0627\u0631\u064A\u062E.",
-        fridayItem
-      };
-    }
     return {
       isAllowed: true,
-      isPastFriday: false,
+      isPastFriday: Boolean(fridayItem?.isPast || monthDetails.periodStatus === "PAST"),
       fridayItem
     };
   }
@@ -138568,8 +138546,8 @@ api.get("/schedules/:id", async (req, res) => {
       return {
         ...sf,
         periodStatus: matchItem?.periodStatus || (monthDetails.isPast ? "PAST" : "FUTURE"),
-        isPast: matchItem?.isPast || monthDetails.isPast,
-        isLocked: matchItem?.isPast || monthDetails.isPast
+        isPast: Boolean(matchItem?.isPast),
+        isLocked: false
       };
     });
     const scheduleAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
@@ -138606,6 +138584,50 @@ api.get("/schedules/:id", async (req, res) => {
     res.status(500).json({ error: "\u062A\u0639\u0630\u0631 \u062C\u0644\u0628 \u062A\u0641\u0627\u0635\u064A\u0644 \u0627\u0644\u062C\u062F\u0648\u0644 \u0645\u0646 \u0642\u0627\u0639\u062F\u0629 \u0627\u0644\u0628\u064A\u0627\u0646\u0627\u062A", details: safeErrorDetails(error) });
   }
 });
+async function getFixedPatternsForSchedule(scheduleYear, scheduleMonth, fridaysCount, activeMosques) {
+  const allDbPatterns = await db.select().from(fixedAssignmentPatterns);
+  const allDbPatternItems = await db.select().from(fixedAssignmentPatternItems);
+  const itemsByPatternId = /* @__PURE__ */ new Map();
+  for (const item of allDbPatternItems) {
+    const list = itemsByPatternId.get(item.patternId) || [];
+    list.push(item);
+    itemsByPatternId.set(item.patternId, list);
+  }
+  const fixedPatterns = [];
+  for (const m2 of activeMosques) {
+    const mPatterns = allDbPatterns.filter((p) => p.mosqueId === m2.id);
+    if (mPatterns.length === 0) continue;
+    let targetPattern = mPatterns.find(
+      (p) => p.hijriYear === scheduleYear && p.hijriMonth === scheduleMonth
+    );
+    if (!targetPattern) {
+      const sameYearPatterns = mPatterns.filter((p) => p.hijriYear === scheduleYear);
+      if (sameYearPatterns.length > 0) {
+        targetPattern = sameYearPatterns.sort((a, b) => b.hijriMonth - a.hijriMonth)[0];
+      }
+    }
+    if (!targetPattern) {
+      targetPattern = mPatterns.sort(
+        (a, b) => b.hijriYear * 100 + b.hijriMonth - (a.hijriYear * 100 + a.hijriMonth)
+      )[0];
+    }
+    if (targetPattern) {
+      const pItems = itemsByPatternId.get(targetPattern.id) || [];
+      if (pItems.length > 0) {
+        fixedPatterns.push({
+          mosqueId: m2.id,
+          patternType: "CUSTOM",
+          fridaysCount,
+          items: pItems.map((it) => ({
+            fridayIndex: it.fridayIndex,
+            imamId: it.imamId
+          }))
+        });
+      }
+    }
+  }
+  return fixedPatterns;
+}
 api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
   if (!requireDatabase(res)) return;
   try {
@@ -138620,16 +138642,31 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = [];
+    let dbAvailabilities = [];
+    try {
+      dbAvailabilities = await db.select().from(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        )
+      );
+    } catch {
+      dbAvailabilities = [];
+    }
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
-    const lockedAssignments = existingAssignments.filter((a) => a.isLocked).map((a) => ({
+    const lockedAssignments = existingAssignments.filter((a) => a.isLocked && (a.source === "MANUAL" || a.source === "OVERRIDE")).map((a) => ({
       fridayIndex: a.fridayIndex,
       mosqueId: a.mosqueId,
       imamId: a.imamId,
       source: a.source,
       notes: a.notes
     }));
-    const fixedPatternsInput = [];
+    const fixedPatternsInput = await getFixedPatternsForSchedule(
+      schedule.hijriYear,
+      schedule.hijriMonth,
+      schedule.fridaysCount,
+      activeMosques
+    );
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
       hijriYear: schedule.hijriYear,
@@ -138662,11 +138699,11 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
         relationshipType: r2.relationshipType || "PREFERRED",
         priority: r2.priority ?? 1
       })),
-      availabilities: availabilities.map((a) => ({
+      availabilities: dbAvailabilities.map((a) => ({
         imamId: a.imamId,
         fridayIndex: a.fridayIndex,
         isAvailable: a.isAvailable,
-        reason: a.reason
+        reason: void 0
       })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInput,
@@ -138674,12 +138711,15 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
       seed: seed || `${schedule.monthName}-${schedule.hijriYear}-V${schedule.currentVersion}`
     });
     await db.transaction(async (tx) => {
-      const idsToDelete = existingAssignments.filter((ea) => !ea.isLocked).map((ea) => ea.id);
+      const lockedSlotKeys = new Set(
+        lockedAssignments.map((l) => `${l.mosqueId}:${l.fridayIndex}`)
+      );
+      const idsToDelete = existingAssignments.filter((ea) => !lockedSlotKeys.has(`${ea.mosqueId}:${ea.fridayIndex}`)).map((ea) => ea.id);
       if (idsToDelete.length > 0) {
         await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
-      const assignmentsToInsert = result.assignments.filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)).map((a) => ({
+      const assignmentsToInsert = result.assignments.filter((a) => !lockedSlotKeys.has(`${a.mosqueId}:${a.fridayIndex}`)).map((a) => ({
         scheduleId,
         fridayIndex: a.fridayIndex,
         mosqueId: a.mosqueId,
@@ -138734,16 +138774,31 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = [];
+    let dbAvailabilities = [];
+    try {
+      dbAvailabilities = await db.select().from(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        )
+      );
+    } catch {
+      dbAvailabilities = [];
+    }
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
-    const lockedAssignments = existingAssignments.filter((a) => a.isLocked).map((a) => ({
+    const lockedAssignments = existingAssignments.filter((a) => a.isLocked && (unlockedOnly ? true : a.source === "MANUAL" || a.source === "OVERRIDE")).map((a) => ({
       fridayIndex: a.fridayIndex,
       mosqueId: a.mosqueId,
       imamId: a.imamId,
       source: a.source,
       notes: a.notes
     }));
-    const fixedPatternsInputRedist = [];
+    const fixedPatternsInputRedist = await getFixedPatternsForSchedule(
+      schedule.hijriYear,
+      schedule.hijriMonth,
+      schedule.fridaysCount,
+      activeMosques
+    );
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
       hijriYear: schedule.hijriYear,
@@ -138776,11 +138831,11 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
         relationshipType: r2.relationshipType || "PREFERRED",
         priority: r2.priority ?? 1
       })),
-      availabilities: availabilities.map((a) => ({
+      availabilities: dbAvailabilities.map((a) => ({
         imamId: a.imamId,
         fridayIndex: a.fridayIndex,
         isAvailable: a.isAvailable,
-        reason: a.reason
+        reason: void 0
       })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInputRedist,
@@ -138789,8 +138844,11 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
       distributionMethod: distributionMethod || "Balanced Random"
     });
     await db.transaction(async (tx) => {
+      const lockedSlotKeys = new Set(
+        lockedAssignments.map((l) => `${l.mosqueId}:${l.fridayIndex}`)
+      );
       const idsToDelete = existingAssignments.filter((ea) => {
-        if (ea.isLocked) return false;
+        if (lockedSlotKeys.has(`${ea.mosqueId}:${ea.fridayIndex}`)) return false;
         if (targetMosqueId && ea.mosqueId !== Number(targetMosqueId)) return false;
         if (targetFridayIndex && ea.fridayIndex !== Number(targetFridayIndex)) return false;
         return true;
@@ -138801,7 +138859,7 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
       const assignmentsToInsert = result.assignments.filter((a) => {
         if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) return false;
         if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) return false;
-        if (lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)) return false;
+        if (lockedSlotKeys.has(`${a.mosqueId}:${a.fridayIndex}`)) return false;
         return true;
       }).map((a) => ({
         scheduleId,

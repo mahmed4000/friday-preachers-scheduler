@@ -24,7 +24,7 @@ import {
   organizationSettings,
 } from '../db/schema.ts';
 import { eq, desc, asc, and, ilike, ne, inArray } from 'drizzle-orm';
-import { SchedulingEngine } from '../services/schedulingEngine.ts';
+import { SchedulingEngine, FixedPatternInput } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
 import { optionalAuth, requireAuth, requireAdmin, AuthRequest, extractToken } from '../middleware/auth.ts';
 import { withAuthContext } from '../db/authContext.ts';
@@ -2486,8 +2486,8 @@ api.get('/schedules/:id', async (req: Request, res: Response) => {
       return {
         ...sf,
         periodStatus: matchItem?.periodStatus || (monthDetails.isPast ? 'PAST' : 'FUTURE'),
-        isPast: matchItem?.isPast || monthDetails.isPast,
-        isLocked: matchItem?.isPast || monthDetails.isPast,
+        isPast: Boolean(matchItem?.isPast),
+        isLocked: false,
       };
     });
 
@@ -2528,6 +2528,70 @@ api.get('/schedules/:id', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Helper: جلب أنماط التثبيت المعتمدة للمساجد بما يضمن استدامتها على مدار التاريخ كله
+ */
+async function getFixedPatternsForSchedule(
+  scheduleYear: number,
+  scheduleMonth: number,
+  fridaysCount: number,
+  activeMosques: Array<{ id: number }>
+): Promise<FixedPatternInput[]> {
+  const allDbPatterns = await db.select().from(fixedAssignmentPatterns);
+  const allDbPatternItems = await db.select().from(fixedAssignmentPatternItems);
+
+  const itemsByPatternId = new Map<number, typeof allDbPatternItems>();
+  for (const item of allDbPatternItems) {
+    const list = itemsByPatternId.get(item.patternId) || [];
+    list.push(item);
+    itemsByPatternId.set(item.patternId, list);
+  }
+
+  const fixedPatterns: FixedPatternInput[] = [];
+
+  for (const m of activeMosques) {
+    const mPatterns = allDbPatterns.filter((p) => p.mosqueId === m.id);
+    if (mPatterns.length === 0) continue;
+
+    // 1. التطابق المباشر لنفس الشهر والسنة الهجرية
+    let targetPattern = mPatterns.find(
+      (p) => p.hijriYear === scheduleYear && p.hijriMonth === scheduleMonth
+    );
+
+    // 2. إذا لم يكن هناك نمط لهذا الشهر، نبحث عن أحدث نمط في نفس العام الهجري
+    if (!targetPattern) {
+      const sameYearPatterns = mPatterns.filter((p) => p.hijriYear === scheduleYear);
+      if (sameYearPatterns.length > 0) {
+        targetPattern = sameYearPatterns.sort((a, b) => b.hijriMonth - a.hijriMonth)[0];
+      }
+    }
+
+    // 3. إذا لم يوجد في نفس العام، نأخذ أحدث نمط مسجل للمسجد عبر التاريخ (استدامة لا ترتبط بزمن)
+    if (!targetPattern) {
+      targetPattern = mPatterns.sort(
+        (a, b) => (b.hijriYear * 100 + b.hijriMonth) - (a.hijriYear * 100 + a.hijriMonth)
+      )[0];
+    }
+
+    if (targetPattern) {
+      const pItems = itemsByPatternId.get(targetPattern.id) || [];
+      if (pItems.length > 0) {
+        fixedPatterns.push({
+          mosqueId: m.id,
+          patternType: 'CUSTOM',
+          fridaysCount,
+          items: pItems.map((it) => ({
+            fridayIndex: it.fridayIndex,
+            imamId: it.imamId,
+          })),
+        });
+      }
+    }
+  }
+
+  return fixedPatterns;
+}
+
 // Run Scheduling Engine for a schedule
 api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: Response) => {
   if (!requireDatabase(res)) return;
@@ -2547,14 +2611,26 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities: any[] = [];
+    
+    // Fetch real imam availabilities from DB (safe check)
+    let dbAvailabilities: any[] = [];
+    try {
+      dbAvailabilities = await db.select().from(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        )
+      );
+    } catch {
+      dbAvailabilities = [];
+    }
 
     // Get existing assignments
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     
-    // Automatically preserve user-locked assignments
+    // Automatically preserve user-locked assignments (manual or override only)
     const lockedAssignments = existingAssignments
-      .filter((a) => a.isLocked)
+      .filter((a) => a.isLocked && (a.source === 'MANUAL' || a.source === 'OVERRIDE'))
       .map((a) => ({
         fridayIndex: a.fridayIndex,
         mosqueId: a.mosqueId,
@@ -2563,7 +2639,13 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
         notes: a.notes,
       }));
 
-    const fixedPatternsInput: any[] = [];
+    // Fetch fixed patterns for active mosques across the timeline
+    const fixedPatternsInput = await getFixedPatternsForSchedule(
+      schedule.hijriYear,
+      schedule.hijriMonth,
+      schedule.fridaysCount,
+      activeMosques
+    );
 
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
@@ -2597,11 +2679,11 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
         relationshipType: (r.relationshipType || 'PREFERRED') as any,
         priority: r.priority ?? 1,
       })),
-      availabilities: availabilities.map((a: any) => ({
+      availabilities: dbAvailabilities.map((a: any) => ({
         imamId: a.imamId,
         fridayIndex: a.fridayIndex,
         isAvailable: a.isAvailable,
-        reason: a.reason,
+        reason: undefined,
       })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInput,
@@ -2610,9 +2692,13 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     });
 
     await db.transaction(async (tx) => {
-      // Delete ONLY unlocked assignments in a single batch query
+      const lockedSlotKeys = new Set(
+        lockedAssignments.map((l) => `${l.mosqueId}:${l.fridayIndex}`)
+      );
+
+      // Delete all existing assignments that are NOT in lockedAssignments
       const idsToDelete = existingAssignments
-        .filter((ea) => !ea.isLocked)
+        .filter((ea) => !lockedSlotKeys.has(`${ea.mosqueId}:${ea.fridayIndex}`))
         .map((ea) => ea.id);
 
       if (idsToDelete.length > 0) {
@@ -2620,9 +2706,9 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
 
-      // Insert assignments only for slots that are not already locked
+      // Insert assignments only for slots that are not in lockedSlotKeys
       const assignmentsToInsert = result.assignments
-        .filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex))
+        .filter((a) => !lockedSlotKeys.has(`${a.mosqueId}:${a.fridayIndex}`))
         .map((a) => ({
           scheduleId,
           fridayIndex: a.fridayIndex,
@@ -2693,13 +2779,25 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities: any[] = [];
+    
+    // Fetch real imam availabilities from DB (safe check)
+    let dbAvailabilities: any[] = [];
+    try {
+      dbAvailabilities = await db.select().from(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        )
+      );
+    } catch {
+      dbAvailabilities = [];
+    }
 
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     
-    // Automatically preserve user-locked assignments
+    // Automatically preserve user-locked assignments (manual or override, or all if unlockedOnly is true)
     const lockedAssignments = existingAssignments
-      .filter((a) => a.isLocked)
+      .filter((a) => a.isLocked && (unlockedOnly ? true : (a.source === 'MANUAL' || a.source === 'OVERRIDE')))
       .map((a) => ({
         fridayIndex: a.fridayIndex,
         mosqueId: a.mosqueId,
@@ -2708,7 +2806,13 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
         notes: a.notes,
       }));
 
-    const fixedPatternsInputRedist: any[] = [];
+    // Fetch fixed patterns for active mosques across the timeline
+    const fixedPatternsInputRedist = await getFixedPatternsForSchedule(
+      schedule.hijriYear,
+      schedule.hijriMonth,
+      schedule.fridaysCount,
+      activeMosques
+    );
 
     const result = SchedulingEngine.generate({
       monthName: schedule.monthName,
@@ -2742,11 +2846,11 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
         relationshipType: (r.relationshipType || 'PREFERRED') as any,
         priority: r.priority ?? 1,
       })),
-      availabilities: availabilities.map((a: any) => ({
+      availabilities: dbAvailabilities.map((a: any) => ({
         imamId: a.imamId,
         fridayIndex: a.fridayIndex,
         isAvailable: a.isAvailable,
-        reason: a.reason,
+        reason: undefined,
       })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInputRedist,
@@ -2758,9 +2862,13 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
     // Execute atomic batch update and conflicts refresh
     await db.transaction(async (tx) => {
       // Delete unlocked assignments for targeted scope
+      const lockedSlotKeys = new Set(
+        lockedAssignments.map((l) => `${l.mosqueId}:${l.fridayIndex}`)
+      );
+
       const idsToDelete = existingAssignments
         .filter((ea) => {
-          if (ea.isLocked) return false;
+          if (lockedSlotKeys.has(`${ea.mosqueId}:${ea.fridayIndex}`)) return false;
           if (targetMosqueId && ea.mosqueId !== Number(targetMosqueId)) return false;
           if (targetFridayIndex && ea.fridayIndex !== Number(targetFridayIndex)) return false;
           return true;
@@ -2775,7 +2883,7 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
         .filter((a) => {
           if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) return false;
           if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) return false;
-          if (lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)) return false;
+          if (lockedSlotKeys.has(`${a.mosqueId}:${a.fridayIndex}`)) return false;
           return true;
         })
         .map((a) => ({
