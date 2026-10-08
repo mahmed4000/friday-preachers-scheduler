@@ -123052,9 +123052,11 @@ var SchedulingEngine = class {
       }
     }
     for (const mosque of activeMosques) {
-      if (patternMosqueIds.has(mosque.id) || !mosque.fixedImamId) continue;
-      const fixedImam = imamMap.get(mosque.fixedImamId);
-      if (!fixedImam) continue;
+      if (patternMosqueIds.has(mosque.id)) continue;
+      const fixedImamId = mosque.fixedImamId || activeImams.find((i2) => i2.fixedMosqueId === mosque.id)?.id || input.rules.find((r2) => r2.mosqueId === mosque.id && r2.relationshipType === "FIXED")?.imamId;
+      if (!fixedImamId) continue;
+      const fixedImam = imamMap.get(fixedImamId);
+      if (!fixedImam || !fixedImam.isActive) continue;
       const pattern = mosque.fixedPattern || "ALL";
       const count = mosque.fixedCount || input.fridaysCount;
       for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
@@ -123083,18 +123085,56 @@ var SchedulingEngine = class {
         if (isFixedThisFriday) {
           const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f3}`);
           const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f3}`);
-          if (!isUnavailable && !isAlreadyBooked) {
-            assignmentsGrid.set(cellKey, {
-              fridayIndex: f3,
+          const rule = rulesMap.get(`${mosque.id}:${fixedImam.id}`);
+          const isForbidden = rule?.relationshipType === "FORBIDDEN";
+          if (isForbidden) {
+            conflicts2.push({
+              severity: "CRITICAL",
               mosqueId: mosque.id,
+              fridayIndex: f3,
               imamId: fixedImam.id,
-              source: "FIXED",
-              isLocked: true,
-              notes: `\u062B\u0627\u0628\u062A \u0648\u0641\u0642 \u0646\u0645\u0637 (${pattern})`
+              ruleCode: "FIXED_FORBIDDEN",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u0642\u0627\u0639\u062F\u0629: \u0627\u0644\u0634\u064A\u062E (${fixedImam.name}) \u062E\u0637\u064A\u0628 \u062B\u0627\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0644\u0643\u0646\u0647 \u0645\u062D\u0638\u0648\u0631 \u062D\u0633\u0628 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F.`,
+              possibleResolutions: ["\u062A\u0639\u062F\u064A\u0644 \u0645\u0635\u0641\u0648\u0641\u0629 \u0627\u0644\u0642\u0648\u0627\u0639\u062F \u0623\u0648 \u0627\u0633\u062A\u0628\u062F\u0627\u0644 \u0627\u0644\u062E\u0637\u064A\u0628 \u0627\u0644\u0631\u0627\u062A\u0628"]
             });
-            imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
-            fridayImamBooking.set(`${fixedImam.id}:${f3}`, mosque.id);
+            continue;
           }
+          if (isUnavailable) {
+            conflicts2.push({
+              severity: "WARNING",
+              mosqueId: mosque.id,
+              fridayIndex: f3,
+              imamId: fixedImam.id,
+              ruleCode: "FIXED_UNAVAILABLE",
+              message: `\u0627\u0639\u062A\u0630\u0627\u0631 \u062E\u0637\u064A\u0628 \u0631\u0627\u062A\u0628: \u0627\u0644\u0634\u064A\u062E (${fixedImam.name}) \u062E\u0637\u064A\u0628 \u062B\u0627\u0628\u062A \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u0644\u0643\u0646\u0647 \u0645\u0633\u062C\u0644 \u0628\u0627\u0639\u062A\u0630\u0627\u0631/\u0625\u062C\u0627\u0632\u0629 \u0631\u0633\u0645\u064A\u0629.`,
+              possibleResolutions: ["\u062A\u0643\u0644\u064A\u0641 \u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0644\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629"]
+            });
+            continue;
+          }
+          if (isAlreadyBooked) {
+            const bookedMosqueId = fridayImamBooking.get(`${fixedImam.id}:${f3}`);
+            const bookedMosque = mosqueMap.get(bookedMosqueId);
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: mosque.id,
+              fridayIndex: f3,
+              imamId: fixedImam.id,
+              ruleCode: "FIXED_DOUBLE_BOOKING",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u062D\u062C\u0632 \u0645\u0632\u062F\u0648\u062C: \u0627\u0644\u0634\u064A\u062E (${fixedImam.name}) \u0645\u0631\u062A\u0628\u0637 \u0628\u0645\u0633\u062C\u062F (${bookedMosque?.name || "\u0622\u062E\u0631"}) \u0648\u0645\u0633\u062C\u062F (${mosque.name}) \u0641\u064A \u0646\u0641\u0633 \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}).`,
+              possibleResolutions: ["\u062A\u062F\u062E\u0644 \u0645\u062F\u064A\u0631 \u0627\u0644\u0646\u0638\u0627\u0645 \u0648\u062A\u0639\u062F\u064A\u0644 \u0623\u062D\u062F \u0627\u0644\u0645\u0633\u062C\u062F\u064A\u0646"]
+            });
+            continue;
+          }
+          assignmentsGrid.set(cellKey, {
+            fridayIndex: f3,
+            mosqueId: mosque.id,
+            imamId: fixedImam.id,
+            source: "FIXED",
+            isLocked: true,
+            notes: `\u062E\u0637\u064A\u0628 \u0631\u0627\u062A\u0628 \u062B\u0627\u0628\u062A \u0644\u0644\u0645\u0633\u062C\u062F`
+          });
+          imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
+          fridayImamBooking.set(`${fixedImam.id}:${f3}`, mosque.id);
         }
       }
     }
@@ -123134,9 +123174,9 @@ var SchedulingEngine = class {
           const deficitToTarget = imam.targetFridays - currentCount;
           let score = 0;
           if (isPreferred) {
-            score += 1e3 - Math.min(priority * 20, 500);
+            score += 5e3 - Math.min(priority * 100, 1e3);
           } else if (isDiscouraged) {
-            score -= 800;
+            score -= 1e3;
           } else {
             score += 100;
           }
@@ -123147,7 +123187,7 @@ var SchedulingEngine = class {
             score += 150 * deficitToTarget;
           }
           const preachedLastFridayHere = f3 > 1 && assignmentsGrid.get(`${mosque.id}:${f3 - 1}`)?.imamId === imam.id;
-          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id) {
+          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id && imam.fixedMosqueId !== mosque.id) {
             score -= 2e3;
           }
           let previousVisitsInMonth = 0;
@@ -123156,7 +123196,7 @@ var SchedulingEngine = class {
               previousVisitsInMonth++;
             }
           }
-          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id) {
+          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id && imam.fixedMosqueId !== mosque.id) {
             score -= 450 * previousVisitsInMonth;
           }
           if (input.history && input.history.length > 0 && mosque.fixedImamId !== imam.id) {
@@ -125068,14 +125108,6 @@ var CalendarService = class {
    */
   static validateSchedulePeriod(hijriYear, hijriMonth, options) {
     const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-    if (monthDetails.periodStatus === "PAST") {
-      return {
-        isValid: false,
-        periodStatus: "PAST",
-        error: "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u062C\u062F\u064A\u062F \u0644\u0647. \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A \u0623\u0648 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0642\u0627\u062F\u0645.",
-        monthDetails
-      };
-    }
     return {
       isValid: true,
       periodStatus: monthDetails.periodStatus,
@@ -138444,13 +138476,7 @@ api.post("/schedules", requireAuth, async (req, res) => {
       provider: calendarProvider || cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
       timezone: timezone || cachedOrganizationSettings.timezone || "Asia/Riyadh"
     });
-    if (!periodValidation.isValid) {
-      return res.status(400).json({
-        error: periodValidation.error || "\u0647\u0630\u0627 \u0627\u0644\u0634\u0647\u0631 \u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u062C\u062F\u064A\u062F \u0644\u0647. \u064A\u0645\u0643\u0646\u0643 \u062A\u0639\u062F\u064A\u0644 \u062C\u062F\u0648\u0644 \u0627\u0644\u0634\u0647\u0631 \u0627\u0644\u062D\u0627\u0644\u064A \u0623\u0648 \u0625\u0646\u0634\u0627\u0621 \u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0642\u0627\u062F\u0645.",
-        code: "SCHEDULE_PERIOD_PAST",
-        periodStatus: periodValidation.periodStatus
-      });
-    }
+    const monthDetails = periodValidation.monthDetails;
     const existing = await db.select().from(monthlySchedules).where(
       and(
         eq(monthlySchedules.hijriYear, hYear),
@@ -138466,7 +138492,6 @@ api.post("/schedules", requireAuth, async (req, res) => {
         monthDetails: periodValidation.monthDetails
       });
     }
-    const monthDetails = periodValidation.monthDetails;
     const [schedule] = await db.transaction(async (tx) => {
       const [newSch] = await tx.insert(monthlySchedules).values({
         hijriYear: hYear,
@@ -138592,21 +138617,12 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
       provider: schedule.calendarProvider || cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
       timezone: schedule.timezone || cachedOrganizationSettings.timezone || "Asia/Riyadh"
     });
-    if (monthDetails.periodStatus === "PAST") {
-      return res.status(400).json({
-        error: "\u0647\u0630\u0627 \u0627\u0644\u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0645\u0627\u0636\u064D \u0648\u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644\u060C \u0648\u0647\u0648 \u0645\u062A\u0627\u062D \u0644\u0644\u0642\u0631\u0627\u0621\u0629 \u0648\u0627\u0644\u062A\u0642\u0627\u0631\u064A\u0631 \u0641\u0642\u0637 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0639\u0627\u062F\u0629 \u062A\u0648\u0644\u064A\u062F\u0647.",
-        code: "SCHEDULE_PERIOD_PAST"
-      });
-    }
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
     const availabilities = [];
-    const pastFridayIndices = new Set(
-      monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
-    );
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
-    const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
+    const lockedAssignments = existingAssignments.filter((a) => a.isLocked).map((a) => ({
       fridayIndex: a.fridayIndex,
       mosqueId: a.mosqueId,
       imamId: a.imamId,
@@ -138633,6 +138649,7 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
         id: i2.id,
         name: i2.name,
         type: i2.type || "FLEXIBLE",
+        fixedMosqueId: i2.fixedMosqueId || null,
         minFridays: i2.minFridays ?? 1,
         targetFridays: i2.targetFridays ?? 2,
         maxFridays: i2.maxFridays ?? 4,
@@ -138657,7 +138674,7 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
       seed: seed || `${schedule.monthName}-${schedule.hijriYear}-V${schedule.currentVersion}`
     });
     await db.transaction(async (tx) => {
-      const idsToDelete = existingAssignments.filter((ea) => !ea.isLocked && !pastFridayIndices.has(ea.fridayIndex)).map((ea) => ea.id);
+      const idsToDelete = existingAssignments.filter((ea) => !ea.isLocked).map((ea) => ea.id);
       if (idsToDelete.length > 0) {
         await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
@@ -138668,7 +138685,7 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
         mosqueId: a.mosqueId,
         imamId: a.imamId,
         source: a.source,
-        isLocked: Boolean(a.isLocked || pastFridayIndices.has(a.fridayIndex)),
+        isLocked: Boolean(a.isLocked),
         notes: a.notes
       }));
       if (assignmentsToInsert.length > 0) {
@@ -138695,7 +138712,7 @@ api.post("/schedules/:id/generate", requireAuth, async (req, res) => {
     });
     await logAudit(req, "GENERATE_SCHEDULE", "SCHEDULE", scheduleId, {
       stats: result.stats,
-      protectedPastFridaysCount: pastFridayIndices.size
+      protectedLockedCount: lockedAssignments.length
     });
     res.json(result);
   } catch (error) {
@@ -138714,35 +138731,12 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
       provider: schedule.calendarProvider || cachedOrganizationSettings.calendarProvider || "UMM_AL_QURA",
       timezone: schedule.timezone || cachedOrganizationSettings.timezone || "Asia/Riyadh"
     });
-    if (monthDetails.periodStatus === "PAST") {
-      return res.status(400).json({
-        error: "\u0647\u0630\u0627 \u0627\u0644\u062C\u062F\u0648\u0644 \u0644\u0634\u0647\u0631 \u0645\u0627\u0636\u064D \u0648\u0627\u0646\u062A\u0647\u0649 \u0628\u0627\u0644\u0641\u0639\u0644\u060C \u0648\u0647\u0648 \u0645\u062A\u0627\u062D \u0644\u0644\u0642\u0631\u0627\u0621\u0629 \u0641\u0642\u0637 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0639\u0627\u062F\u0629 \u062A\u0648\u0632\u064A\u0639\u0647.",
-        code: "SCHEDULE_PERIOD_PAST"
-      });
-    }
-    if (targetFridayIndex) {
-      const fCheck = CalendarService.validateFridayAction(
-        schedule.hijriYear,
-        schedule.hijriMonth,
-        Number(targetFridayIndex),
-        { provider: schedule.calendarProvider, timezone: schedule.timezone || void 0 }
-      );
-      if (!fCheck.isAllowed) {
-        return res.status(400).json({
-          error: fCheck.reason || "\u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629 \u0627\u0646\u062A\u0647\u062A \u0628\u0627\u0644\u0641\u0639\u0644 \u0648\u0644\u0627 \u064A\u0645\u0643\u0646 \u0625\u0639\u0627\u062F\u0629 \u062A\u0648\u0632\u064A\u0639\u0647\u0627.",
-          code: "FRIDAY_PERIOD_PAST"
-        });
-      }
-    }
-    const pastFridayIndices = new Set(
-      monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
-    );
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
     const availabilities = [];
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
-    const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
+    const lockedAssignments = existingAssignments.filter((a) => a.isLocked).map((a) => ({
       fridayIndex: a.fridayIndex,
       mosqueId: a.mosqueId,
       imamId: a.imamId,
@@ -138769,6 +138763,7 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
         id: i2.id,
         name: i2.name,
         type: i2.type || "FLEXIBLE",
+        fixedMosqueId: i2.fixedMosqueId || null,
         minFridays: i2.minFridays ?? 1,
         targetFridays: i2.targetFridays ?? 2,
         maxFridays: i2.maxFridays ?? 4,
@@ -138794,41 +138789,31 @@ api.post("/schedules/:id/redistribute", requireAuth, async (req, res) => {
       distributionMethod: distributionMethod || "Balanced Random"
     });
     await db.transaction(async (tx) => {
-      const updatePromises = [];
-      const newAssignmentsToInsert = [];
-      for (const a of result.assignments) {
-        if (pastFridayIndices.has(a.fridayIndex)) continue;
-        if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
-        if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) continue;
-        const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
-        if (existing) {
-          if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
-            if (existing.imamId !== a.imamId || existing.source !== a.source) {
-              updatePromises.push(
-                tx.update(assignments).set({
-                  imamId: a.imamId,
-                  source: a.source,
-                  updatedAt: /* @__PURE__ */ new Date()
-                }).where(eq(assignments.id, existing.id))
-              );
-            }
-          }
-        } else {
-          newAssignmentsToInsert.push({
-            scheduleId,
-            fridayIndex: a.fridayIndex,
-            mosqueId: a.mosqueId,
-            imamId: a.imamId,
-            source: a.source,
-            isLocked: false
-          });
-        }
+      const idsToDelete = existingAssignments.filter((ea) => {
+        if (ea.isLocked) return false;
+        if (targetMosqueId && ea.mosqueId !== Number(targetMosqueId)) return false;
+        if (targetFridayIndex && ea.fridayIndex !== Number(targetFridayIndex)) return false;
+        return true;
+      }).map((ea) => ea.id);
+      if (idsToDelete.length > 0) {
+        await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-      }
-      if (newAssignmentsToInsert.length > 0) {
-        await tx.insert(assignments).values(newAssignmentsToInsert);
+      const assignmentsToInsert = result.assignments.filter((a) => {
+        if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) return false;
+        if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) return false;
+        if (lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)) return false;
+        return true;
+      }).map((a) => ({
+        scheduleId,
+        fridayIndex: a.fridayIndex,
+        mosqueId: a.mosqueId,
+        imamId: a.imamId,
+        source: a.source,
+        isLocked: Boolean(a.isLocked),
+        notes: a.notes
+      }));
+      if (assignmentsToInsert.length > 0) {
+        await tx.insert(assignments).values(assignmentsToInsert);
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
       if (result.conflicts.length > 0) {

@@ -139,28 +139,14 @@ export function ScheduleWizardModal({
     warnings.push('فائض الخطباء محدود جداً، قد يتطلب التوزيع تشغيل بعض الخطباء بالحد الأقصى.');
   }
 
-  // Handle month click with strict temporal validation
+  // Handle month click
   const handleSelectMonth = (mItem: any) => {
-    if (mItem.isPast) {
-      setPastMonthAttemptError(
-        `هذا الشهر (${mItem.name} ${hijriYear} هـ) انتهى بالفعل ولا يمكن إنشاء جدول جديد له. يمكنك تعديل جدول الشهر الحالي أو إنشاء جدول لشهر قادم.`
-      );
-      return;
-    }
     setPastMonthAttemptError(null);
     setHijriMonth(mItem.number);
   };
 
   // Step 1 -> Step 2 validation
   const handleProceedToStep2 = () => {
-    const validation = CalendarService.validateSchedulePeriod(hijriYear, hijriMonth);
-    if (!validation.isValid) {
-      setPastMonthAttemptError(
-        validation.error ||
-          'هذا الشهر انتهى بالفعل ولا يمكن إنشاء جدول جديد له. يمكنك تعديل جدول الشهر الحالي أو إنشاء جدول لشهر قادم.'
-      );
-      return;
-    }
     setPastMonthAttemptError(null);
     setStep(2);
   };
@@ -554,8 +540,7 @@ export function ScheduleWizardModal({
               <button
                 type="button"
                 onClick={handleProceedToStep2}
-                disabled={monthDetails.isPast}
-                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
+                className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <span>متابعة لفحص الجاهزية</span>
                 <ArrowLeft className="w-4 h-4" />
@@ -725,48 +710,39 @@ export function ScheduleWizardModal({
               </p>
             </div>
 
-            {/* Distribution method select */}
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
-              <label className="block text-xs font-bold text-slate-800 mb-1.5">
-                طريقة توزيع الخطباء المرنين (Scheduling Algorithm Strategy):
-              </label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setDistributionMethod('Balanced Random')}
-                  className={`p-2.5 rounded-lg border text-right transition-all ${
-                    distributionMethod === 'Balanced Random'
-                      ? 'bg-white border-emerald-600 shadow-2xs font-bold text-emerald-950'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs">متوازن عشوائي (الموصى به)</span>
-                  <span className="text-[10px] text-slate-500 font-normal">يحقق التفضيلات والعدالة ويكسر التعادل</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDistributionMethod('Balanced')}
-                  className={`p-2.5 rounded-lg border text-right transition-all ${
-                    distributionMethod === 'Balanced'
-                      ? 'bg-white border-emerald-600 shadow-2xs font-bold text-emerald-950'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs">متوازن تماماً (Strict Balanced)</span>
-                  <span className="text-[10px] text-slate-500 font-normal">أولوية تامة لمساواة أحمال الخطباء</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDistributionMethod('Random')}
-                  className={`p-2.5 rounded-lg border text-right transition-all ${
-                    distributionMethod === 'Random'
-                      ? 'bg-white border-emerald-600 shadow-2xs font-bold text-emerald-950'
-                      : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs">عشوائي مراعي للقيود</span>
-                  <span className="text-[10px] text-slate-500 font-normal">توزيع عشوائي ضمن القيود الصارمة</span>
-                </button>
+            {/* Single Unified Distribution Strategy */}
+            <div className="p-3.5 bg-slate-50/90 rounded-xl border border-emerald-300/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-900 font-heading flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span>النمط الذكي المعتمد للتوزيع (Unified Distribution Engine):</span>
+                </label>
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2.5 py-0.5 rounded-full border border-emerald-300">
+                  نمط موحد ثابت لجميع الجداول ✓
+                </span>
+              </div>
+              <div className="p-3 bg-white rounded-lg border border-slate-200/90 shadow-2xs space-y-2 text-xs">
+                <p className="text-[11px] text-slate-700 leading-relaxed font-medium">
+                  يطبق المحرك خوارزمية حتمية موحدة متعددة الطبقات تطبق على مدار التاريخ كله دون التقيد بنطاق زمني:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-amber-50/60 border border-amber-200/60 text-amber-950 font-medium">
+                    <span className="font-bold text-amber-700">① الثوابت:</span>
+                    <span>تثبيت الخطيب الراتب 100% في جميع جمعات مسجده.</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-rose-50/60 border border-rose-200/60 text-rose-950 font-medium">
+                    <span className="font-bold text-rose-700">② المستبعدون:</span>
+                    <span>منع قطعي وحظر تام لأي خطيب مستبعد من المسجد.</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-sky-50/60 border border-sky-200/60 text-sky-950 font-medium">
+                    <span className="font-bold text-sky-700">③ المفضلون:</span>
+                    <span>أسبقية قصوى للخطباء المفضلين حسب تراتبية المسجد.</span>
+                  </div>
+                  <div className="flex items-center gap-2 p-1.5 rounded-md bg-emerald-50/60 border border-emerald-200/60 text-emerald-950 font-medium">
+                    <span className="font-bold text-emerald-700">④ العدالة:</span>
+                    <span>توزيع عادل للأحمال ومنع التكرار الأسبوعي لنفس المسجد.</span>
+                  </div>
+                </div>
               </div>
             </div>
 

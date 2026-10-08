@@ -2371,19 +2371,12 @@ api.post('/schedules', requireAuth, async (req: AuthRequest, res: Response) => {
     const hYear = Number(hijriYear);
     const hMonth = Number(hijriMonth);
 
-    // 1. Strict Temporal Policy Validation (Backend Authority)
+    // 1. Authoritative Calendar Calculation
     const periodValidation = CalendarService.validateSchedulePeriod(hYear, hMonth, {
       provider: calendarProvider || (cachedOrganizationSettings.calendarProvider as any) || 'UMM_AL_QURA',
       timezone: timezone || cachedOrganizationSettings.timezone || 'Asia/Riyadh',
     });
-
-    if (!periodValidation.isValid) {
-      return res.status(400).json({
-        error: periodValidation.error || 'هذا الشهر انتهى بالفعل ولا يمكن إنشاء جدول جديد له. يمكنك تعديل جدول الشهر الحالي أو إنشاء جدول لشهر قادم.',
-        code: 'SCHEDULE_PERIOD_PAST',
-        periodStatus: periodValidation.periodStatus,
-      });
-    }
+    const monthDetails = periodValidation.monthDetails;
 
     // 2. Check duplicate schedule for this year and month
     const existing = await db.select().from(monthlySchedules).where(
@@ -2404,7 +2397,6 @@ api.post('/schedules', requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     // Authoritative calculation from CalendarService
-    const monthDetails = periodValidation.monthDetails;
 
     const [schedule] = await db.transaction(async (tx) => {
       const [newSch] = await tx.insert(monthlySchedules).values({
@@ -2546,35 +2538,23 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     const [schedule] = await db.select().from(monthlySchedules).where(eq(monthlySchedules.id, scheduleId));
     if (!schedule) return res.status(404).json({ error: 'الجدول غير موجود' });
 
-    // Strict Temporal Policy Validation: Past schedule cannot be generated/regenerated
+    // Authoritative Hijri month details
     const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
       provider: (schedule.calendarProvider as any) || (cachedOrganizationSettings.calendarProvider as any) || 'UMM_AL_QURA',
       timezone: schedule.timezone || cachedOrganizationSettings.timezone || 'Asia/Riyadh',
     });
-
-    if (monthDetails.periodStatus === 'PAST') {
-      return res.status(400).json({
-        error: 'هذا الجدول لشهر ماضٍ وانتهى بالفعل، وهو متاح للقراءة والتقارير فقط ولا يمكن إعادة توليده.',
-        code: 'SCHEDULE_PERIOD_PAST',
-      });
-    }
 
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
     const availabilities: any[] = [];
 
-    // Identify past fridays (strictly before today) in current month
-    const pastFridayIndices = new Set(
-      monthDetails.fridays.filter((f) => f.isPast).map((f) => f.fridayIndex)
-    );
-
     // Get existing assignments
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     
-    // Automatically lock: user-locked assignments + ALL assignments on past Fridays
+    // Automatically preserve user-locked assignments
     const lockedAssignments = existingAssignments
-      .filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex))
+      .filter((a) => a.isLocked)
       .map((a) => ({
         fridayIndex: a.fridayIndex,
         mosqueId: a.mosqueId,
@@ -2604,6 +2584,7 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
         id: i.id,
         name: i.name,
         type: (i.type || 'FLEXIBLE') as any,
+        fixedMosqueId: (i as any).fixedMosqueId || null,
         minFridays: i.minFridays ?? 1,
         targetFridays: i.targetFridays ?? 2,
         maxFridays: i.maxFridays ?? 4,
@@ -2629,9 +2610,9 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     });
 
     await db.transaction(async (tx) => {
-      // Delete ONLY unlocked assignments on FUTURE fridays (protect past fridays) in a single batch query
+      // Delete ONLY unlocked assignments in a single batch query
       const idsToDelete = existingAssignments
-        .filter((ea) => !ea.isLocked && !pastFridayIndices.has(ea.fridayIndex))
+        .filter((ea) => !ea.isLocked)
         .map((ea) => ea.id);
 
       if (idsToDelete.length > 0) {
@@ -2639,7 +2620,7 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
       }
       await tx.delete(conflicts).where(eq(conflicts.scheduleId, scheduleId));
 
-      // Insert assignments only for slots that are not already locked / past
+      // Insert assignments only for slots that are not already locked
       const assignmentsToInsert = result.assignments
         .filter((a) => !lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex))
         .map((a) => ({
@@ -2648,7 +2629,7 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
           mosqueId: a.mosqueId,
           imamId: a.imamId,
           source: a.source,
-          isLocked: Boolean(a.isLocked || pastFridayIndices.has(a.fridayIndex)),
+          isLocked: Boolean(a.isLocked),
           notes: a.notes,
         }));
 
@@ -2683,7 +2664,7 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
 
     await logAudit(req, 'GENERATE_SCHEDULE', 'SCHEDULE', scheduleId, {
       stats: result.stats,
-      protectedPastFridaysCount: pastFridayIndices.size,
+      protectedLockedCount: lockedAssignments.length,
     });
 
     res.json(result);
@@ -2703,38 +2684,11 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
     const [schedule] = await db.select().from(monthlySchedules).where(eq(monthlySchedules.id, scheduleId));
     if (!schedule) return res.status(404).json({ error: 'الجدول غير موجود' });
 
-    // Strict Temporal Policy Validation: Past schedule cannot be redistributed
+    // Authoritative Hijri month details
     const monthDetails = CalendarService.getHijriMonthDetails(schedule.hijriYear, schedule.hijriMonth, {
       provider: (schedule.calendarProvider as any) || (cachedOrganizationSettings.calendarProvider as any) || 'UMM_AL_QURA',
       timezone: schedule.timezone || cachedOrganizationSettings.timezone || 'Asia/Riyadh',
     });
-
-    if (monthDetails.periodStatus === 'PAST') {
-      return res.status(400).json({
-        error: 'هذا الجدول لشهر ماضٍ وانتهى بالفعل، وهو متاح للقراءة فقط ولا يمكن إعادة توزيعه.',
-        code: 'SCHEDULE_PERIOD_PAST',
-      });
-    }
-
-    // If a specific Friday is targeted, verify it is not in the past
-    if (targetFridayIndex) {
-      const fCheck = CalendarService.validateFridayAction(
-        schedule.hijriYear,
-        schedule.hijriMonth,
-        Number(targetFridayIndex),
-        { provider: schedule.calendarProvider as any, timezone: schedule.timezone || undefined }
-      );
-      if (!fCheck.isAllowed) {
-        return res.status(400).json({
-          error: fCheck.reason || 'هذه الجمعة انتهت بالفعل ولا يمكن إعادة توزيعها.',
-          code: 'FRIDAY_PERIOD_PAST',
-        });
-      }
-    }
-
-    const pastFridayIndices = new Set(
-      monthDetails.fridays.filter((f) => f.isPast).map((f) => f.fridayIndex)
-    );
 
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
@@ -2743,9 +2697,9 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
 
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     
-    // Automatically lock all past fridays as well as existing locked assignments
+    // Automatically preserve user-locked assignments
     const lockedAssignments = existingAssignments
-      .filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex))
+      .filter((a) => a.isLocked)
       .map((a) => ({
         fridayIndex: a.fridayIndex,
         mosqueId: a.mosqueId,
@@ -2775,6 +2729,7 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
         id: i.id,
         name: i.name,
         type: (i.type || 'FLEXIBLE') as any,
+        fixedMosqueId: (i as any).fixedMosqueId || null,
         minFridays: i.minFridays ?? 1,
         targetFridays: i.targetFridays ?? 2,
         maxFridays: i.maxFridays ?? 4,
@@ -2800,49 +2755,41 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
       distributionMethod: distributionMethod || 'Balanced Random',
     });
 
-    // Execute atomic update and conflicts refresh
+    // Execute atomic batch update and conflicts refresh
     await db.transaction(async (tx) => {
-      // Update modified assignments for future fridays only
-      const updatePromises: Promise<any>[] = [];
-      const newAssignmentsToInsert: any[] = [];
+      // Delete unlocked assignments for targeted scope
+      const idsToDelete = existingAssignments
+        .filter((ea) => {
+          if (ea.isLocked) return false;
+          if (targetMosqueId && ea.mosqueId !== Number(targetMosqueId)) return false;
+          if (targetFridayIndex && ea.fridayIndex !== Number(targetFridayIndex)) return false;
+          return true;
+        })
+        .map((ea) => ea.id);
 
-      for (const a of result.assignments) {
-        if (pastFridayIndices.has(a.fridayIndex)) continue; // Never overwrite past fridays
-        if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) continue;
-        if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) continue;
-
-        const existing = existingAssignments.find((ea) => ea.mosqueId === a.mosqueId && ea.fridayIndex === a.fridayIndex);
-        if (existing) {
-          if (!existing.isLocked && !pastFridayIndices.has(existing.fridayIndex)) {
-            if (existing.imamId !== a.imamId || existing.source !== a.source) {
-              updatePromises.push(
-                tx.update(assignments)
-                  .set({
-                    imamId: a.imamId,
-                    source: a.source,
-                    updatedAt: new Date(),
-                  })
-                  .where(eq(assignments.id, existing.id))
-              );
-            }
-          }
-        } else {
-          newAssignmentsToInsert.push({
-            scheduleId,
-            fridayIndex: a.fridayIndex,
-            mosqueId: a.mosqueId,
-            imamId: a.imamId,
-            source: a.source,
-            isLocked: false,
-          });
-        }
+      if (idsToDelete.length > 0) {
+        await tx.delete(assignments).where(inArray(assignments.id, idsToDelete));
       }
 
-      if (updatePromises.length > 0) {
-        await Promise.all(updatePromises);
-      }
-      if (newAssignmentsToInsert.length > 0) {
-        await tx.insert(assignments).values(newAssignmentsToInsert);
+      const assignmentsToInsert = result.assignments
+        .filter((a) => {
+          if (targetMosqueId && a.mosqueId !== Number(targetMosqueId)) return false;
+          if (targetFridayIndex && a.fridayIndex !== Number(targetFridayIndex)) return false;
+          if (lockedAssignments.some((l) => l.mosqueId === a.mosqueId && l.fridayIndex === a.fridayIndex)) return false;
+          return true;
+        })
+        .map((a) => ({
+          scheduleId,
+          fridayIndex: a.fridayIndex,
+          mosqueId: a.mosqueId,
+          imamId: a.imamId,
+          source: a.source,
+          isLocked: Boolean(a.isLocked),
+          notes: a.notes,
+        }));
+
+      if (assignmentsToInsert.length > 0) {
+        await tx.insert(assignments).values(assignmentsToInsert);
       }
 
       // Refresh conflicts

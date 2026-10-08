@@ -108,15 +108,6 @@ export class CalendarService {
     monthDetails: HijriMonthDetails;
   } {
     const monthDetails = this.getHijriMonthDetails(hijriYear, hijriMonth, options);
-    if (monthDetails.periodStatus === 'PAST') {
-      return {
-        isValid: false,
-        periodStatus: 'PAST',
-        error: 'هذا الشهر انتهى بالفعل ولا يمكن إنشاء جدول جديد له. يمكنك تعديل جدول الشهر الحالي أو إنشاء جدول لشهر قادم.',
-        monthDetails,
-      };
-    }
-
     return {
       isValid: true,
       periodStatus: monthDetails.periodStatus,

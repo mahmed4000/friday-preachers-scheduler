@@ -27,6 +27,7 @@ export interface ImamInput {
   id: number;
   name: string;
   type: 'FIXED' | 'PARTIAL_FIXED' | 'FLEXIBLE';
+  fixedMosqueId?: number | null;
   minFridays: number;
   targetFridays: number;
   maxFridays: number;
@@ -334,11 +335,19 @@ export class SchedulingEngine {
       }
     }
 
-    // 2.2. التوافق العكسي مع الثوابت القديمة (Legacy Mosque Fixed Imam)
+    // 2.2. التوافق الموحد مع الخطباء الثوابت (Unified Timeless Fixed Preachers)
     for (const mosque of activeMosques) {
-      if (patternMosqueIds.has(mosque.id) || !mosque.fixedImamId) continue;
-      const fixedImam = imamMap.get(mosque.fixedImamId);
-      if (!fixedImam) continue;
+      if (patternMosqueIds.has(mosque.id)) continue;
+
+      // Determine fixed imam bidirectionally (from mosque.fixedImamId OR imam.fixedMosqueId OR FIXED rule)
+      const fixedImamId =
+        mosque.fixedImamId ||
+        activeImams.find((i) => i.fixedMosqueId === mosque.id)?.id ||
+        input.rules.find((r) => r.mosqueId === mosque.id && r.relationshipType === 'FIXED')?.imamId;
+
+      if (!fixedImamId) continue;
+      const fixedImam = imamMap.get(fixedImamId);
+      if (!fixedImam || !fixedImam.isActive) continue;
 
       const pattern = mosque.fixedPattern || 'ALL';
       const count = mosque.fixedCount || input.fridaysCount;
@@ -371,19 +380,60 @@ export class SchedulingEngine {
         if (isFixedThisFriday) {
           const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f}`);
           const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f}`);
+          const rule = rulesMap.get(`${mosque.id}:${fixedImam.id}`);
+          const isForbidden = rule?.relationshipType === 'FORBIDDEN';
 
-          if (!isUnavailable && !isAlreadyBooked) {
-            assignmentsGrid.set(cellKey, {
-              fridayIndex: f,
+          if (isForbidden) {
+            conflicts.push({
+              severity: 'CRITICAL',
               mosqueId: mosque.id,
+              fridayIndex: f,
               imamId: fixedImam.id,
-              source: 'FIXED',
-              isLocked: true,
-              notes: `ثابت وفق نمط (${pattern})`,
+              ruleCode: 'FIXED_FORBIDDEN',
+              message: `تعارض قاعدة: الشيخ (${fixedImam.name}) خطيب ثابت لمسجد (${mosque.name}) لكنه محظور حسب مصفوفة القواعد.`,
+              possibleResolutions: ['تعديل مصفوفة القواعد أو استبدال الخطيب الراتب'],
             });
-            imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
-            fridayImamBooking.set(`${fixedImam.id}:${f}`, mosque.id);
+            continue;
           }
+
+          if (isUnavailable) {
+            conflicts.push({
+              severity: 'WARNING',
+              mosqueId: mosque.id,
+              fridayIndex: f,
+              imamId: fixedImam.id,
+              ruleCode: 'FIXED_UNAVAILABLE',
+              message: `اعتذار خطيب راتب: الشيخ (${fixedImam.name}) خطيب ثابت لمسجد (${mosque.name}) في الجمعة (${f}) لكنه مسجل باعتذار/إجازة رسمية.`,
+              possibleResolutions: ['تكليف خطيب بديل لهذه الجمعة'],
+            });
+            continue;
+          }
+
+          if (isAlreadyBooked) {
+            const bookedMosqueId = fridayImamBooking.get(`${fixedImam.id}:${f}`);
+            const bookedMosque = mosqueMap.get(bookedMosqueId!);
+            conflicts.push({
+              severity: 'CRITICAL',
+              mosqueId: mosque.id,
+              fridayIndex: f,
+              imamId: fixedImam.id,
+              ruleCode: 'FIXED_DOUBLE_BOOKING',
+              message: `تعارض حجز مزدوج: الشيخ (${fixedImam.name}) مرتبط بمسجد (${bookedMosque?.name || 'آخر'}) ومسجد (${mosque.name}) في نفس الجمعة (${f}).`,
+              possibleResolutions: ['تدخل مدير النظام وتعديل أحد المسجدين'],
+            });
+            continue;
+          }
+
+          assignmentsGrid.set(cellKey, {
+            fridayIndex: f,
+            mosqueId: mosque.id,
+            imamId: fixedImam.id,
+            source: 'FIXED',
+            isLocked: true,
+            notes: `خطيب راتب ثابت للمسجد`,
+          });
+          imamFridaysCount[fixedImam.id] = (imamFridaysCount[fixedImam.id] || 0) + 1;
+          fridayImamBooking.set(`${fixedImam.id}:${f}`, mosque.id);
         }
       }
     }
@@ -457,11 +507,11 @@ export class SchedulingEngine {
           let score = 0;
 
           if (isPreferred) {
-            // Highly reward preferred imams (bonus inversely proportional to priority rank)
-            score += 1000 - Math.min(priority * 20, 500);
+            // Highly reward preferred imams with dominant priority: preferred candidates must strictly take precedence over general flexible candidates
+            score += 5000 - Math.min(priority * 100, 1000);
           } else if (isDiscouraged) {
             // Strong penalty for discouraged imams
-            score -= 800;
+            score -= 1000;
           } else {
             // Neutral / Allowed / Flexible
             score += 100;
@@ -480,7 +530,7 @@ export class SchedulingEngine {
           // -------------------------------------------------------------
           // Rule A: Consecutive Friday Prevention for non-fixed imams
           const preachedLastFridayHere = f > 1 && assignmentsGrid.get(`${mosque.id}:${f - 1}`)?.imamId === imam.id;
-          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id) {
+          if (preachedLastFridayHere && mosque.fixedImamId !== imam.id && imam.fixedMosqueId !== mosque.id) {
             score -= 2000; // Heavily penalize consecutive fridays in the same mosque
           }
 
@@ -491,7 +541,7 @@ export class SchedulingEngine {
               previousVisitsInMonth++;
             }
           }
-          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id) {
+          if (previousVisitsInMonth > 0 && mosque.fixedImamId !== imam.id && imam.fixedMosqueId !== mosque.id) {
             score -= 450 * previousVisitsInMonth;
           }
 
