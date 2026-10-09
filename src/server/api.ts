@@ -1298,6 +1298,75 @@ api.get('/rules', async (_req: Request, res: Response) => {
 // -------------------------------------------------------------
 // 2.4. Monthly Fixed Assignment Patterns per Mosque (Friday-Specific)
 // -------------------------------------------------------------
+// Helper: جلب الأماكن المحجوزة للخطباء في المساجد الأخرى لكل جمعة (1 إلى 5)
+// لمنع تكرار الخطيب في أكثر من مسجد لنفس الجمعة
+// -------------------------------------------------------------
+async function getOccupiedFridaySlots(excludeMosqueId: number): Promise<Record<number, Array<{ imamId: number; imamName: string; mosqueId: number; mosqueName: string }>>> {
+  const result: Record<number, Array<{ imamId: number; imamName: string; mosqueId: number; mosqueName: string }>> = {
+    1: [],
+    2: [],
+    3: [],
+    4: [],
+    5: [],
+  };
+
+  const allMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
+  const allImams = await db.select().from(imams);
+  const imamMap = new Map(allImams.map((i) => [i.id, i]));
+
+  const allPatterns = await db.select().from(fixedAssignmentPatterns);
+  const allItems = await db.select().from(fixedAssignmentPatternItems);
+
+  const itemsByPatternId = new Map<number, typeof allItems>();
+  for (const item of allItems) {
+    const list = itemsByPatternId.get(item.patternId) || [];
+    list.push(item);
+    itemsByPatternId.set(item.patternId, list);
+  }
+
+  for (const m of allMosques) {
+    if (m.id === excludeMosqueId) continue;
+
+    const mPatterns = allPatterns.filter((p) => p.mosqueId === m.id);
+    let targetPattern = mPatterns.find((p) => p.hijriYear === 0 && p.hijriMonth === 0);
+    if (!targetPattern && mPatterns.length > 0) {
+      targetPattern = mPatterns.sort((a, b) => (b.hijriYear * 100 + b.hijriMonth) - (a.hijriYear * 100 + a.hijriMonth))[0];
+    }
+
+    if (targetPattern) {
+      const pItems = itemsByPatternId.get(targetPattern.id) || [];
+      for (const item of pItems) {
+        if (!item.imamId) continue;
+        const fIdx = item.fridayIndex;
+        if (fIdx >= 1 && fIdx <= 5) {
+          const im = imamMap.get(item.imamId);
+          result[fIdx].push({
+            imamId: item.imamId,
+            imamName: im?.name || `خطيب #${item.imamId}`,
+            mosqueId: m.id,
+            mosqueName: m.name,
+          });
+        }
+      }
+    } else if (m.fixedImamId) {
+      const im = imamMap.get(m.fixedImamId);
+      for (let f = 1; f <= 5; f++) {
+        result[f].push({
+          imamId: m.fixedImamId,
+          imamName: im?.name || `خطيب #${m.fixedImamId}`,
+          mosqueId: m.id,
+          mosqueName: m.name,
+        });
+      }
+    }
+  }
+
+  return result;
+}
+
+// -------------------------------------------------------------
+// 2.4. Permanent & Friday-Specific Fixed Assignment Patterns per Mosque
+// -------------------------------------------------------------
 api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
   const mosqueId = Number(req.params.id);
   const year = req.query.year ? Number(req.query.year) : 1448;
@@ -1318,53 +1387,79 @@ api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
     if (!mosque) return res.status(404).json({ error: 'المسجد غير موجود' });
 
     const monthDetails = CalendarService.getHijriMonthDetails(year, month);
-    const actualFridaysCount = monthDetails.fridaysCount;
+    const occupiedSlotsByFriday = await getOccupiedFridaySlots(mosqueId);
 
-    const foundPatterns = await db.select().from(fixedAssignmentPatterns).where(
-      and(
-        eq(fixedAssignmentPatterns.mosqueId, mosqueId),
-        eq(fixedAssignmentPatterns.hijriYear, year),
-        eq(fixedAssignmentPatterns.hijriMonth, month)
-      )
+    const allPatterns = await db.select().from(fixedAssignmentPatterns).where(
+      eq(fixedAssignmentPatterns.mosqueId, mosqueId)
     );
+
+    // الأولوية للنمط الدائم المستمر عبر التاريخ
+    let pattern = allPatterns.find((p) => p.hijriYear === 0 && p.hijriMonth === 0);
+    if (!pattern) {
+      pattern = allPatterns.find((p) => p.hijriYear === year && p.hijriMonth === month);
+    }
+    if (!pattern && allPatterns.length > 0) {
+      pattern = allPatterns.sort((a, b) => (b.hijriYear * 100 + b.hijriMonth) - (a.hijriYear * 100 + a.hijriMonth))[0];
+    }
 
     const allImams = await db.select().from(imams);
     const imamMap = new Map(allImams.map((i) => [i.id, i]));
 
-    if (foundPatterns.length === 0) {
-      // Return default pattern preview based on legacy or blank
-      return res.json({
-        exists: false,
-        pattern: null,
-        monthDetails,
-        availableImams: allImams.filter((i) => i.isActive),
-      });
+    let enrichedItems: any[] = [];
+
+    if (pattern) {
+      const items = await db.select().from(fixedAssignmentPatternItems).where(
+        eq(fixedAssignmentPatternItems.patternId, pattern.id)
+      ).orderBy(asc(fixedAssignmentPatternItems.fridayIndex));
+
+      // تجهيز 5 جمعات كاملة
+      for (let f = 1; f <= 5; f++) {
+        const found = items.find((it) => it.fridayIndex === f);
+        const im = found?.imamId ? imamMap.get(found.imamId) : null;
+        enrichedItems.push({
+          fridayIndex: f,
+          imamId: found?.imamId || null,
+          imamName: im?.name || null,
+          imamPhone: im?.phone || null,
+          notes: null,
+        });
+      }
+    } else if (mosque.fixedImamId) {
+      const im = imamMap.get(mosque.fixedImamId);
+      for (let f = 1; f <= 5; f++) {
+        enrichedItems.push({
+          fridayIndex: f,
+          imamId: mosque.fixedImamId,
+          imamName: im?.name || null,
+          imamPhone: im?.phone || null,
+          notes: null,
+        });
+      }
+    } else {
+      for (let f = 1; f <= 5; f++) {
+        enrichedItems.push({
+          fridayIndex: f,
+          imamId: null,
+          imamName: null,
+          imamPhone: null,
+          notes: null,
+        });
+      }
     }
 
-    const pattern = foundPatterns[0];
-    const items = await db.select().from(fixedAssignmentPatternItems).where(
-      eq(fixedAssignmentPatternItems.patternId, pattern.id)
-    ).orderBy(asc(fixedAssignmentPatternItems.fridayIndex));
-
-    const enrichedItems = items.map((item) => {
-      const im = imamMap.get(item.imamId);
-      const fridayObj = monthDetails.fridays.find((f) => f.fridayIndex === item.fridayIndex);
-      return {
-        ...item,
-        imamName: im?.name || `خطيب #${item.imamId}`,
-        imamPhone: im?.phone || null,
-        hijriDate: fridayObj?.hijriDate,
-        gregorianDate: fridayObj?.gregorianDate,
-      };
-    });
+    const exists = Boolean(pattern || mosque.fixedImamId);
 
     res.json({
-      exists: true,
+      exists,
+      isPerpetual: true,
       pattern: {
-        ...pattern,
-        fridaysCount: actualFridaysCount,
+        id: pattern?.id || null,
+        mosqueId,
+        patternType: pattern ? 'SPECIFIC_FRIDAYS' : (mosque.fixedImamId ? 'SAME_ALL' : 'NONE'),
+        fridaysCount: 5,
         items: enrichedItems,
       },
+      occupiedSlotsByFriday,
       monthDetails,
       availableImams: allImams.filter((i) => i.isActive),
     });
@@ -1377,119 +1472,151 @@ api.get('/mosques/:id/fixed-patterns', async (req: Request, res: Response) => {
 api.post('/mosques/:id/fixed-patterns', requireAuth, async (req: AuthRequest, res: Response) => {
   if (!requireDatabase(res)) return;
   const mosqueId = Number(req.params.id);
-  const { hijriYear, hijriMonth, patternType, fridaysCount, items, notes, applyToFullYear, applyScope } = req.body;
+  const { patternType, items, notes } = req.body;
 
-  if (!hijriYear || (!hijriMonth && !applyToFullYear && applyScope !== 'YEAR') || !patternType || !Array.isArray(items)) {
-    return res.status(400).json({ error: 'السنة الهجرية والشهر ونوع النمط وقائمة الجمعات مطلوبة' });
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: 'قائمة الجمعات الخمس مطلوبة' });
   }
 
   try {
-    const hYear = Number(hijriYear);
-    const currM = Number(hijriMonth) || CalendarService.getCurrentDateTime().hijri.month || 1;
-    let targetMonths: number[];
-    if (applyToFullYear || applyScope === 'YEAR') {
-      targetMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-    } else if (applyScope === 'REMAINDER_OF_YEAR') {
-      targetMonths = [];
-      for (let m = currM; m <= 12; m++) {
-        targetMonths.push(m);
-      }
-    } else {
-      targetMonths = [Number(hijriMonth) || 1];
-    }
-
     const [mosque] = await db.select().from(mosques).where(eq(mosques.id, mosqueId));
     if (!mosque) return res.status(404).json({ error: 'المسجد غير موجود' });
 
-    let lastPatternId: number = 0;
+    // 1. تحقق صارم وشامل من عدم تعارض أي خطيب مع مسجد آخر في نفس الجمعة
+    const occupiedSlots = await getOccupiedFridaySlots(mosqueId);
+    const allImams = await db.select().from(imams);
+    const imamMap = new Map(allImams.map((i) => [i.id, i]));
+
+    for (const it of items) {
+      const f = Number(it.fridayIndex);
+      const imId = Number(it.imamId);
+      if (!imId || f < 1 || f > 5) continue;
+
+      const conflict = occupiedSlots[f]?.find((occ) => occ.imamId === imId);
+      if (conflict) {
+        const imName = imamMap.get(imId)?.name || `خطيب #${imId}`;
+        const fName = f === 1 ? 'الأولى' : f === 2 ? 'الثانية' : f === 3 ? 'الثالثة' : f === 4 ? 'الرابعة' : 'الخامسة';
+        return res.status(400).json({
+          error: `تعارض في التثبيت: فضيلة الشيخ (${imName}) مثبت بالفعل في (${conflict.mosqueName}) في الجمعة ${fName} (${f}). لا يمكن تثبيت الخطيب في أكثر من مسجد لنفس الجمعة.`
+        });
+      }
+    }
+
+    let patternId: number = 0;
 
     await db.transaction(async (tx) => {
-      for (const hMonth of targetMonths) {
-        let mFridaysCount = Number(fridaysCount) || 5;
-        try {
-          const details = CalendarService.getHijriMonthDetails(hYear, hMonth);
-          if (details && details.fridaysCount) {
-            mFridaysCount = details.fridaysCount;
-          }
-        } catch {
-          // fallback
-        }
+      // 2. إدارة النمط الدائم المستمر عبر التاريخ (hijriYear: 0, hijriMonth: 0)
+      const existing = await tx.select().from(fixedAssignmentPatterns).where(
+        and(
+          eq(fixedAssignmentPatterns.mosqueId, mosqueId),
+          eq(fixedAssignmentPatterns.hijriYear, 0),
+          eq(fixedAssignmentPatterns.hijriMonth, 0)
+        )
+      );
 
-        // Check if pattern exists for this mosque and month
-        const existing = await tx.select().from(fixedAssignmentPatterns).where(
+      if (existing.length > 0) {
+        patternId = existing[0].id;
+        await tx.delete(fixedAssignmentPatternItems).where(
+          eq(fixedAssignmentPatternItems.patternId, patternId)
+        );
+      } else {
+        const [inserted] = await tx.insert(fixedAssignmentPatterns).values({
+          mosqueId,
+          hijriYear: 0,
+          hijriMonth: 0,
+        }).returning();
+        patternId = inserted.id;
+      }
+
+      // تنظيف أي أنماط قديمة للمسجد لضمان سيادة النمط الدائم المطلقة
+      const otherOldPatterns = await tx.select().from(fixedAssignmentPatterns).where(
+        and(
+          eq(fixedAssignmentPatterns.mosqueId, mosqueId),
+          ne(fixedAssignmentPatterns.id, patternId)
+        )
+      );
+      for (const op of otherOldPatterns) {
+        await tx.delete(fixedAssignmentPatternItems).where(
+          eq(fixedAssignmentPatternItems.patternId, op.id)
+        );
+      }
+      if (otherOldPatterns.length > 0) {
+        await tx.delete(fixedAssignmentPatterns).where(
           and(
             eq(fixedAssignmentPatterns.mosqueId, mosqueId),
-            eq(fixedAssignmentPatterns.hijriYear, hYear),
-            eq(fixedAssignmentPatterns.hijriMonth, hMonth)
+            ne(fixedAssignmentPatterns.id, patternId)
           )
         );
-
-        let patternId: number;
-
-        if (existing.length > 0) {
-          patternId = existing[0].id;
-          await tx.update(fixedAssignmentPatterns)
-            .set({
-              mosqueId,
-              hijriYear: hYear,
-              hijriMonth: hMonth,
-            })
-            .where(eq(fixedAssignmentPatterns.id, patternId));
-
-          // Remove existing items to replace with updated ones
-          await tx.delete(fixedAssignmentPatternItems).where(
-            eq(fixedAssignmentPatternItems.patternId, patternId)
-          );
-        } else {
-          const [inserted] = await tx.insert(fixedAssignmentPatterns).values({
-            mosqueId,
-            hijriYear: hYear,
-            hijriMonth: hMonth,
-          }).returning();
-          patternId = inserted.id;
-        }
-
-        lastPatternId = patternId;
-
-        // Filter and insert items for this month's Friday count
-        const itemsToInsert = items
-          .filter((it: any) => Number(it.fridayIndex) <= mFridaysCount)
-          .map((item: any) => ({
-            patternId,
-            fridayIndex: Number(item.fridayIndex),
-            imamId: Number(item.imamId),
-          }));
-
-        if (itemsToInsert.length > 0) {
-          await tx.insert(fixedAssignmentPatternItems).values(itemsToInsert);
-        }
       }
 
-      // Also update fixed imam on mosque if fixed for all fridays
-      if (patternType === 'SAME_ALL' && items[0]?.imamId) {
-        await tx.update(mosques).set({
-          fixedImamId: Number(items[0].imamId),
-          updatedAt: new Date(),
-        }).where(eq(mosques.id, mosqueId));
+      // إدراج بنود الجمعات الخمس
+      const itemsToInsert = items
+        .filter((it: any) => it.imamId && Number(it.imamId) > 0 && Number(it.fridayIndex) >= 1 && Number(it.fridayIndex) <= 5)
+        .map((it: any) => ({
+          patternId,
+          fridayIndex: Number(it.fridayIndex),
+          imamId: Number(it.imamId),
+        }));
+
+      if (itemsToInsert.length > 0) {
+        await tx.insert(fixedAssignmentPatternItems).values(itemsToInsert);
       }
+
+      // تحديث بيانات المسجد الأساسية
+      const distinctImamIds = Array.from(new Set(itemsToInsert.map((it) => it.imamId)));
+      const isAllSame = distinctImamIds.length === 1 && itemsToInsert.length === 5;
+
+      await tx.update(mosques).set({
+        fixedImamId: isAllSame ? distinctImamIds[0] : null,
+        updatedAt: new Date(),
+      }).where(eq(mosques.id, mosqueId));
     });
 
     await logAudit(req, 'SAVE_FIXED_PATTERN', 'MOSQUE', mosqueId, {
-      hijriYear: hYear,
-      monthsCount: targetMonths.length,
+      isPerpetual: true,
+      itemsCount: items.filter((i: any) => Boolean(i.imamId)).length,
       patternType,
     });
 
     res.json({
       success: true,
-      message: applyToFullYear
-        ? `تم تثبيت النمط المعتمد للمسجد لجميع أشهر العام الهجري ${hYear} هـ بالكامل (12 شهراً)`
-        : 'تم حفظ نمط التثبيت للمسجد بنجاح',
-      patternId: lastPatternId,
+      message: 'تم حفظ نمط التثبيت الدائم والمستدام للمسجد بنجاح على مدار كافة الأشهر والسنوات',
+      patternId,
     });
   } catch (error: any) {
     console.error('DB error saving fixed pattern:', error?.message);
     res.status(500).json({ error: 'تعذر حفظ نمط التثبيت في قاعدة البيانات', details: safeErrorDetails(error) });
+  }
+});
+
+// إلغاء نمط التثبيت للمسجد بالكامل
+api.delete('/mosques/:id/fixed-patterns', requireAuth, async (req: AuthRequest, res: Response) => {
+  if (!requireDatabase(res)) return;
+  const mosqueId = Number(req.params.id);
+  try {
+    await db.transaction(async (tx) => {
+      const mosquePatterns = await tx.select().from(fixedAssignmentPatterns).where(
+        eq(fixedAssignmentPatterns.mosqueId, mosqueId)
+      );
+      for (const p of mosquePatterns) {
+        await tx.delete(fixedAssignmentPatternItems).where(
+          eq(fixedAssignmentPatternItems.patternId, p.id)
+        );
+      }
+      await tx.delete(fixedAssignmentPatterns).where(
+        eq(fixedAssignmentPatterns.mosqueId, mosqueId)
+      );
+      await tx.update(mosques).set({
+        fixedImamId: null,
+        updatedAt: new Date(),
+      }).where(eq(mosques.id, mosqueId));
+    });
+
+    await logAudit(req, 'DELETE_FIXED_PATTERN', 'MOSQUE', mosqueId, { clearedAll: true });
+    res.json({ success: true, message: 'تم إلغاء نمط التثبيت لهذا المسجد بنجاح' });
+  } catch (error: any) {
+    console.error('DB error deleting mosque fixed patterns:', error?.message);
+    res.status(500).json({ error: 'تعذر إلغاء نمط التثبيت للمسجد', details: safeErrorDetails(error) });
   }
 });
 
@@ -2539,7 +2666,7 @@ api.get('/schedules/:id', async (req: Request, res: Response) => {
 /**
  * Helper: جلب أنماط التثبيت المعتمدة للمساجد بما يضمن استدامتها على مدار التاريخ كله
  */
-async function getFixedPatternsForSchedule(
+export async function getFixedPatternsForSchedule(
   scheduleYear: number,
   scheduleMonth: number,
   fridaysCount: number,
@@ -2561,10 +2688,15 @@ async function getFixedPatternsForSchedule(
     const mPatterns = allDbPatterns.filter((p) => p.mosqueId === m.id);
     if (mPatterns.length === 0) continue;
 
-    // 1. التطابق المباشر لنفس الشهر والسنة الهجرية
-    let targetPattern = mPatterns.find(
-      (p) => p.hijriYear === scheduleYear && p.hijriMonth === scheduleMonth
-    );
+    // 0. الأولوية المطلقة للنمط الدائم المستمر عبر التاريخ (hijriYear: 0, hijriMonth: 0)
+    let targetPattern = mPatterns.find((p) => p.hijriYear === 0 && p.hijriMonth === 0);
+
+    // 1. التطابق المباشر لنفس الشهر والسنة الهجرية إن وجد نمط مخصص
+    if (!targetPattern) {
+      targetPattern = mPatterns.find(
+        (p) => p.hijriYear === scheduleYear && p.hijriMonth === scheduleMonth
+      );
+    }
 
     // 2. إذا لم يكن هناك نمط لهذا الشهر، نبحث عن أحدث نمط في نفس العام الهجري
     if (!targetPattern) {
@@ -2583,15 +2715,20 @@ async function getFixedPatternsForSchedule(
 
     if (targetPattern) {
       const pItems = itemsByPatternId.get(targetPattern.id) || [];
-      if (pItems.length > 0) {
+      // أخذ الجمعات المتاحة ضمن عدد جمعات الشهر فقط (أول 4 جمعات في شهر 4 جمعات، أو كافة الجمعات في شهر 5 جمعات)
+      const applicableItems = pItems
+        .filter((it) => it.fridayIndex <= fridaysCount && it.imamId)
+        .map((it) => ({
+          fridayIndex: it.fridayIndex,
+          imamId: it.imamId,
+        }));
+
+      if (applicableItems.length > 0) {
         fixedPatterns.push({
           mosqueId: m.id,
           patternType: 'CUSTOM',
           fridaysCount,
-          items: pItems.map((it) => ({
-            fridayIndex: it.fridayIndex,
-            imamId: it.imamId,
-          })),
+          items: applicableItems,
         });
       }
     }

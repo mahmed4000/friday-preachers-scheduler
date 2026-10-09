@@ -640,44 +640,94 @@ export const memoryStore = {
   },
 
   getFixedPatterns(mosqueId: number, year: number, month: number) {
-    const pattern = memoryPatterns.find(
-      (p: any) => p.mosqueId === mosqueId && p.hijriYear === year && p.hijriMonth === month
-    );
+    const pattern =
+      memoryPatterns.find((p: any) => p.mosqueId === mosqueId && p.hijriYear === 0 && p.hijriMonth === 0) ||
+      memoryPatterns.find((p: any) => p.mosqueId === mosqueId && p.hijriYear === year && p.hijriMonth === month) ||
+      memoryPatterns.filter((p: any) => p.mosqueId === mosqueId).sort((a: any, b: any) => (b.hijriYear * 100 + b.hijriMonth) - (a.hijriYear * 100 + a.hijriMonth))[0];
+
     const monthDetails = CalendarService.getHijriMonthDetails(year, month);
     const imamMap = new Map(memoryImams.map((i: any) => [i.id, i]));
+    const mosque = memoryMosques.find((m: any) => m.id === mosqueId);
 
-    if (!pattern) {
-      return {
-        exists: false,
-        fridaysCount: monthDetails.fridaysCount,
-        pattern: {
-          patternType: 'NONE',
-          items: monthDetails.fridays.map((f: any) => ({
-            fridayIndex: f.fridayIndex,
-            imamId: null,
-            imamName: null,
-          })),
-        },
-      };
+    // Compute occupied slots across other mosques
+    const occupiedSlotsByFriday: Record<number, Array<{ imamId: number; imamName: string; mosqueId: number; mosqueName: string }>> = {
+      1: [], 2: [], 3: [], 4: [], 5: []
+    };
+    for (const om of memoryMosques) {
+      if (om.id === mosqueId || !om.isActive) continue;
+      const op =
+        memoryPatterns.find((p: any) => p.mosqueId === om.id && p.hijriYear === 0 && p.hijriMonth === 0) ||
+        memoryPatterns.filter((p: any) => p.mosqueId === om.id).sort((a: any, b: any) => (b.hijriYear * 100 + b.hijriMonth) - (a.hijriYear * 100 + a.hijriMonth))[0];
+
+      if (op) {
+        const opItems = memoryPatternItems.filter((pi: any) => pi.patternId === op.id);
+        for (const item of opItems) {
+          if (!item.imamId) continue;
+          const f = item.fridayIndex;
+          if (f >= 1 && f <= 5) {
+            const im = imamMap.get(item.imamId) as any;
+            occupiedSlotsByFriday[f].push({
+              imamId: item.imamId,
+              imamName: im?.name || `خطيب #${item.imamId}`,
+              mosqueId: om.id,
+              mosqueName: om.name,
+            });
+          }
+        }
+      } else if (om.fixedImamId) {
+        const im = imamMap.get(om.fixedImamId) as any;
+        for (let f = 1; f <= 5; f++) {
+          occupiedSlotsByFriday[f].push({
+            imamId: om.fixedImamId,
+            imamName: im?.name || `خطيب #${om.fixedImamId}`,
+            mosqueId: om.id,
+            mosqueName: om.name,
+          });
+        }
+      }
     }
 
-    const items = memoryPatternItems
-      .filter((pi: any) => pi.patternId === pattern.id)
-      .map((pi: any) => {
-        const im = pi.imamId ? (imamMap.get(pi.imamId) as any) : null;
-        return {
-          ...pi,
+    const items: any[] = [];
+    if (pattern) {
+      const pItems = memoryPatternItems.filter((pi: any) => pi.patternId === pattern.id);
+      for (let f = 1; f <= 5; f++) {
+        const found = pItems.find((it: any) => it.fridayIndex === f);
+        const im = found?.imamId ? (imamMap.get(found.imamId) as any) : null;
+        items.push({
+          fridayIndex: f,
+          imamId: found?.imamId || null,
           imamName: im?.name || null,
-        };
-      });
+        });
+      }
+    } else if (mosque?.fixedImamId) {
+      const im = imamMap.get(mosque.fixedImamId) as any;
+      for (let f = 1; f <= 5; f++) {
+        items.push({
+          fridayIndex: f,
+          imamId: mosque.fixedImamId,
+          imamName: im?.name || null,
+        });
+      }
+    } else {
+      for (let f = 1; f <= 5; f++) {
+        items.push({
+          fridayIndex: f,
+          imamId: null,
+          imamName: null,
+        });
+      }
+    }
 
     return {
-      exists: true,
+      exists: Boolean(pattern || mosque?.fixedImamId),
+      isPerpetual: true,
       pattern: {
-        ...pattern,
+        patternType: pattern ? 'SPECIFIC_FRIDAYS' : (mosque?.fixedImamId ? 'SAME_ALL' : 'NONE'),
+        fridaysCount: 5,
         items,
       },
-      fridaysCount: pattern.fridaysCount,
+      occupiedSlotsByFriday,
+      fridaysCount: 5,
     };
   },
 

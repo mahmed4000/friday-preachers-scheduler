@@ -1,6 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Search, ChevronDown, Check, X, User, Phone } from 'lucide-react';
+import { Search, ChevronDown, Check, X, User, Phone, ShieldBan } from 'lucide-react';
 import { Imam } from '../../types/index.ts';
+
+export interface DisabledImamInfo {
+  reason: string;
+  mosqueName?: string;
+  fridayIndex?: number;
+}
 
 interface SearchablePreacherSelectProps {
   imams: Imam[];
@@ -9,6 +15,8 @@ interface SearchablePreacherSelectProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  disabledImams?: Record<number, DisabledImamInfo>;
+  onAttemptDisabledSelect?: (imamId: number, info: DisabledImamInfo) => void;
 }
 
 export function SearchablePreacherSelect({
@@ -18,6 +26,8 @@ export function SearchablePreacherSelect({
   placeholder = '-- ابحث بالاسم واختر فضيلة الشيخ --',
   className = '',
   disabled = false,
+  disabledImams = {},
+  onAttemptDisabledSelect,
 }: SearchablePreacherSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -29,6 +39,12 @@ export function SearchablePreacherSelect({
     if (!value) return null;
     return imams.find((i) => i.id === Number(value)) || null;
   }, [imams, value]);
+
+  // Is selected imam currently disabled/conflicted?
+  const selectedCollision = useMemo(() => {
+    if (!value || !disabledImams) return null;
+    return disabledImams[Number(value)] || null;
+  }, [value, disabledImams]);
 
   // Filtered Imams
   const filteredImams = useMemo(() => {
@@ -71,6 +87,13 @@ export function SearchablePreacherSelect({
   }, [isOpen]);
 
   const handleSelect = (imamId: number) => {
+    const collision = disabledImams[imamId];
+    if (collision) {
+      if (onAttemptDisabledSelect) {
+        onAttemptDisabledSelect(imamId, collision);
+      }
+      return;
+    }
     onChange(imamId);
     setIsOpen(false);
   };
@@ -102,17 +125,25 @@ export function SearchablePreacherSelect({
             ? 'bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed'
             : isOpen
             ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-2xs'
+            : selectedCollision
+            ? 'bg-rose-50/70 border-rose-300 text-rose-900 hover:border-rose-400'
             : selectedImam
             ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-500'
             : 'bg-white border-slate-300 text-slate-500 hover:border-slate-400'
         }`}
       >
-        <div className="flex items-center gap-2 overflow-hidden">
-          <User className={`w-4 h-4 shrink-0 ${selectedImam ? 'text-emerald-700' : 'text-slate-400'}`} />
+        <div className="flex items-center gap-2 overflow-hidden flex-1 min-w-0">
+          <User className={`w-4 h-4 shrink-0 ${selectedCollision ? 'text-rose-600' : selectedImam ? 'text-emerald-700' : 'text-slate-400'}`} />
           {selectedImam ? (
-            <div className="flex items-center gap-2 truncate text-xs font-bold text-slate-900">
+            <div className="flex items-center gap-1.5 truncate text-xs font-bold text-slate-900 flex-1">
               <span className="truncate">{selectedImam.name}</span>
               {getTypeBadge(selectedImam.type)}
+              {selectedCollision && (
+                <span className="shrink-0 text-[10px] font-bold text-rose-700 bg-rose-100/90 border border-rose-300 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <ShieldBan className="w-3 h-3 text-rose-600" />
+                  <span>محجوز بمكان آخر</span>
+                </span>
+              )}
             </div>
           ) : (
             <span className="text-xs text-slate-500 truncate">{placeholder}</span>
@@ -167,34 +198,55 @@ export function SearchablePreacherSelect({
           </div>
 
           {/* List Options */}
-          <div className="overflow-y-auto flex-1 p-1 space-y-0.5">
+          <div className="overflow-y-auto flex-1 p-1 space-y-1">
             {filteredImams.length > 0 ? (
               filteredImams.map((imam) => {
                 const isSelected = imam.id === Number(value);
+                const collisionInfo = disabledImams[imam.id];
+                const isDisabled = Boolean(collisionInfo);
+
                 return (
                   <div
                     key={imam.id}
                     onClick={() => handleSelect(imam.id)}
-                    className={`p-2.5 rounded-lg flex items-center justify-between cursor-pointer transition-colors ${
-                      isSelected
-                        ? 'bg-emerald-50 text-emerald-950 font-bold'
-                        : 'hover:bg-slate-50 text-slate-800 font-medium'
+                    className={`p-2.5 rounded-lg flex items-center justify-between transition-colors ${
+                      isDisabled
+                        ? 'bg-rose-50/50 hover:bg-rose-50/80 text-slate-400 cursor-not-allowed border border-rose-200/60'
+                        : isSelected
+                        ? 'bg-emerald-50 text-emerald-950 font-bold border border-emerald-200 cursor-pointer'
+                        : 'hover:bg-slate-50 text-slate-800 font-medium cursor-pointer'
                     }`}
+                    title={collisionInfo ? `غير متاح: ${collisionInfo.reason}` : undefined}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <User className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-emerald-700' : 'text-slate-400'}`} />
-                      <span className="truncate text-xs font-semibold">{imam.name}</span>
-                      {getTypeBadge(imam.type)}
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <User className={`w-3.5 h-3.5 shrink-0 ${isDisabled ? 'text-rose-400' : isSelected ? 'text-emerald-700' : 'text-slate-400'}`} />
+                        <span className={`truncate text-xs font-semibold ${isDisabled ? 'line-through decoration-rose-400 text-slate-500' : ''}`}>
+                          {imam.name}
+                        </span>
+                        {getTypeBadge(imam.type)}
+                      </div>
+
+                      {collisionInfo && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-rose-700 bg-rose-100/80 border border-rose-200 px-1.5 py-0.5 rounded w-fit">
+                          <ShieldBan className="w-3 h-3 text-rose-600 shrink-0" />
+                          <span>محجوز في: {collisionInfo.mosqueName || 'مسجد آخر'}{collisionInfo.fridayIndex ? ` (الجمعة ${collisionInfo.fridayIndex})` : ''}</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0 mr-2">
                       {imam.phone && (
                         <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
                           <Phone className="w-2.5 h-2.5" />
                           {imam.phone}
                         </span>
                       )}
-                      {isSelected && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                      {isDisabled ? (
+                        <span className="text-[10px] font-bold text-rose-600 bg-rose-100 px-1 rounded">مغلق</span>
+                      ) : isSelected ? (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : null}
                     </div>
                   </div>
                 );

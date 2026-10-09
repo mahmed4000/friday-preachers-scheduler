@@ -82,22 +82,21 @@ export function MosqueProfileModal({
   }, []);
 
   // -------------------------------------------------------------
-  // Fixed Preacher per Friday System State
+  // Fixed Preacher per Friday System State (Perpetual 5-Friday Pattern)
   // -------------------------------------------------------------
   const [hasFixedPattern, setHasFixedPattern] = useState(false);
-  const [applyScope, setApplyScope] = useState<'MONTH' | 'REMAINDER_OF_YEAR' | 'YEAR'>('MONTH');
-  const [patternYear, setPatternYear] = useState<number>(currentHijriInfo.year || 1448);
-  const [patternMonth, setPatternMonth] = useState<number>(currentHijriInfo.month || 1);
-  const [patternType, setPatternType] = useState<FixedAssignmentPatternType>('SAME_ALL');
   const [singleImamId, setSingleImamId] = useState<number | ''>('');
-  const [fridaySlots, setFridaySlots] = useState<{ fridayIndex: number; imamId: number | ''; notes?: string }[]>([]);
-  const [splitGroups, setSplitGroups] = useState<SplitGroup[]>([
-    { id: 'grp-1', imamId: '', count: 2 },
-    { id: 'grp-2', imamId: '', count: 3 },
+  const [fridaySlots, setFridaySlots] = useState<{ fridayIndex: number; imamId: number | ''; notes?: string }[]>([
+    { fridayIndex: 1, imamId: '' },
+    { fridayIndex: 2, imamId: '' },
+    { fridayIndex: 3, imamId: '' },
+    { fridayIndex: 4, imamId: '' },
+    { fridayIndex: 5, imamId: '' },
   ]);
+  const [occupiedSlotsByFriday, setOccupiedSlotsByFriday] = useState<
+    Record<number, Array<{ imamId: number; imamName: string; mosqueId: number; mosqueName: string }>>
+  >({ 1: [], 2: [], 3: [], 4: [], 5: [] });
   const [existingPatternId, setExistingPatternId] = useState<number | null>(null);
-  const [patternConflictWarning, setPatternConflictWarning] = useState<string | null>(null);
-  const [isCopying, setIsCopying] = useState(false);
 
   // Rules list - Decoupled selection states
   const [rules, setRules] = useState<MosqueImamRule[]>([]);
@@ -107,86 +106,74 @@ export function MosqueProfileModal({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Month details from CalendarService
-  const monthDetails = useMemo(() => {
-    try {
-      return CalendarService.getHijriMonthDetails(patternYear, patternMonth);
-    } catch {
-      const mName = HIJRI_MONTH_NAMES[patternMonth] || 'محرم';
-      return {
-        monthName: mName,
-        fridaysCount: 4,
-        fridays: [1, 2, 3, 4].map((idx) => ({
-          fridayIndex: idx,
-          hijriDate: `جمعة ${idx}`,
-          gregorianDate: '',
-        })),
+  // Helper: Disabled imams for a specific Friday index (1 to 5)
+  const getDisabledImamsForFriday = (fridayIndex: number) => {
+    const list = occupiedSlotsByFriday[fridayIndex] || [];
+    const map: Record<number, { reason: string; mosqueName: string; fridayIndex: number }> = {};
+    for (const item of list) {
+      map[item.imamId] = {
+        reason: `محجوز في ${item.mosqueName} (الجمعة ${fridayIndex})`,
+        mosqueName: item.mosqueName,
+        fridayIndex,
       };
     }
-  }, [patternYear, patternMonth]);
+    return map;
+  };
 
-  const actualFridaysCount = monthDetails.fridaysCount;
-
-  // Initialize slots when month or fridays count changes
-  useEffect(() => {
-    setFridaySlots((prev) => {
-      const newSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [];
-      for (let i = 1; i <= actualFridaysCount; i++) {
-        const existing = prev.find((p) => p.fridayIndex === i);
-        newSlots.push(existing || { fridayIndex: i, imamId: singleImamId || '' });
-      }
-      return newSlots;
-    });
-  }, [actualFridaysCount, patternYear, patternMonth]);
-
-  // Load existing fixed pattern when mosque or selected month changes
-  const loadFixedPattern = async (mId: number, yr: number, mo: number) => {
-    try {
-      setPatternConflictWarning(null);
-      const res = await fetchApi<any>(`/api/mosques/${mId}/fixed-patterns?year=${yr}&month=${mo}`);
-      if (res.exists && res.pattern) {
-        setHasFixedPattern(true);
-        setExistingPatternId(res.pattern.id);
-        setPatternType(res.pattern.patternType || 'SAME_ALL');
-
-        if (res.pattern.items && res.pattern.items.length > 0) {
-          if (res.pattern.patternType === 'SAME_ALL') {
-            setSingleImamId(res.pattern.items[0].imamId);
-          }
-
-          const loadedSlots = res.pattern.items.map((it: any) => ({
-            fridayIndex: it.fridayIndex,
-            imamId: it.imamId,
-            notes: it.notes || '',
-          }));
-
-          // Fill any missing slots
-          for (let f = 1; f <= actualFridaysCount; f++) {
-            if (!loadedSlots.some((s: any) => s.fridayIndex === f)) {
-              loadedSlots.push({ fridayIndex: f, imamId: '' });
-            }
-          }
-          setFridaySlots(loadedSlots.sort((a: any, b: any) => a.fridayIndex - b.fridayIndex));
+  // Helper: Disabled imams for Whole Month (any preacher occupied in ANY Friday in another mosque)
+  const disabledImamsForAllFridays = useMemo(() => {
+    const map: Record<number, { reason: string; mosqueName: string; fridayIndex: number }> = {};
+    for (let f = 1; f <= 5; f++) {
+      const list = occupiedSlotsByFriday[f] || [];
+      for (const item of list) {
+        if (!map[item.imamId]) {
+          map[item.imamId] = {
+            reason: `محجوز في ${item.mosqueName} (الجمعة ${f})`,
+            mosqueName: item.mosqueName,
+            fridayIndex: f,
+          };
         }
+      }
+    }
+    return map;
+  }, [occupiedSlotsByFriday]);
+
+  // Load existing fixed pattern and collision data from backend
+  const loadFixedPattern = async (mId: number) => {
+    try {
+      const res = await fetchApi<any>(`/api/mosques/${mId}/fixed-patterns`);
+      if (res.occupiedSlotsByFriday) {
+        setOccupiedSlotsByFriday(res.occupiedSlotsByFriday);
+      }
+
+      if (res.exists && res.pattern && Array.isArray(res.pattern.items)) {
+        setHasFixedPattern(true);
+        setExistingPatternId(res.pattern.id || null);
+
+        const loadedSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [1, 2, 3, 4, 5].map((idx) => {
+          const found = res.pattern.items.find((it: any) => it.fridayIndex === idx);
+          return {
+            fridayIndex: idx,
+            imamId: found?.imamId ? (Number(found.imamId) as number) : (''),
+            notes: found?.notes || '',
+          };
+        });
+        setFridaySlots(loadedSlots);
+
+        const firstId = loadedSlots[0]?.imamId;
+        const isAllSame = typeof firstId === 'number' && loadedSlots.every((s) => s.imamId === firstId);
+        setSingleImamId(isAllSame ? (firstId as number) : '');
       } else {
         const isFixed = Boolean(mosque?.fixedImamId);
         setHasFixedPattern(isFixed);
         setExistingPatternId(null);
         if (mosque?.fixedImamId) {
-          setSingleImamId(Number(mosque.fixedImamId));
-          setPatternType('SAME_ALL');
-          const defSlots = [];
-          for (let f = 1; f <= actualFridaysCount; f++) {
-            defSlots.push({ fridayIndex: f, imamId: Number(mosque.fixedImamId) });
-          }
-          setFridaySlots(defSlots);
+          const fId = Number(mosque.fixedImamId);
+          setSingleImamId(fId);
+          setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: fId })));
         } else {
           setSingleImamId('');
-          setFridaySlots([]);
-          setSplitGroups([
-            { id: 'grp-1', imamId: '', count: 2 },
-            { id: 'grp-2', imamId: '', count: Math.max(1, actualFridaysCount - 2) },
-          ]);
+          setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: '' })));
         }
       }
     } catch {
@@ -223,21 +210,15 @@ export function MosqueProfileModal({
       const isFixed = Boolean(mosque.fixedImamId);
       setHasFixedPattern(isFixed);
       setSingleImamId(mosque.fixedImamId ? Number(mosque.fixedImamId) : '');
-      setPatternType(mosque.fixedPattern === 'SPECIFIC_FRIDAYS' ? 'SPECIFIC_FRIDAYS' : 'SAME_ALL');
       setExistingPatternId(null);
 
-      const initialSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [];
-      for (let f = 1; f <= actualFridaysCount; f++) {
-        initialSlots.push({ fridayIndex: f, imamId: mosque.fixedImamId ? Number(mosque.fixedImamId) : '' });
-      }
+      const initialSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [1, 2, 3, 4, 5].map((idx) => ({
+        fridayIndex: idx,
+        imamId: mosque.fixedImamId ? (Number(mosque.fixedImamId) as number) : '',
+      }));
       setFridaySlots(initialSlots);
 
-      setSplitGroups([
-        { id: 'grp-1', imamId: mosque.fixedImamId ? Number(mosque.fixedImamId) : '', count: 2 },
-        { id: 'grp-2', imamId: '', count: Math.max(1, actualFridaysCount - 2) },
-      ]);
-
-      loadFixedPattern(mosque.id, patternYear, patternMonth);
+      loadFixedPattern(mosque.id);
 
       // Load rules for this mosque
       fetchApi<any>(`/api/mosques/${mosque.id}`)
@@ -280,13 +261,8 @@ export function MosqueProfileModal({
       setNotes('');
       setHasFixedPattern(false);
       setSingleImamId('');
-      setPatternType('SAME_ALL');
       setExistingPatternId(null);
-      setFridaySlots([]);
-      setSplitGroups([
-        { id: 'grp-1', imamId: '', count: 2 },
-        { id: 'grp-2', imamId: '', count: 2 },
-      ]);
+      setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: '' })));
       setRules([]);
     }
     setSelectedPreferredImam('');
@@ -300,47 +276,29 @@ export function MosqueProfileModal({
     };
   }, [mosque?.id, isOpen]);
 
-  // When pattern type or singleImamId changes, keep slots synchronized
-  const handleSingleImamChange = (imId: number | '') => {
+  // Quick change when single preacher for all fridays is selected
+  const handleWholeMonthPreacherChange = (imId: number | '') => {
     setSingleImamId(imId);
-    if (patternType === 'SAME_ALL') {
-      const updated = [];
-      for (let f = 1; f <= actualFridaysCount; f++) {
-        updated.push({ fridayIndex: f, imamId: imId });
-      }
-      setFridaySlots(updated);
+    if (imId) {
+      setHasFixedPattern(true);
+      setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: imId })));
+    } else {
+      setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: '' })));
     }
   };
 
-  // Split Groups Calculation
-  const totalAllocatedInGroups = useMemo(() => {
-    return splitGroups.reduce((acc, g) => acc + (Number(g.count) || 0), 0);
-  }, [splitGroups]);
-
-  const handleApplySplitGroups = () => {
-    let currentFriday = 1;
-    const newSlots: { fridayIndex: number; imamId: number | ''; notes?: string }[] = [];
-
-    for (const grp of splitGroups) {
-      if (!grp.imamId || !grp.count) continue;
-      for (let c = 0; c < grp.count; c++) {
-        if (currentFriday <= actualFridaysCount) {
-          newSlots.push({
-            fridayIndex: currentFriday,
-            imamId: grp.imamId,
-            notes: `توزيع المجموعات (${grp.count} جمعات)`,
-          });
-          currentFriday++;
-        }
+  // Change individual Friday slot
+  const handleFridaySlotChange = (fridayIndex: number, imId: number | '') => {
+    setFridaySlots((prev) => {
+      const next = prev.map((s) => (s.fridayIndex === fridayIndex ? { ...s, imamId: imId } : s));
+      const firstId = next[0]?.imamId;
+      const isAllSame = firstId && next.every((s) => s.imamId === firstId);
+      setSingleImamId(isAllSame ? firstId : '');
+      if (next.some((s) => Boolean(s.imamId))) {
+        setHasFixedPattern(true);
       }
-    }
-
-    // Fill remainder if any
-    for (let f = currentFriday; f <= actualFridaysCount; f++) {
-      newSlots.push({ fridayIndex: f, imamId: '' });
-    }
-
-    setFridaySlots(newSlots);
+      return next;
+    });
   };
 
   const handleAddressSelectorChange = (addr: EgyptianAddressValue) => {
@@ -365,26 +323,28 @@ export function MosqueProfileModal({
   // Save Mosque Profile & Fixed Patterns
   const handleSaveBasicAndFixed = async () => {
     setErrorMessage(null);
-    setPatternConflictWarning(null);
     if (!name || !code) {
       setErrorMessage('يرجى ملء الاسم والكود');
       return;
     }
 
     if (hasFixedPattern) {
-      if (patternType === 'SAME_ALL' && !singleImamId) {
-        setErrorMessage('يرجى اختيار الخطيب الثابت لكافة جمعات الشهر');
+      const assignedCount = fridaySlots.filter((s) => Boolean(s.imamId)).length;
+      if (assignedCount === 0 && !singleImamId) {
+        setErrorMessage('يرجى اختيار خطيب لجمعة واحدة على الأقل أو إلغاء تفعيل خيار الخطيب الثابت');
         return;
       }
-      if (patternType === 'SPLIT_COUNTS' && totalAllocatedInGroups !== actualFridaysCount) {
-        setErrorMessage(`مجموع جمعات المجموعات (${totalAllocatedInGroups}) لا يساوي إجمالي جمعات الشهر (${actualFridaysCount})`);
-        return;
-      }
-      if (patternType === 'SPECIFIC_FRIDAYS') {
-        const filledSlots = fridaySlots.filter((s) => s.imamId && s.fridayIndex <= actualFridaysCount);
-        if (filledSlots.length < actualFridaysCount) {
-          setErrorMessage(`يرجى تحديد الخطيب لجميع جمعات الشهر (${actualFridaysCount} جمعات)`);
-          return;
+
+      // التحقق الفوري من عدم تعارض أي جمعة مع مسجد آخر
+      for (const s of fridaySlots) {
+        if (s.imamId) {
+          const occList = occupiedSlotsByFriday[s.fridayIndex] || [];
+          const conflict = occList.find((c) => c.imamId === Number(s.imamId));
+          if (conflict) {
+            const imName = imams.find((i) => i.id === Number(s.imamId))?.name || `خطيب #${s.imamId}`;
+            setErrorMessage(`تعارض في التثبيت: فضيلة الشيخ (${imName}) محجوز في (${conflict.mosqueName}) في الجمعة (${s.fridayIndex}). لا يمكن تثبيته في أكثر من مسجد لنفس الجمعة.`);
+            return;
+          }
         }
       }
     }
@@ -393,6 +353,9 @@ export function MosqueProfileModal({
     setFeedback(null);
 
     try {
+      const assignedCount = hasFixedPattern ? fridaySlots.filter((s) => Boolean(s.imamId)).length : 0;
+      const isAllSame = hasFixedPattern && assignedCount === 5 && singleImamId;
+
       const payload = {
         name,
         code,
@@ -413,9 +376,9 @@ export function MosqueProfileModal({
         whatsapp,
         isActive,
         notes,
-        fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
-        fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
-        fixedCount: hasFixedPattern ? actualFridaysCount : 0,
+        fixedImamId: isAllSame ? Number(singleImamId) : null,
+        fixedPattern: hasFixedPattern ? (isAllSame ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'NONE',
+        fixedCount: assignedCount,
       };
 
       let savedMosqueRes: any;
@@ -434,51 +397,35 @@ export function MosqueProfileModal({
         savedMosqueId = savedMosqueRes?.id;
       }
 
-      // If Fixed Pattern is active, save pattern items for the selected month
+      // If Fixed Pattern is active, save perpetual pattern items
       if (hasFixedPattern && savedMosqueId) {
-        let itemsToSave: any[] = [];
-
-        if (patternType === 'SAME_ALL') {
-          for (let f = 1; f <= actualFridaysCount; f++) {
-            itemsToSave.push({ fridayIndex: f, imamId: Number(singleImamId) });
-          }
-        } else if (patternType === 'SPLIT_COUNTS') {
-          handleApplySplitGroups();
-          let curr = 1;
-          for (const grp of splitGroups) {
-            for (let c = 0; c < grp.count; c++) {
-              if (curr <= actualFridaysCount) {
-                itemsToSave.push({ fridayIndex: curr, imamId: Number(grp.imamId) });
-                curr++;
-              }
-            }
-          }
-        } else {
-          // SPECIFIC_FRIDAYS or CUSTOM
-          itemsToSave = fridaySlots
-            .filter((s) => s.imamId && s.fridayIndex <= actualFridaysCount)
-            .map((s) => ({
-              fridayIndex: s.fridayIndex,
-              imamId: Number(s.imamId),
-              notes: s.notes || null,
-            }));
-        }
+        const itemsToSave = fridaySlots
+          .filter((s) => s.imamId)
+          .map((s) => ({
+            fridayIndex: s.fridayIndex,
+            imamId: Number(s.imamId),
+            notes: s.notes || null,
+          }));
 
         const patternSaveRes: any = await fetchApi(`/api/mosques/${savedMosqueId}/fixed-patterns`, {
           method: 'POST',
           body: JSON.stringify({
-            hijriYear: patternYear,
-            hijriMonth: patternMonth,
-            applyToFullYear: applyScope === 'YEAR',
-            applyScope,
-            patternType,
-            fridaysCount: actualFridaysCount,
+            patternType: isAllSame ? 'SAME_ALL' : 'SPECIFIC_FRIDAYS',
+            fridaysCount: 5,
             items: itemsToSave,
           }),
         });
 
         if (patternSaveRes?.patternId) {
           setExistingPatternId(patternSaveRes.patternId);
+        }
+      } else if (!hasFixedPattern && savedMosqueId) {
+        try {
+          await fetchApi(`/api/mosques/${savedMosqueId}/fixed-patterns`, {
+            method: 'DELETE',
+          });
+        } catch {
+          // ignore
         }
       }
 
@@ -494,10 +441,10 @@ export function MosqueProfileModal({
         code,
         region: region || 'منشأة البكاري',
         address: formattedAddress || address,
-        fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
+        fixedImamId: isAllSame ? Number(singleImamId) : null,
         fixedImamName: selectedFixedImam ? selectedFixedImam.name : null,
-        fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',
-        fixedCount: hasFixedPattern ? actualFridaysCount : 0,
+        fixedPattern: hasFixedPattern ? (isAllSame ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'NONE',
+        fixedCount: assignedCount,
         preferencesCount: rules.filter((r) => r.relationshipType === 'PREFERRED').length,
         forbiddenCount: rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length,
       };
@@ -515,45 +462,22 @@ export function MosqueProfileModal({
     }
   };
 
-  // Copy Pattern to Next Month Handler
-  const handleCopyPatternToNextMonth = async () => {
-    if (!mosque) return;
-    setIsCopying(true);
-    setErrorMessage(null);
-    try {
-      const nextMonth = patternMonth === 12 ? 1 : patternMonth + 1;
-      const nextYear = patternMonth === 12 ? patternYear + 1 : patternYear;
-
-      const res: any = await fetchApi(`/api/mosques/${mosque.id}/fixed-patterns/copy`, {
-        method: 'POST',
-        body: JSON.stringify({
-          sourceYear: patternYear,
-          sourceMonth: patternMonth,
-          targetYear: nextYear,
-          targetMonth: nextMonth,
-        }),
-      });
-
-      setFeedback(res.message || 'تم نسخ نمط التثبيت للشهر القادم بنجاح');
-      setTimeout(() => setFeedback(null), 3500);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'تعذر نسخ النمط للشهر القادم');
-    } finally {
-      setIsCopying(false);
-    }
-  };
-
-  // Delete Pattern Handler
+  // Delete Pattern Handler (Clears fixed pattern completely)
   const handleDeleteFixedPattern = async () => {
-    if (!mosque || !existingPatternId) return;
+    if (!mosque) return;
+    if (!window.confirm('هل أنت متأكد من رغبتك في إلغاء نمط التثبيت لهذا المسجد نهائياً وجعل كافة الجمعات مرنة؟')) {
+      return;
+    }
     setErrorMessage(null);
     try {
-      await fetchApi(`/api/mosques/${mosque.id}/fixed-patterns/${existingPatternId}`, {
+      await fetchApi(`/api/mosques/${mosque.id}/fixed-patterns`, {
         method: 'DELETE',
       });
       setHasFixedPattern(false);
       setExistingPatternId(null);
-      setFeedback('تم حذف نمط التثبيت لهذا الشهر بنجاح');
+      setSingleImamId('');
+      setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: '' })));
+      setFeedback('تم إلغاء نمط التثبيت للمسجد بنجاح وتفريغ كافة الجمعات');
       setTimeout(() => setFeedback(null), 3000);
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر حذف نمط التثبيت');
@@ -833,9 +757,11 @@ export function MosqueProfileModal({
                       setHasFixedPattern(checked);
                       if (!checked) {
                         setSingleImamId('');
-                        setFridaySlots((prev) => prev.map((s) => ({ ...s, imamId: '' })));
+                        setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: '' })));
                       } else if (!singleImamId && mosque?.fixedImamId) {
-                        setSingleImamId(Number(mosque.fixedImamId));
+                        const fId = Number(mosque.fixedImamId);
+                        setSingleImamId(fId);
+                        setFridaySlots([1, 2, 3, 4, 5].map((idx) => ({ fridayIndex: idx, imamId: fId })));
                       }
                     }}
                     className="w-4 h-4 text-emerald-600 rounded border-slate-300"
@@ -847,424 +773,174 @@ export function MosqueProfileModal({
 
             {hasFixedPattern && (
               <div className="space-y-4 pt-1">
-                {/* 2. Temporal Scope Selector & Month/Year Bar */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 space-y-3 shadow-2xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <CalendarDays className="w-4 h-4 text-emerald-700 shrink-0" />
-                      <span className="text-xs font-bold text-slate-900 font-heading">نطاق تطبيق التثبيت:</span>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                      <button
-                        type="button"
-                        onClick={() => setApplyScope('MONTH')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                          applyScope === 'MONTH'
-                            ? 'bg-white text-emerald-950 shadow-2xs border border-emerald-300 font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>📅 شهر هجري محدد</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setApplyScope('REMAINDER_OF_YEAR')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                          applyScope === 'REMAINDER_OF_YEAR'
-                            ? 'bg-emerald-800 text-white shadow-2xs font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>🚀 من الشهر الحالي لنهاية السنة ({currentHijriInfo.month || 1} إلى 12)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setApplyScope('YEAR')}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                          applyScope === 'YEAR'
-                            ? 'bg-slate-900 text-white shadow-2xs font-bold'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        <span>✨ العام الهجري بالكامل (12 شهراً)</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold text-slate-700">الفترة الزمنية:</span>
-                      {applyScope === 'MONTH' ? (
-                        <select
-                          value={patternMonth}
-                          onChange={(e) => {
-                            const m = Number(e.target.value);
-                            setPatternMonth(m);
-                            if (mosque) loadFixedPattern(mosque.id, patternYear, m);
-                          }}
-                          className="text-xs font-bold p-1.5 border border-slate-300 rounded-lg bg-emerald-50/50 text-slate-900"
-                        >
-                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((mNum) => (
-                            <option key={mNum} value={mNum}>
-                              {HIJRI_MONTH_NAMES[mNum]} ({mNum}) {mNum === currentHijriInfo.month ? '⭐ (الشهر الحالي)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      ) : applyScope === 'REMAINDER_OF_YEAR' ? (
-                        <span className="px-2.5 py-1 text-xs font-bold bg-emerald-100 text-emerald-950 rounded-lg border border-emerald-300">
-                          من شهر {HIJRI_MONTH_NAMES[currentHijriInfo.month || 1]} ({currentHijriInfo.month || 1}) حتى ذي الحجة (12)
-                        </span>
-                      ) : (
-                        <span className="px-2.5 py-1 text-xs font-bold bg-amber-100 text-amber-950 rounded-lg border border-amber-300">
-                          جميع أشهر السنة الـ 12 (من محرم إلى ذي الحجة)
-                        </span>
-                      )}
-
-                      <select
-                        value={patternYear}
-                        onChange={(e) => {
-                          const y = Number(e.target.value);
-                          setPatternYear(y);
-                          if (mosque && applyScope === 'MONTH') loadFixedPattern(mosque.id, y, patternMonth);
-                        }}
-                        className="text-xs font-bold p-1.5 border border-slate-300 rounded-lg bg-slate-50 text-slate-900"
-                      >
-                        <option value={1448}>1448 هـ</option>
-                        <option value={1449}>1449 هـ</option>
-                      </select>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs">
-                      {applyScope === 'MONTH' && (
-                        <span className="px-2.5 py-1 rounded-md bg-emerald-100/70 text-emerald-900 font-bold border border-emerald-200">
-                          عدد جمعات الشهر الفعلي: {actualFridaysCount} جمعات
-                        </span>
-                      )}
-
-                      {mosque && applyScope === 'MONTH' && (
-                        <button
-                          type="button"
-                          disabled={isCopying}
-                          onClick={handleCopyPatternToNextMonth}
-                          className="px-2.5 py-1 text-xs font-semibold rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 flex items-center gap-1 shadow-2xs cursor-pointer disabled:opacity-50"
-                          title="نسخ نمط هذا الشهر للشهر القادم تلقائياً"
-                        >
-                          <Copy className="w-3.5 h-3.5 text-emerald-700" />
-                          <span>{isCopying ? 'جارٍ النسخ...' : 'نسخ للشهر القادم'}</span>
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 3. Pattern Mode Selector (4 Options) */}
-                <div className="space-y-1.5">
-                  <label className="block text-xs font-bold text-slate-800">طريقة ونمط التثبيت:</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                    {/* Option 1 */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPatternType('SAME_ALL');
-                        if (singleImamId) {
-                          const upd = [];
-                          for (let f = 1; f <= actualFridaysCount; f++) {
-                            upd.push({ fridayIndex: f, imamId: singleImamId });
-                          }
-                          setFridaySlots(upd);
-                        }
-                      }}
-                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                        patternType === 'SAME_ALL'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-2xs text-slate-900'
-                          : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-xs font-bold font-heading">نفس الخطيب طوال الشهر</span>
-                        {patternType === 'SAME_ALL' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                {/* 1. Permanent System Banner & Rules Explainer */}
+                <div className="bg-gradient-to-r from-emerald-900 via-teal-900 to-slate-900 text-white p-4 rounded-2xl shadow-sm space-y-2.5 border border-emerald-700/40">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-emerald-300 shrink-0">
+                        <Sparkles className="w-4 h-4" />
                       </div>
-                      <p className="text-[11px] text-slate-500">خطيب واحد لكافة جمعات الشهر ({actualFridaysCount} جمعات)</p>
-                    </button>
-
-                    {/* Option 2 */}
-                    <button
-                      type="button"
-                      onClick={() => setPatternType('SPLIT_COUNTS')}
-                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                        patternType === 'SPLIT_COUNTS'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-2xs text-slate-900'
-                          : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-xs font-bold font-heading">توزيع الخطباء على الجمع</span>
-                        {patternType === 'SPLIT_COUNTS' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                      </div>
-                      <p className="text-[11px] text-slate-500">تقسيم جمعات الشهر بين خطيبين أو أكثر بنسب محددة</p>
-                    </button>
-
-                    {/* Option 3 */}
-                    <button
-                      type="button"
-                      onClick={() => setPatternType('SPECIFIC_FRIDAYS')}
-                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                        patternType === 'SPECIFIC_FRIDAYS'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-2xs text-slate-900'
-                          : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-xs font-bold font-heading">تحديد خطيب لكل جمعة</span>
-                        {patternType === 'SPECIFIC_FRIDAYS' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                      </div>
-                      <p className="text-[11px] text-slate-500">بطاقة تعيين مستقلة لكل جمعة بتواريخها الهجرية</p>
-                    </button>
-
-                    {/* Option 4 */}
-                    <button
-                      type="button"
-                      onClick={() => setPatternType('CUSTOM')}
-                      className={`p-2.5 rounded-xl border text-right transition-all cursor-pointer ${
-                        patternType === 'CUSTOM'
-                          ? 'bg-white border-emerald-600 ring-2 ring-emerald-500/20 shadow-2xs text-slate-900'
-                          : 'bg-white/60 border-slate-200 text-slate-600 hover:bg-white'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between pb-1">
-                        <span className="text-xs font-bold font-heading">نمط مخصص بالكامل</span>
-                        {patternType === 'CUSTOM' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
-                      </div>
-                      <p className="text-[11px] text-slate-500">حرية كاملة لتحديد الخطباء أو ترك بعض الجمعات مرنة</p>
-                    </button>
-                  </div>
-                </div>
-
-                {/* 4. MODE 1: SAME PREACHER ALL MONTH */}
-                {patternType === 'SAME_ALL' && (
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-800 mb-1">
-                        اختيار الخطيب الثابت المعتمد لهذا المسجد *
-                      </label>
-                      <SearchablePreacherSelect
-                        imams={imams}
-                        value={singleImamId}
-                        onChange={(val) => handleSingleImamChange(val)}
-                        placeholder="-- اكتب اسم الخطيب أو رقم الهاتف للبحث والتصفية --"
-                      />
-                    </div>
-
-                    {singleImamId && (
-                      <div className="p-3 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-900 space-y-1">
-                        <div className="font-bold flex items-center gap-1.5">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-                          <span>
-                            {applyScope === 'YEAR' ? (
-                              <>
-                                سيتم تثبيت الشيخ ({imams.find((i) => i.id === singleImamId)?.name}) في جميع جمعات هذا المسجد
-                                <strong className="text-emerald-950 underline font-black mx-1">طوال العام الهجري {patternYear} هـ بالكامل (12 شهراً)</strong>.
-                              </>
-                            ) : (
-                              <>
-                                سيتم تثبيت الشيخ ({imams.find((i) => i.id === singleImamId)?.name}) في جميع جمعات هذا المسجد
-                                خلال شهر {monthDetails.monthName} {patternYear} هـ.
-                              </>
-                            )}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-emerald-800">
-                          {applyScope === 'YEAR'
-                            ? `تطبيق شامل كـ Hard Constraint غير قابل للتغيير التلقائي لجميع الأشهر الـ 12 لعام ${patternYear} هـ.`
-                            : `إجمالي الجمعات المخصصة لهذا الشهر: ${actualFridaysCount} جمعات (وفق تقويم أم القرى).`}
+                      <div>
+                        <h4 className="text-xs font-bold font-heading text-white flex items-center gap-2">
+                          <span>نظام التثبيت الدائم والمستدام للمسجد (طوال العام وعلى مدار التاريخ)</span>
+                        </h4>
+                        <p className="text-[11px] text-emerald-200">
+                          الخطيب المثبّت هنا يبقى ثابتاً إلى الأبد في كافة جداول الأشهر والأعوام القادمة حتى تقوم بتغييره يدوياً.
                         </p>
                       </div>
-                    )}
-                  </div>
-                )}
-
-                {/* 5. MODE 2: SPLIT COUNTS BETWEEN PREACHERS */}
-                {patternType === 'SPLIT_COUNTS' && (
-                  <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-4">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold text-slate-800">تحديد مجموعات الخطباء وعدد الجمعات:</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSplitGroups((prev) => [
-                            ...prev,
-                            { id: `grp-${Date.now()}`, imamId: '', count: 1 },
-                          ]);
-                        }}
-                        className="px-2.5 py-1 text-xs bg-emerald-50 text-emerald-800 hover:bg-emerald-100 font-semibold rounded-md border border-emerald-200 flex items-center gap-1 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>إضافة مجموعة</span>
-                      </button>
                     </div>
+                    <span className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 shrink-0 self-start sm:self-auto">
+                      ✨ دائم ومستمر دائماً وأبداً
+                    </span>
+                  </div>
 
-                    <div className="space-y-2.5">
-                      {splitGroups.map((grp, idx) => (
+                  <div className="text-[11px] text-emerald-100 bg-black/25 p-3 rounded-xl border border-white/10 space-y-1">
+                    <div className="flex items-center gap-1.5 font-bold text-emerald-300">
+                      <HelpCircle className="w-3.5 h-3.5 shrink-0" />
+                      <span>قواعد التوزيع ومنع التضارب بين المساجد:</span>
+                    </div>
+                    <ul className="list-disc list-inside space-y-0.5 text-[10px] text-slate-200 pr-1">
+                      <li>
+                        <strong>توزيع الجمعات الخمس:</strong> في الأشهر المكونة من <strong>4 جمعات</strong> سيتم تطبيق أول 4 جمعات تلقائياً دون أي إشكالية، وفي الأشهر ذات الـ <strong>5 جمعات</strong> تُطبّق كافة الجمعات الخمس.
+                      </li>
+                      <li>
+                        <strong>منع التعارض الصارم:</strong> النظام يمنع تثبيت الخطيب في أكثر من مسجد لنفس الجمعة، ويسمح بتثبيته إذا كانت جمعة مختلفة.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                {/* 2. Mode Quick Setter: تثبيت نفس الخطيب للشهر كله (الـ 5 جمعات معاً) */}
+                <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Building2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="text-xs font-bold text-slate-800 font-heading">
+                        تثبيت خطيب واحد للشهر بالكامل (لكافة الجمعات الخمس معاً):
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-medium text-slate-500">
+                      اختيار سريع لملء الجمعات الخمس دفعة واحدة
+                    </span>
+                  </div>
+
+                  <div>
+                    <SearchablePreacherSelect
+                      imams={imams}
+                      value={singleImamId}
+                      onChange={handleWholeMonthPreacherChange}
+                      disabledImams={disabledImamsForAllFridays}
+                      placeholder="-- اختر خطيباً لتثبيته في كافة جمعات الشهر الخمس بنقرة واحدة --"
+                    />
+                  </div>
+
+                  {singleImamId && (
+                    <div className="p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-lg text-xs text-emerald-900 flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
+                      <span className="text-[11px] font-bold">
+                        تم تعيين فضيلة الشيخ ({imams.find((i) => i.id === Number(singleImamId))?.name}) في كافة الجمعات الخمس أدناه. يمكنك تخصيص أي جمعة بشكل منفصل أدناه إن أردت.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. The 5 Friday Slots Cards (دائماً 5 جمعات) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between pb-1">
+                    <span className="text-xs font-bold text-slate-800">
+                      تحديد وتوزيع الخطباء على الجمعات الخمس (تخصيص مستقل لكل جمعة):
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      يمكن ترك أي جمعة فارغة للتوزيع التلقائي المرن
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {[1, 2, 3, 4, 5].map((idx) => {
+                      const slot = fridaySlots.find((s) => s.fridayIndex === idx);
+                      const assignedImamId = slot?.imamId || '';
+                      const disabledForThisFriday = getDisabledImamsForFriday(idx);
+                      const fridayLabels: Record<number, string> = {
+                        1: 'الأولى',
+                        2: 'الثانية',
+                        3: 'الثالثة',
+                        4: 'الرابعة',
+                        5: 'الخامسة',
+                      };
+
+                      return (
                         <div
-                          key={grp.id}
-                          className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 flex flex-col sm:flex-row items-center gap-3"
+                          key={idx}
+                          className={`p-3.5 rounded-xl border shadow-2xs space-y-2.5 transition-all ${
+                            idx === 5
+                              ? 'bg-amber-50/30 border-amber-200/90 hover:border-amber-400'
+                              : 'bg-white border-slate-200 hover:border-emerald-500/60'
+                          }`}
                         >
-                          <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
+                          <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                            <div className="flex items-center gap-2">
+                              <span
+                                className={`w-6 h-6 rounded-lg font-bold text-xs flex items-center justify-center ${
+                                  idx === 5
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                }`}
+                              >
+                                {idx}
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 font-heading">
+                                الجمعة {fridayLabels[idx]}
+                              </span>
+                            </div>
+                            {idx === 5 ? (
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                                أشهر الـ 5 جمعات
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                دائمة لكل الشهور
+                              </span>
+                            )}
+                          </div>
 
-                          <div className="flex-1 w-full sm:w-auto">
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">فضيلة الشيخ</label>
+                          {idx === 5 && (
+                            <p className="text-[10px] text-amber-900/80 leading-relaxed bg-amber-50/80 p-1.5 rounded border border-amber-200/60">
+                              ℹ️ تُطبّق في الأشهر التي تضم 5 جمعات، وفي الأشهر ذات الـ 4 جمعات يتم تجاوزها تلقائياً.
+                            </p>
+                          )}
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                              الخطيب المكلف *
+                            </label>
                             <SearchablePreacherSelect
                               imams={imams}
-                              value={grp.imamId}
-                              onChange={(val) => {
-                                setSplitGroups((prev) =>
-                                  prev.map((g) => (g.id === grp.id ? { ...g, imamId: val } : g))
-                                );
-                              }}
-                              placeholder="-- ابحث عن الخطيب --"
+                              value={assignedImamId}
+                              onChange={(val) => handleFridaySlotChange(idx, val)}
+                              disabledImams={disabledForThisFriday}
+                              placeholder="-- متروك للتوزيع التلقائي المرن --"
                             />
                           </div>
-
-                          <div className="w-full sm:w-28">
-                            <label className="block text-[11px] font-semibold text-slate-600 mb-1">عدد الجمعات</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={actualFridaysCount}
-                              value={grp.count}
-                              onChange={(e) => {
-                                const val = Number(e.target.value) || 1;
-                                setSplitGroups((prev) =>
-                                  prev.map((g) => (g.id === grp.id ? { ...g, count: val } : g))
-                                );
-                              }}
-                              className="w-full text-xs p-2 border border-slate-300 rounded-lg bg-white text-center font-bold"
-                            />
-                          </div>
-
-                          {splitGroups.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSplitGroups((prev) => prev.filter((g) => g.id !== grp.id));
-                              }}
-                              className="text-rose-600 hover:text-rose-800 p-1.5 rounded self-end sm:self-center mt-2 sm:mt-4"
-                              title="حذف المجموعة"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
                         </div>
-                      ))}
-                    </div>
-
-                    {/* Summary Bar */}
-                    <div className="p-3 rounded-lg border flex flex-col sm:flex-row items-center justify-between gap-2 text-xs font-semibold bg-slate-100 border-slate-200">
-                      <div className="flex items-center gap-4">
-                        <span>إجمالي جمعات الشهر: <strong>{actualFridaysCount}</strong></span>
-                        <span>تم التخصيص: <strong className="text-emerald-800">{totalAllocatedInGroups}</strong></span>
-                        <span>المتبقي: <strong className={totalAllocatedInGroups === actualFridaysCount ? 'text-emerald-700' : 'text-rose-600'}>
-                          {actualFridaysCount - totalAllocatedInGroups}
-                        </strong></span>
-                      </div>
-
-                      {totalAllocatedInGroups === actualFridaysCount ? (
-                        <span className="text-emerald-700 font-bold flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4" />
-                          التوزيع مكتمل ومطابق لجمعات الشهر
-                        </span>
-                      ) : (
-                        <span className="text-rose-600 font-bold flex items-center gap-1">
-                          <AlertCircle className="w-4 h-4" />
-                          {totalAllocatedInGroups < actualFridaysCount ? 'التوزيع غير مكتمل' : 'التوزيع يتجاوز جمعات الشهر'}
-                        </span>
-                      )}
-                    </div>
+                      );
+                    })}
                   </div>
-                )}
+                </div>
 
-                {/* 6. MODE 3 & 4: PER-FRIDAY CARDS (SPECIFIC & CUSTOM) */}
-                {(patternType === 'SPECIFIC_FRIDAYS' || patternType === 'CUSTOM') && (
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between pb-1">
-                      <span className="text-xs font-bold text-slate-800">
-                        قائمة جمعات شهر {monthDetails.monthName} ({actualFridaysCount} جمعات):
-                      </span>
-                      <span className="text-[11px] text-slate-500">
-                        {patternType === 'SPECIFIC_FRIDAYS' ? 'تثبيت خطيب لكل جمعة' : 'نمط مخصص حر'}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {monthDetails.fridays.map((fObj) => {
-                        const slot = fridaySlots.find((s) => s.fridayIndex === fObj.fridayIndex);
-                        const assignedImamId = slot?.imamId || '';
-
-                        return (
-                          <div
-                            key={fObj.fridayIndex}
-                            className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs space-y-2.5 hover:border-emerald-600/40 transition-all"
-                          >
-                            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                              <div className="flex items-center gap-2">
-                                <span className="w-6 h-6 rounded-lg bg-emerald-100 text-emerald-900 font-bold text-xs flex items-center justify-center">
-                                  {fObj.fridayIndex}
-                                </span>
-                                <span className="text-xs font-bold text-slate-900 font-heading">
-                                  الجمعة {fObj.fridayIndex === 1 ? 'الأولى' : fObj.fridayIndex === 2 ? 'الثانية' : fObj.fridayIndex === 3 ? 'الثالثة' : fObj.fridayIndex === 4 ? 'الرابعة' : 'الخامسة'}
-                                </span>
-                              </div>
-                              <span className="text-[11px] text-slate-500 font-mono">{fObj.hijriDate}</span>
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                                الخطيب المكلف *
-                              </label>
-                              <SearchablePreacherSelect
-                                imams={imams}
-                                value={assignedImamId}
-                                onChange={(val) => {
-                                  setFridaySlots((prev) => {
-                                    const next = [...prev];
-                                    const existingIdx = next.findIndex((p) => p.fridayIndex === fObj.fridayIndex);
-                                    if (existingIdx >= 0) {
-                                      next[existingIdx] = { ...next[existingIdx], imamId: val };
-                                    } else {
-                                      next.push({ fridayIndex: fObj.fridayIndex, imamId: val });
-                                    }
-                                    return next;
-                                  });
-                                }}
-                                placeholder={patternType === 'CUSTOM' ? '-- متروك للتوزيع المرن --' : '-- ابحث واختر الخطيب --'}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                {/* 7. Action Buttons & Delete */}
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200">
+                {/* 4. Action Buttons & Delete */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-3 border-t border-slate-200">
                   <span className="text-xs text-slate-500 font-medium">
-                    ✓ يتم حفظ هذا النمط كقيد صارم (Hard Constraint) غير قابل للتغيير أثناء التوليد التلقائي.
+                    ✓ يتم حفظ هذا النمط كقيد صارم دائم (Hard Constraint) غير قابل للتغيير أثناء التوليد التلقائي لكافة الشهور.
                   </span>
 
-                  {existingPatternId && (
+                  {(existingPatternId || fridaySlots.some((s) => Boolean(s.imamId))) && (
                     <button
                       type="button"
                       onClick={handleDeleteFixedPattern}
-                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 cursor-pointer"
+                      className="text-xs text-rose-600 hover:text-rose-800 font-semibold flex items-center gap-1 cursor-pointer px-2.5 py-1 rounded-lg hover:bg-rose-50 transition-colors"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                      <span>إلغاء نمط التثبيت لهذا الشهر</span>
+                      <span>إلغاء نمط التثبيت لهذا المسجد</span>
                     </button>
                   )}
                 </div>
