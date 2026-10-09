@@ -2245,6 +2245,24 @@ api.post('/imams', requireAuth, async (req: AuthRequest, res: Response) => {
         .where(eq(mosques.id, targetMosqueId));
     }
 
+    if (Array.isArray(req.body.allowedFridays)) {
+      const allowedSet = new Set(req.body.allowedFridays.map(Number));
+      const unavailToInsert = [1, 2, 3, 4, 5]
+        .filter((idx) => !allowedSet.has(idx))
+        .map((idx) => ({
+          imamId: created.id,
+          hijriYear: 0,
+          hijriMonth: 0,
+          fridayIndex: idx,
+          isAvailable: false,
+          reason: 'حصر التكليف في جمعات محددة',
+        }));
+
+      if (unavailToInsert.length > 0) {
+        await db.insert(imamAvailabilities).values(unavailToInsert);
+      }
+    }
+
     await logAudit(req, 'CREATE_IMAM', 'IMAM', created.id, { name });
     SupabaseRealtimeSync.syncImam(created);
     res.status(201).json(created);
@@ -2288,9 +2306,9 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
     const updateValues: Record<string, any> = {};
     if (data.name !== undefined) updateValues.name = data.name;
     if (data.type !== undefined) updateValues.type = data.type || 'FLEXIBLE';
-    if (data.minFridays !== undefined) updateValues.minFridays = Number(data.minFridays) || 1;
-    if (data.targetFridays !== undefined) updateValues.targetFridays = Number(data.targetFridays) || 4;
-    if (data.maxFridays !== undefined) updateValues.maxFridays = Number(data.maxFridays) || 5;
+    if (data.minFridays !== undefined) updateValues.minFridays = !isNaN(Number(data.minFridays)) ? Number(data.minFridays) : 1;
+    if (data.targetFridays !== undefined) updateValues.targetFridays = !isNaN(Number(data.targetFridays)) ? Number(data.targetFridays) : 4;
+    if (data.maxFridays !== undefined) updateValues.maxFridays = !isNaN(Number(data.maxFridays)) ? Number(data.maxFridays) : 5;
     if (data.phone !== undefined) updateValues.phone = data.phone || null;
     if (data.whatsapp !== undefined) updateValues.whatsapp = data.whatsapp || null;
     if (data.region !== undefined) updateValues.region = data.region || null;
@@ -2298,7 +2316,12 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
     if (data.notes !== undefined) updateValues.notes = data.notes || null;
 
     // Handle bidirectional synchronization of Fixed Mosque
-    if (data.fixedMosqueId !== undefined) {
+    if (data.type && data.type !== 'FIXED') {
+      // If type changed from FIXED to FLEXIBLE or PARTIAL_FIXED, unbind from any mosque
+      await db.update(mosques)
+        .set({ fixedImamId: null, updatedAt: new Date() })
+        .where(eq(mosques.fixedImamId, id));
+    } else if (data.fixedMosqueId !== undefined) {
       const targetMosqueId = data.fixedMosqueId ? Number(data.fixedMosqueId) : null;
       if (targetMosqueId) {
         // 1. Assign this imam as the fixed imam of the target mosque
@@ -2316,15 +2339,39 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
         await db.update(mosques)
           .set({ fixedImamId: null, updatedAt: new Date() })
           .where(eq(mosques.fixedImamId, id));
-        if (data.type === undefined || data.type === 'FIXED') {
+        if (data.type === undefined) {
           updateValues.type = 'FLEXIBLE';
         }
       }
-    } else if (data.type === 'FLEXIBLE') {
-      // If type explicitly changed to FLEXIBLE, clear fixedImamId in any mosque
-      await db.update(mosques)
-        .set({ fixedImamId: null, updatedAt: new Date() })
-        .where(eq(mosques.fixedImamId, id));
+    }
+
+    // Handle allowed Fridays constraints (automatic synchronization with imam_availabilities)
+    if (Array.isArray(data.allowedFridays)) {
+      const allowedSet = new Set(data.allowedFridays.map(Number));
+      // Delete existing general/perpetual unavailabilities for this imam
+      await db.delete(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.imamId, id),
+          eq(imamAvailabilities.hijriYear, 0),
+          eq(imamAvailabilities.hijriMonth, 0)
+        )
+      );
+
+      // Insert unavailabilities for all excluded Fridays
+      const unavailToInsert = [1, 2, 3, 4, 5]
+        .filter((idx) => !allowedSet.has(idx))
+        .map((idx) => ({
+          imamId: id,
+          hijriYear: 0,
+          hijriMonth: 0,
+          fridayIndex: idx,
+          isAvailable: false,
+          reason: 'حصر التكليف في جمعات محددة',
+        }));
+
+      if (unavailToInsert.length > 0) {
+        await db.insert(imamAvailabilities).values(unavailToInsert);
+      }
     }
 
     updateValues.updatedAt = new Date();
