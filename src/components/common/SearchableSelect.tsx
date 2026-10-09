@@ -116,7 +116,7 @@ export function SearchableSelect({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={placeholder}
-                className="w-full pr-8 pl-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600 font-medium text-slate-900"
+                className="w-full pr-8 pl-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600 font-medium text-slate-900 placeholder:text-slate-400"
               />
               {searchQuery && (
                 <button

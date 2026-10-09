@@ -238,7 +238,7 @@ export function ReportsView() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="بحث باسم الخطيب..."
-                className="pr-8 pl-3 py-1 text-xs border border-slate-300 rounded-lg focus:outline-emerald-600 bg-white"
+                className="pr-8 pl-3 py-1 text-xs border border-slate-300 rounded-lg focus:outline-emerald-600 bg-white text-slate-900 font-medium placeholder:text-slate-400"
               />
             </div>
 

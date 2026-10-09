@@ -28,6 +28,26 @@
     font-family: 'Cairo', 'Tajawal', 'Alexandria', system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
+
+  /* Universal form control visibility & high contrast across light & dark modes */
+  input, select, textarea {
+    color: #0f172a !important;
+  }
+
+  input::placeholder, textarea::placeholder {
+    color: #64748b !important;
+    opacity: 1 !important;
+  }
+
+  /* Explicit dark mode inputs styled with dark backgrounds */
+  html.dark input[class*="dark:bg-slate-800"],
+  html.dark input[class*="dark:bg-slate-900"],
+  html.dark select[class*="dark:bg-slate-800"],
+  html.dark select[class*="dark:bg-slate-900"],
+  html.dark textarea[class*="dark:bg-slate-800"],
+  html.dark textarea[class*="dark:bg-slate-900"] {
+    color: #f8fafc !important;
+  }
 }
 
 .font-amiri {

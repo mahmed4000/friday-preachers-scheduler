@@ -90,6 +90,7 @@ export function ImamProfileView({
   const [scheduleSortDirection, setScheduleSortDirection] = useState<'asc' | 'desc'>('asc');
   const [scheduleFilterStatus, setScheduleFilterStatus] = useState<'ALL' | 'UPCOMING' | 'PAST'>('ALL');
   const [scheduleFilterMonth, setScheduleFilterMonth] = useState<string>('ALL');
+  const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
 
   const handleOpenSmartCard = (targetAssign?: any) => {
     setSelectedSmartCardAssign(targetAssign || null);
@@ -99,41 +100,57 @@ export function ImamProfileView({
   const loadProfile = async (schedId?: number) => {
     const effectiveSchedId = schedId !== undefined ? schedId : selectedScheduleId;
     const cacheKey = `${imamId}-${effectiveSchedId || 'default'}`;
-    const cached = imamProfileCache.get(cacheKey) || imamProfileCache.get(`${imamId}-default`);
-    
-    if (cached) {
-      setData(cached);
+
+    // Exact cache lookup only: never fall back to default when a specific month is requested!
+    const exactCached = effectiveSchedId
+      ? imamProfileCache.get(cacheKey)
+      : (imamProfileCache.get(cacheKey) || imamProfileCache.get(`${imamId}-default`));
+
+    if (exactCached) {
+      setData(exactCached);
+      if (schedId !== undefined) {
+        setSelectedScheduleId(schedId);
+      } else if (!selectedScheduleId && exactCached.activeSchedule) {
+        setSelectedScheduleId(exactCached.activeSchedule.id);
+      }
       setLoading(false);
-    } else {
+      return;
+    }
+
+    if (!data) {
       setLoading(true);
+    } else {
+      setIsSwitchingMonth(true);
     }
     setError(null);
 
     try {
-      const url = schedId
-        ? `/api/imams/${imamId}/profile?scheduleId=${schedId}`
-        : selectedScheduleId
-        ? `/api/imams/${imamId}/profile?scheduleId=${selectedScheduleId}`
+      const url = effectiveSchedId
+        ? `/api/imams/${imamId}/profile?scheduleId=${effectiveSchedId}`
         : `/api/imams/${imamId}/profile`;
       const res = await fetchApi<ImamProfileData>(url);
       const normalized = normalizeProfileData(res);
       imamProfileCache.set(cacheKey, normalized);
-      imamProfileCache.set(`${imamId}-default`, normalized);
+      if (!effectiveSchedId) {
+        imamProfileCache.set(`${imamId}-default`, normalized);
+      }
       setData(normalized);
-      if (schedId) {
+      if (schedId !== undefined) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && res.activeSchedule) {
         setSelectedScheduleId(res.activeSchedule.id);
       }
     } catch (err: any) {
       console.warn('Backend unavailable, attempting local seed fallback for imam profile:', err);
-      const fallback = getFallbackImamProfile(imamId, schedId || selectedScheduleId);
+      const fallback = getFallbackImamProfile(imamId, effectiveSchedId);
       if (fallback) {
         const normalized = normalizeProfileData(fallback);
         imamProfileCache.set(cacheKey, normalized);
-        imamProfileCache.set(`${imamId}-default`, normalized);
+        if (!effectiveSchedId) {
+          imamProfileCache.set(`${imamId}-default`, normalized);
+        }
         setData(normalized);
-        if (schedId) {
+        if (schedId !== undefined) {
           setSelectedScheduleId(schedId);
         } else if (!selectedScheduleId && fallback.activeSchedule) {
           setSelectedScheduleId(fallback.activeSchedule.id);
@@ -144,6 +161,7 @@ export function ImamProfileView({
       }
     } finally {
       setLoading(false);
+      setIsSwitchingMonth(false);
     }
   };
 
@@ -550,14 +568,18 @@ export function ImamProfileView({
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-slate-600">عرض جدول شهر:</span>
+              {isSwitchingMonth && (
+                <div className="w-3.5 h-3.5 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              )}
               <select
-                value={selectedScheduleId || activeSchedule?.id || ''}
+                value={selectedScheduleId ?? activeSchedule?.id ?? ''}
+                disabled={isSwitchingMonth}
                 onChange={(e) => {
                   const sId = Number(e.target.value);
                   setSelectedScheduleId(sId);
                   loadProfile(sId);
                 }}
-                className="text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
+                className="text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
               >
                 {availableSchedules.map((s) => {
                   const currentDT = CalendarService.getCurrentDateTime();

@@ -172,15 +172,17 @@ export function BatchPdfExportModal({
           <script src="https://cdn.tailwindcss.com"></script>
           <style>
             @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap');
-            body { font-family: 'Cairo', sans-serif; background-color: white; margin: 0; padding: 20px; }
+            body { font-family: 'Cairo', sans-serif; background-color: white; margin: 0; padding: 20px; color: #0f172a !important; }
+            table, td, th { color: #0f172a !important; }
             .pdf-page-item {
               page-break-after: always;
               break-after: page;
               margin-bottom: 2rem;
+              color: #0f172a !important;
             }
             .pdf-page-item img { width: 56px !important; height: 56px !important; max-width: 56px !important; max-height: 56px !important; object-fit: contain !important; border-radius: 9999px !important; }
             @media print {
-              body { padding: 0; }
+              body { padding: 0; color: #0f172a !important; }
               .pdf-page-item {
                 page-break-after: always;
                 break-after: page;
@@ -355,35 +357,35 @@ export function BatchPdfExportModal({
                         <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
                           <h4 className="text-xs font-bold text-slate-900 font-heading flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                            <span>جدول التكليفات للجمع بالمسجد ({activeSchedule ? `${activeSchedule.hijriMonthName} ${activeSchedule.hijriYear} هـ` : 'الجدول الحالي'})</span>
+                            <span>جدول التكليفات للجمع بالمسجد ({activeSchedule ? `${activeSchedule.monthName || activeSchedule.hijriMonthName || 'الجدول الحالي'} ${activeSchedule.hijriYear} هـ` : 'الجدول الحالي'})</span>
                           </h4>
-                          <span className="text-[10px] text-slate-500">إجمالي التكليفات: {assignments.length} جمعة</span>
+                          <span className="text-[10px] text-slate-600 font-bold">إجمالي التكليفات: {assignments.length} جمعة</span>
                         </div>
 
-                        <table className="w-full text-right text-xs border-collapse border border-slate-200">
+                        <table className="w-full text-right text-xs border-collapse border border-slate-300 text-slate-900 bg-white">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
-                              <th className="p-2 border-r border-slate-200 w-12 text-center">الجمعة</th>
-                              <th className="p-2 border-r border-slate-200">التاريخ الهجري / الموعد</th>
-                              <th className="p-2 border-r border-slate-200">المسجد المكلف به</th>
-                              <th className="p-2 border-r border-slate-200">كود المسجد</th>
-                              <th className="p-2 border-r border-slate-200">المنطقة والحي</th>
+                            <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300">
+                              <th className="p-2 border-r border-slate-300 w-12 text-center text-slate-900 font-bold">الجمعة</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">التاريخ الهجري / الموعد</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">المسجد المكلف به</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">كود المسجد</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">المنطقة والحي</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="text-slate-900">
                             {assignments.length > 0 ? (
                               assignments.map((as: any, aIdx: number) => (
-                                <tr key={as.id || aIdx} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="p-2 border-r border-slate-200 text-center font-bold">{as.fridayIndex || aIdx + 1}</td>
-                                  <td className="p-2 border-r border-slate-200">{as.hijriDate || `الجمعة ${aIdx + 1}`}</td>
-                                  <td className="p-2 border-r border-slate-200 font-bold text-emerald-950">{as.mosqueName || 'مسجد معتمد'}</td>
-                                  <td className="p-2 border-r border-slate-200 font-mono text-[11px]">{as.mosqueCode || '—'}</td>
-                                  <td className="p-2 border-r border-slate-200">{as.region || 'الجيزة'}</td>
+                                <tr key={as.id || aIdx} className="border-b border-slate-200 hover:bg-slate-50 text-slate-900">
+                                  <td className="p-2 border-r border-slate-200 text-center font-bold text-slate-900">{as.fridayIndex || aIdx + 1}</td>
+                                  <td className="p-2 border-r border-slate-200 font-semibold text-slate-900">{as.hijriDate || `الجمعة ${aIdx + 1}`}</td>
+                                  <td className="p-2 border-r border-slate-200 font-black text-emerald-950 text-sm">{as.mosqueName || 'مسجد معتمد'}</td>
+                                  <td className="p-2 border-r border-slate-200 font-mono text-xs font-bold text-slate-900">{as.mosqueCode || '—'}</td>
+                                  <td className="p-2 border-r border-slate-200 font-medium text-slate-900">{as.region || 'الجيزة'}</td>
                                 </tr>
                               ))
                             ) : (
                               <tr>
-                                <td colSpan={5} className="p-4 text-center text-slate-400 font-semibold">
+                                <td colSpan={5} className="p-4 text-center text-slate-500 font-bold">
                                   لا توجد تكليفات مسجلة في هذا الشهر بانتظار الاعتماد
                                 </td>
                               </tr>
@@ -486,35 +488,43 @@ export function BatchPdfExportModal({
                         <div className="flex items-center justify-between border-b border-slate-200 pb-1.5">
                           <h4 className="text-xs font-bold text-slate-900 font-heading flex items-center gap-1.5">
                             <Calendar className="w-3.5 h-3.5 text-emerald-700" />
-                            <span>جدول خطباء الجمعة المعتمد ({activeSchedule ? `${activeSchedule.hijriMonthName} ${activeSchedule.hijriYear} هـ` : 'الشهر الحالي'})</span>
+                            <span>جدول خطباء الجمعة المعتمد ({activeSchedule ? `${activeSchedule.monthName || activeSchedule.hijriMonthName || 'الشهر الحالي'} ${activeSchedule.hijriYear} هـ` : 'الشهر الحالي'})</span>
                           </h4>
-                          <span className="text-[10px] text-slate-500">إجمالي الجمعات: {assignments.length}</span>
+                          <span className="text-[10px] text-slate-600 font-bold">إجمالي الجمعات: {assignments.length}</span>
                         </div>
 
-                        <table className="w-full text-right text-xs border-collapse border border-slate-200">
+                        <table className="w-full text-right text-xs border-collapse border border-slate-300 text-slate-900 bg-white">
                           <thead>
-                            <tr className="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
-                              <th className="p-2 border-r border-slate-200 w-12 text-center">الجمعة</th>
-                              <th className="p-2 border-r border-slate-200">التاريخ الهجري / الموعد</th>
-                              <th className="p-2 border-r border-slate-200">اسم الخطيب المكلف</th>
-                              <th className="p-2 border-r border-slate-200">هاتف التواصل</th>
-                              <th className="p-2 border-r border-slate-200">نوع التكليف</th>
+                            <tr className="bg-slate-100 text-slate-900 font-bold border-b border-slate-300">
+                              <th className="p-2 border-r border-slate-300 w-12 text-center text-slate-900 font-bold">الجمعة</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">التاريخ الهجري / الموعد</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">اسم الخطيب المكلف</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">هاتف التواصل</th>
+                              <th className="p-2 border-r border-slate-300 text-slate-900 font-bold">نوع التكليف</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="text-slate-900">
                             {assignments.length > 0 ? (
                               assignments.map((as: any, aIdx: number) => (
-                                <tr key={as.id || aIdx} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="p-2 border-r border-slate-200 text-center font-bold">{as.fridayIndex || aIdx + 1}</td>
-                                  <td className="p-2 border-r border-slate-200">{as.hijriDate || `الجمعة ${aIdx + 1}`}</td>
-                                  <td className="p-2 border-r border-slate-200 font-bold text-emerald-950">{as.imamName || 'خطيب معتمد'}</td>
-                                  <td className="p-2 border-r border-slate-200 font-mono text-[11px]">{as.imamPhone || '—'}</td>
-                                  <td className="p-2 border-r border-slate-200">{as.assignmentSource === 'FIXED' ? 'خطيب ثابت' : 'توزيع تلقائي'}</td>
+                                <tr key={as.id || aIdx} className="border-b border-slate-200 hover:bg-slate-50 text-slate-900">
+                                  <td className="p-2 border-r border-slate-200 text-center font-bold text-slate-900">{as.fridayIndex || aIdx + 1}</td>
+                                  <td className="p-2 border-r border-slate-200 font-semibold text-slate-900">{as.hijriDate || `الجمعة ${aIdx + 1}`}</td>
+                                  <td className="p-2 border-r border-slate-200 font-black text-emerald-950 text-sm">{as.imamName || 'خطيب معتمد'}</td>
+                                  <td className="p-2 border-r border-slate-200 font-mono text-xs font-bold text-slate-900">{as.imamPhone || '—'}</td>
+                                  <td className="p-2 border-r border-slate-200 font-bold text-slate-900">
+                                    <span className={`inline-block px-2 py-0.5 rounded text-[11px] font-bold ${
+                                      as.assignmentSource === 'FIXED'
+                                        ? 'bg-amber-100 text-amber-950 border border-amber-300'
+                                        : 'bg-emerald-50 text-emerald-950 border border-emerald-300'
+                                    }`}>
+                                      {as.assignmentSource === 'FIXED' ? 'خطيب ثابت' : 'توزيع تلقائي'}
+                                    </span>
+                                  </td>
                                 </tr>
                               ))
                             ) : (
                               <tr>
-                                <td colSpan={5} className="p-4 text-center text-slate-400 font-semibold">
+                                <td colSpan={5} className="p-4 text-center text-slate-500 font-bold">
                                   لا توجد تكليفات مسجلة لهذا المسجد في الشهر المعتمد
                                 </td>
                               </tr>

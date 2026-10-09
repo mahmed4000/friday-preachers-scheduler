@@ -147,7 +147,7 @@ export function SearchablePreacherSelect({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="اكتب اسم الخطيب أو رقم الهاتف للبحث السريع..."
-                className="w-full pr-8 pl-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 font-medium"
+                className="w-full pr-8 pl-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-500 font-medium text-slate-900 placeholder:text-slate-400"
               />
               {searchTerm && (
                 <button

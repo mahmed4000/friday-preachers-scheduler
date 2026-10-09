@@ -73,10 +73,12 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
         ref={ref}
         dir="rtl"
         lang="ar"
-        className="relative bg-[#fcfaf6] text-slate-900 rounded-2xl border border-[#c4a468] shadow-md print:shadow-none print:border-none print:m-0 w-full max-w-[1060px] min-h-[740px] p-6 sm:p-8 flex flex-col justify-between pdf-report-document"
+        className="relative bg-[#fcfaf6] text-slate-900 rounded-2xl border border-[#c4a468] shadow-md print:shadow-none print:border-none print:m-0 w-full max-w-[1040px] p-4 sm:p-5 flex flex-col justify-between pdf-report-document"
         style={{
           boxSizing: 'border-box',
           fontFamily: "'IBM Plex Sans Arabic', 'Tajawal', sans-serif",
+          pageBreakInside: 'avoid',
+          breakInside: 'avoid',
         }}
       >
         {/* Subtle Islamic Geometric Pattern Overlay */}
@@ -156,8 +158,8 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
         {/* ============================================================== */}
         {/* 2. HORIZONTAL MOSQUE INFO BAR (4 Sections matching reference)   */}
         {/* ============================================================== */}
-        <div className="relative z-10 my-3">
-          <div className="bg-white/90 backdrop-blur-xs rounded-xl border border-[#e5ddcf] shadow-2xs py-2 px-3 sm:px-4 grid grid-cols-4 divide-x divide-x-reverse divide-[#eee5d5]">
+        <div className="relative z-10 my-2">
+          <div className="bg-white/90 backdrop-blur-xs rounded-xl border border-[#e5ddcf] shadow-2xs py-1.5 px-3 sm:px-4 grid grid-cols-4 divide-x divide-x-reverse divide-[#eee5d5]">
             {/* 1. Mosque Name (Rightmost in RTL) */}
             <div className="flex items-center gap-2.5 px-2">
               <div className="w-8 h-8 rounded-lg bg-amber-50/80 border border-[#e2d4b9] flex items-center justify-center shrink-0">
@@ -261,7 +263,7 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
           </div>
 
           {/* Table Rows (Dynamic 4 or 5 Fridays) */}
-          <div className="space-y-2 mt-2">
+          <div className="space-y-1.5 mt-1.5">
             {fridays.map((friday, index) => {
               const assignment = assignmentMap.get(friday.fridayIndex);
               const assignedImam = assignment?.imamId ? imamMap.get(assignment.imamId) : null;
@@ -270,7 +272,7 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
               return (
                 <div
                   key={friday.id}
-                  className="bg-white/95 rounded-xl border border-[#e8dfcf] shadow-2xs py-2 px-4 flex items-center hover:bg-[#fffdf9] transition-colors"
+                  className="bg-white/95 rounded-xl border border-[#e8dfcf] shadow-2xs py-1.5 px-3.5 flex items-center hover:bg-[#fffdf9] transition-colors"
                 >
                   {/* Column 1: Friday Ordinal + Star Number Badge */}
                   <div className="w-56 shrink-0 flex items-center justify-center gap-3 px-2 border-l border-[#f0e7d8]/60">
@@ -324,7 +326,7 @@ export const MosqueScheduleDocument = React.forwardRef<HTMLDivElement, MosqueSch
         {/* ============================================================== */}
         {/* 4. FOOTER (Signatures & Verification matching reference)       */}
         {/* ============================================================== */}
-        <div className="relative z-10 pt-3 border-t border-[#e8dfcf]/90 flex items-end justify-between text-xs mt-3">
+        <div className="relative z-10 pt-2 border-t border-[#e8dfcf]/90 flex items-end justify-between text-xs mt-2">
           {/* Footer Right: System Details & Date */}
           <div className="text-right space-y-0.5">
             <p className="font-bold font-heading text-[#103b2c] text-xs">

@@ -4,6 +4,7 @@ import { jsPDF } from 'jspdf';
 export interface PdfExportOptions {
   fileName: string;
   orientation?: 'portrait' | 'landscape';
+  singlePage?: boolean;
 }
 
 interface StyleBackup {
@@ -169,29 +170,46 @@ export async function exportElementToPdf(
   const pageWidth = orientation === 'landscape' ? 297 : 210;
   const pageHeight = orientation === 'landscape' ? 210 : 297;
 
-  const margin = 8; // 8mm margin
+  const margin = orientation === 'landscape' ? 6 : 8;
   const printableWidth = pageWidth - margin * 2;
   const printableHeight = pageHeight - margin * 2;
 
-  const imgWidth = printableWidth;
-  const imgHeight = (img.height * printableWidth) / img.width;
+  const rawImgWidth = printableWidth;
+  const rawImgHeight = (img.height * printableWidth) / img.width;
 
-  if (imgHeight <= printableHeight) {
-    // Single page document
-    pdf.addImage(dataUrl, 'PNG', margin, margin, imgWidth, imgHeight);
+  // Single-page enforcement:
+  // If explicitly requested, or if the document is a single card (like mosque/imam card) or close to 1 page (within 25%):
+  const isSinglePageMode =
+    options.singlePage === true ||
+    (options.singlePage !== false && (
+      rawImgHeight <= printableHeight * 1.25 ||
+      element.id === 'mosque-schedule-document' ||
+      element.id === 'imam-schedule-document' ||
+      element.classList.contains('pdf-report-document') ||
+      element.classList.contains('pdf-page-item')
+    ));
+
+  if (isSinglePageMode || rawImgHeight <= printableHeight) {
+    // Proportional fit strictly into exactly ONE single page - Zero spillover!
+    const scale = Math.min(1, printableHeight / rawImgHeight);
+    const finalWidth = rawImgWidth * scale;
+    const finalHeight = rawImgHeight * scale;
+    const x = margin + (printableWidth - finalWidth) / 2;
+    const y = margin + (printableHeight - finalHeight) / 2;
+    pdf.addImage(dataUrl, 'PNG', x, y, finalWidth, finalHeight);
   } else {
-    // Multi-page document
-    let heightLeft = imgHeight;
+    // Multi-page document for genuine long tables
+    let heightLeft = rawImgHeight;
     let position = margin;
     let pageNumber = 1;
 
-    pdf.addImage(dataUrl, 'PNG', margin, position, imgWidth, imgHeight);
+    pdf.addImage(dataUrl, 'PNG', margin, position, rawImgWidth, rawImgHeight);
     heightLeft -= printableHeight;
 
     while (heightLeft > 0) {
       position = margin - pageNumber * printableHeight;
       pdf.addPage();
-      pdf.addImage(dataUrl, 'PNG', margin, position, imgWidth, imgHeight);
+      pdf.addImage(dataUrl, 'PNG', margin, position, rawImgWidth, rawImgHeight);
       heightLeft -= printableHeight;
       pageNumber++;
     }

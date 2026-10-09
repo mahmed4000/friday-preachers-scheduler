@@ -197,7 +197,7 @@ export function MosquesView({
             placeholder="بحث باسم المسجد، الكود، المشرف، أو العنوان..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pr-9 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600 focus:bg-white transition-colors"
+            className="w-full pr-9 pl-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600 focus:bg-white transition-colors text-slate-900 font-medium placeholder:text-slate-400"
           />
         </div>
 

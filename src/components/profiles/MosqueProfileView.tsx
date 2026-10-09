@@ -96,32 +96,47 @@ export function MosqueProfileView({
   const [scheduleSortDirection, setScheduleSortDirection] = useState<'asc' | 'desc'>('asc');
   const [scheduleFilterStatus, setScheduleFilterStatus] = useState<'ALL' | 'UPCOMING' | 'PAST'>('ALL');
   const [scheduleFilterMonth, setScheduleFilterMonth] = useState<string>('ALL');
+  const [isSwitchingMonth, setIsSwitchingMonth] = useState(false);
 
   const loadProfile = async (schedId?: number) => {
     const effectiveSchedId = schedId !== undefined ? schedId : selectedScheduleId;
     const cacheKey = `${mosqueId}-${effectiveSchedId || 'default'}`;
-    const cached = mosqueProfileCache.get(cacheKey) || mosqueProfileCache.get(`${mosqueId}-default`);
-    
-    if (cached) {
-      setData(cached);
+
+    // Exact cache lookup only: never fall back to default when a specific month is requested!
+    const exactCached = effectiveSchedId
+      ? mosqueProfileCache.get(cacheKey)
+      : (mosqueProfileCache.get(cacheKey) || mosqueProfileCache.get(`${mosqueId}-default`));
+
+    if (exactCached) {
+      setData(exactCached);
+      if (schedId !== undefined) {
+        setSelectedScheduleId(schedId);
+      } else if (!selectedScheduleId && exactCached.activeSchedule) {
+        setSelectedScheduleId(exactCached.activeSchedule.id);
+      }
       setLoading(false);
-    } else {
+      return;
+    }
+
+    if (!data) {
       setLoading(true);
+    } else {
+      setIsSwitchingMonth(true);
     }
     setError(null);
 
     try {
-      const url = schedId
-        ? `/api/mosques/${mosqueId}/profile?scheduleId=${schedId}`
-        : selectedScheduleId
-        ? `/api/mosques/${mosqueId}/profile?scheduleId=${selectedScheduleId}`
+      const url = effectiveSchedId
+        ? `/api/mosques/${mosqueId}/profile?scheduleId=${effectiveSchedId}`
         : `/api/mosques/${mosqueId}/profile`;
       const res = await fetchApi<MosqueProfileData>(url);
       const normalized = normalizeMosqueProfileData(res);
       mosqueProfileCache.set(cacheKey, normalized);
-      mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+      if (!effectiveSchedId) {
+        mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+      }
       setData(normalized);
-      if (schedId) {
+      if (schedId !== undefined) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && res.activeSchedule) {
         setSelectedScheduleId(res.activeSchedule.id);
@@ -138,13 +153,15 @@ export function MosqueProfileView({
       }
     } catch (err: any) {
       console.warn('Backend unavailable, attempting local seed fallback for mosque profile:', err);
-      const fallback = getFallbackMosqueProfile(mosqueId, schedId || selectedScheduleId);
+      const fallback = getFallbackMosqueProfile(mosqueId, effectiveSchedId);
       if (fallback) {
         const normalized = normalizeMosqueProfileData(fallback);
         mosqueProfileCache.set(cacheKey, normalized);
-        mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+        if (!effectiveSchedId) {
+          mosqueProfileCache.set(`${mosqueId}-default`, normalized);
+        }
         setData(normalized);
-        if (schedId) {
+        if (schedId !== undefined) {
           setSelectedScheduleId(schedId);
         } else if (!selectedScheduleId && fallback.activeSchedule) {
           setSelectedScheduleId(fallback.activeSchedule.id);
@@ -155,6 +172,7 @@ export function MosqueProfileView({
       }
     } finally {
       setLoading(false);
+      setIsSwitchingMonth(false);
     }
   };
 
@@ -520,14 +538,18 @@ export function MosqueProfileView({
 
             <div className="flex items-center gap-2">
               <span className="text-xs font-medium text-slate-600">عرض جدول شهر:</span>
+              {isSwitchingMonth && (
+                <div className="w-3.5 h-3.5 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin shrink-0"></div>
+              )}
               <select
-                value={selectedScheduleId || activeSchedule?.id || ''}
+                value={selectedScheduleId ?? activeSchedule?.id ?? ''}
+                disabled={isSwitchingMonth}
                 onChange={(e) => {
                   const sId = Number(e.target.value);
                   setSelectedScheduleId(sId);
                   loadProfile(sId);
                 }}
-                className="text-xs font-bold text-slate-800 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
+                className="text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-emerald-700 cursor-pointer shadow-2xs"
               >
                 {availableSchedules.map((s) => {
                   const currentDT = CalendarService.getCurrentDateTime();

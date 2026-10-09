@@ -125,6 +125,7 @@ export function PublishingCenterView({
       await exportElementToPdf(printDocumentRef.current, {
         fileName,
         orientation,
+        singlePage: activePrintDoc !== 'CITY',
       });
 
       setStatusMessage({
