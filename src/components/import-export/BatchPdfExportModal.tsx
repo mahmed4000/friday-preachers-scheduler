@@ -27,6 +27,7 @@ interface BatchPdfExportModalProps {
   selectedIds: number[];
   allImams?: Imam[];
   allMosques?: Mosque[];
+  scheduleId?: number;
 }
 
 export function BatchPdfExportModal({
@@ -36,6 +37,7 @@ export function BatchPdfExportModal({
   selectedIds,
   allImams = [],
   allMosques = [],
+  scheduleId,
 }: BatchPdfExportModalProps) {
   const [loading, setLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -50,9 +52,10 @@ export function BatchPdfExportModal({
       setLoading(true);
       setError(null);
       try {
+        const queryParam = scheduleId ? `?scheduleId=${scheduleId}` : '';
         if (entityType === 'IMAMS') {
           const promises = selectedIds.map((id) =>
-            fetchApi<any>(`/api/imams/${id}/profile`).catch(() => null)
+            fetchApi<any>(`/api/imams/${id}/profile${queryParam}`).catch(() => null)
           );
           const results = await Promise.all(promises);
           const valid = results.filter(Boolean);
@@ -65,7 +68,7 @@ export function BatchPdfExportModal({
           }
         } else {
           const promises = selectedIds.map((id) =>
-            fetchApi<any>(`/api/mosques/${id}/profile`).catch(() => null)
+            fetchApi<any>(`/api/mosques/${id}/profile${queryParam}`).catch(() => null)
           );
           const results = await Promise.all(promises);
           const valid = results.filter(Boolean);
@@ -85,7 +88,7 @@ export function BatchPdfExportModal({
     }
 
     loadBatchDetails();
-  }, [isOpen, entityType, selectedIds]);
+  }, [isOpen, entityType, selectedIds, scheduleId]);
 
   // Generate real PDF download directly in browser
   const handleDownloadPdf = async () => {
@@ -274,8 +277,10 @@ export function BatchPdfExportModal({
             {entityType === 'IMAMS'
               ? detailedItems.map((item, idx) => {
                   const imam = item.imam || item;
-                  const assignments = item.assignments || [];
                   const activeSchedule = item.activeSchedule;
+                  const assignments = (item.upcomingAssignments && item.upcomingAssignments.length > 0)
+                    ? item.upcomingAssignments
+                    : (item.assignments || []).filter((a: any) => !activeSchedule || a.scheduleId === activeSchedule.id);
 
                   return (
                     <div
@@ -423,8 +428,10 @@ export function BatchPdfExportModal({
                 })
               : detailedItems.map((item, idx) => {
                   const mosque = item.mosque || item;
-                  const assignments = item.assignments || [];
                   const activeSchedule = item.activeSchedule;
+                  const assignments = (item.upcomingAssignments && item.upcomingAssignments.length > 0)
+                    ? item.upcomingAssignments
+                    : (item.assignments || []).filter((a: any) => !activeSchedule || a.scheduleId === activeSchedule.id);
 
                   return (
                     <div

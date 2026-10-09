@@ -199,29 +199,12 @@ export function MosqueProfileView({
         ? orgSettings.logoUrl
         : DEFAULT_SHARIA_LOGO;
 
-      const currentDT = CalendarService.getCurrentDateTime();
-      const currVal = currentDT.hijri.year * 12 + currentDT.hijri.month;
+      const targetSchedule = data.activeSchedule;
+      const monthAssignments = (data.upcomingAssignments && data.upcomingAssignments.length > 0)
+        ? data.upcomingAssignments
+        : (data.assignments || []).filter((a: any) => !targetSchedule || a.scheduleId === targetSchedule.id);
 
-      const sortedAssignments = [...(data.assignments || [])].sort((x: any, y: any) => {
-        const xVal = (x.hijriYear || 1448) * 12 + (x.hijriMonth || 1);
-        const yVal = (y.hijriYear || 1448) * 12 + (y.hijriMonth || 1);
-
-        const xIsCurrent = xVal === currVal;
-        const yIsCurrent = yVal === currVal;
-        if (xIsCurrent && !yIsCurrent) return -1;
-        if (!xIsCurrent && yIsCurrent) return 1;
-
-        const xIsPast = xVal < currVal;
-        const yIsPast = yVal < currVal;
-        if (!xIsPast && yIsPast) return -1;
-        if (xIsPast && !yIsPast) return 1;
-
-        if (xVal !== yVal) {
-          if (xIsPast && yIsPast) return yVal - xVal;
-          return xVal - yVal;
-        }
-        return (x.fridayIndex || 0) - (y.fridayIndex || 0);
-      });
+      const sortedAssignments = [...monthAssignments].sort((x: any, y: any) => (x.fridayIndex || 0) - (y.fridayIndex || 0));
 
       const printWin = window.open('', '_blank');
       if (printWin) {
@@ -229,7 +212,7 @@ export function MosqueProfileView({
           <!DOCTYPE html>
           <html dir="rtl" lang="ar">
             <head>
-              <title>بطاقة المسجد - ${data.mosque.name}</title>
+              <title>جدول خطباء ${data.mosque.name} - ${targetSchedule ? `شهر ${targetSchedule.monthName} ${targetSchedule.hijriYear} هـ` : 'الجدول'}</title>
               <meta charset="utf-8" />
               <script src="https://cdn.tailwindcss.com"></script>
               <style>
@@ -255,7 +238,8 @@ export function MosqueProfileView({
                   </div>
 
                   <div class="text-left font-mono text-xs text-slate-600 shrink-0">
-                    <p class="font-bold text-slate-900 text-sm">بطاقة تعريف وجدول كشوف مسجد</p>
+                    <p class="font-bold text-slate-900 text-sm">كشف وجدول خطباء المسجد</p>
+                    <p class="mt-0.5">شهر: <strong class="text-emerald-900 font-bold">${targetSchedule ? `${targetSchedule.monthName} ${targetSchedule.hijriYear} هـ` : 'الشهر المحدد'}</strong></p>
                     <p class="mt-0.5">كود المسجد: <strong class="text-emerald-900 font-bold">${data.mosque.code}</strong></p>
                     <p class="text-[11px] text-slate-500">تاريخ الإصدار: ${new Date().toLocaleDateString('ar-EG')}</p>
                   </div>
@@ -273,10 +257,10 @@ export function MosqueProfileView({
                 <div class="space-y-2">
                   <div class="flex items-center justify-between">
                     <h3 class="text-xs font-bold text-slate-900">
-                      جدول الخطباء المعتمد للمسجد (مرتب زمنياً من الشهر الحالي والقريب):
+                      جدول خطباء الجمعة لشهر ${targetSchedule ? `${targetSchedule.monthName || ''} ${targetSchedule.hijriYear || ''} هـ` : 'الشهر المحدد'}:
                     </h3>
                     <span class="text-[11px] text-emerald-800 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                      إجمالي ${sortedAssignments.length} جمعة مسجلة
+                      إجمالي ${sortedAssignments.length} جمعات
                     </span>
                   </div>
 
@@ -284,31 +268,38 @@ export function MosqueProfileView({
                     <thead>
                       <tr class="bg-slate-100 text-slate-800 font-bold border-b border-slate-200">
                         <th class="p-2 border-r border-slate-200 text-center w-20">الجمعة</th>
-                        <th class="p-2 border-r border-slate-200">التاريخ الهجري والشهر</th>
+                        <th class="p-2 border-r border-slate-200">التاريخ الهجري</th>
                         <th class="p-2 border-r border-slate-200">اسم الخطيب المكلف</th>
                         <th class="p-2 border-r border-slate-200 text-center w-28">هاتف التواصل</th>
                         <th class="p-2 border-r border-slate-200">نوع التكليف</th>
                       </tr>
                     </thead>
                     <tbody>
-                      ${sortedAssignments.map((as: any, idx: number) => {
-                        const isCurrentMonth = as.hijriYear === currentDT.hijri.year && as.hijriMonth === currentDT.hijri.month;
-                        return `
-                          <tr class="border-b border-slate-100 ${isCurrentMonth ? 'bg-emerald-50/50' : ''}">
-                            <td class="p-2 border-r border-slate-200 text-center font-bold">
-                              ${as.fridayIndex || idx + 1}
-                              ${isCurrentMonth ? '<span class="block text-[9px] text-emerald-700 font-bold font-sans">(الشهر الحالي)</span>' : ''}
-                            </td>
-                            <td class="p-2 border-r border-slate-200 font-medium">
-                              <span class="font-bold text-slate-900 block">${as.hijriDate || `الجمعة ${idx + 1}`}</span>
-                              <span class="text-[10px] text-slate-500 font-normal">شهر ${as.monthName || ''} ${as.hijriYear || 1448} هـ</span>
-                            </td>
-                            <td class="p-2 border-r border-slate-200 font-bold text-emerald-950">${as.imamName || 'خطيب معتمد'}</td>
-                            <td class="p-2 border-r border-slate-200 font-mono text-center">${as.imamPhone || '—'}</td>
-                            <td class="p-2 border-r border-slate-200">${as.assignmentSource === 'FIXED' ? 'خطيب راتب (ثابت)' : 'توزيع واعتماد تلقائي'}</td>
-                          </tr>
-                        `;
-                      }).join('')}
+                      ${sortedAssignments.length > 0 ? sortedAssignments.map((as: any, idx: number) => `
+                        <tr class="border-b border-slate-100">
+                          <td class="p-2 border-r border-slate-200 text-center font-bold text-slate-900">
+                            الجمعة (${as.fridayIndex || idx + 1})
+                          </td>
+                          <td class="p-2 border-r border-slate-200 font-semibold text-slate-900">
+                            ${as.hijriDate || `الجمعة ${idx + 1}`}
+                          </td>
+                          <td class="p-2 border-r border-slate-200 font-black text-emerald-950 text-sm">
+                            ${as.imamName || 'خطيب معتمد'}
+                          </td>
+                          <td class="p-2 border-r border-slate-200 font-mono text-center text-slate-900">
+                            ${as.imamPhone || '—'}
+                          </td>
+                          <td class="p-2 border-r border-slate-200 font-semibold text-slate-800">
+                            ${as.assignmentSource === 'FIXED' || as.source === 'FIXED' ? 'خطيب راتب (ثابت)' : 'تكليف وتوزيع دوري'}
+                          </td>
+                        </tr>
+                      `).join('') : `
+                        <tr>
+                          <td colspan="5" class="p-4 text-center text-slate-500 font-bold">
+                            لا توجد تكليفات مسجلة في هذا الشهر بانتظار الاعتماد
+                          </td>
+                        </tr>
+                      `}
                     </tbody>
                   </table>
                 </div>
@@ -1310,6 +1301,7 @@ export function MosqueProfileView({
           entityType="MOSQUES"
           selectedIds={[mosque.id]}
           allMosques={[mosque]}
+          scheduleId={selectedScheduleId || data?.activeSchedule?.id}
         />
       )}
     </div>
