@@ -103,16 +103,17 @@ export function ImamProfileView({
 
     // Exact cache lookup only: never fall back to default when a specific month is requested!
     const exactCached = effectiveSchedId
-      ? imamProfileCache.get(cacheKey)
+      ? (imamProfileCache.get(cacheKey) || imamProfileCache.get(`${imamId}-${effectiveSchedId}`))
       : (imamProfileCache.get(cacheKey) || imamProfileCache.get(`${imamId}-default`));
 
     if (exactCached) {
-      setData(exactCached);
+      setData({ ...exactCached });
       if (schedId !== undefined) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && exactCached.activeSchedule) {
         setSelectedScheduleId(exactCached.activeSchedule.id);
       }
+      setIsSwitchingMonth(false);
       setLoading(false);
       return;
     }
@@ -131,10 +132,13 @@ export function ImamProfileView({
       const res = await fetchApi<ImamProfileData>(url);
       const normalized = normalizeProfileData(res);
       imamProfileCache.set(cacheKey, normalized);
+      if (normalized.activeSchedule?.id) {
+        imamProfileCache.set(`${imamId}-${normalized.activeSchedule.id}`, normalized);
+      }
       if (!effectiveSchedId) {
         imamProfileCache.set(`${imamId}-default`, normalized);
       }
-      setData(normalized);
+      setData({ ...normalized });
       if (schedId !== undefined) {
         setSelectedScheduleId(schedId);
       } else if (!selectedScheduleId && res.activeSchedule) {
@@ -146,10 +150,13 @@ export function ImamProfileView({
       if (fallback) {
         const normalized = normalizeProfileData(fallback);
         imamProfileCache.set(cacheKey, normalized);
+        if (normalized.activeSchedule?.id) {
+          imamProfileCache.set(`${imamId}-${normalized.activeSchedule.id}`, normalized);
+        }
         if (!effectiveSchedId) {
           imamProfileCache.set(`${imamId}-default`, normalized);
         }
-        setData(normalized);
+        setData({ ...normalized });
         if (schedId !== undefined) {
           setSelectedScheduleId(schedId);
         } else if (!selectedScheduleId && fallback.activeSchedule) {
@@ -195,9 +202,7 @@ export function ImamProfileView({
 
       const sortedAssignments = [...monthAssignments].sort((x: any, y: any) => (x.fridayIndex || 0) - (y.fridayIndex || 0));
 
-      const printWin = window.open('', '_blank');
-      if (printWin) {
-        printWin.document.write(`
+      const printableHtml = `
           <!DOCTYPE html>
           <html dir="rtl" lang="ar">
             <head>
@@ -309,13 +314,42 @@ export function ImamProfileView({
                   </div>
                 </div>
               </div>
-              <script>
-                setTimeout(() => { window.print(); }, 500);
-              </script>
             </body>
           </html>
-        `);
-        printWin.document.close();
+        `;
+
+      // In-page hidden iframe printing:
+      // Never opens a detached/lingering tab that locks Chromium parent window interactions
+      const printFrame = document.createElement('iframe');
+      printFrame.style.position = 'fixed';
+      printFrame.style.right = '0';
+      printFrame.style.bottom = '0';
+      printFrame.style.width = '0';
+      printFrame.style.height = '0';
+      printFrame.style.border = '0';
+      printFrame.style.visibility = 'hidden';
+      document.body.appendChild(printFrame);
+
+      const frameDoc = printFrame.contentWindow?.document || printFrame.contentDocument;
+      if (frameDoc) {
+        frameDoc.open();
+        frameDoc.write(printableHtml);
+        frameDoc.close();
+        setTimeout(() => {
+          try {
+            printFrame.contentWindow?.focus();
+            printFrame.contentWindow?.print();
+          } catch (err) {
+            console.warn('Iframe print error, falling back to modal:', err);
+            setPdfModalOpen(true);
+          } finally {
+            setTimeout(() => {
+              if (document.body.contains(printFrame)) {
+                document.body.removeChild(printFrame);
+              }
+            }, 1500);
+          }
+        }, 350);
       } else {
         setPdfModalOpen(true);
       }
@@ -561,9 +595,11 @@ export function ImamProfileView({
               )}
               <select
                 value={selectedScheduleId ?? activeSchedule?.id ?? ''}
-                disabled={isSwitchingMonth}
                 onChange={(e) => {
-                  const sId = Number(e.target.value);
+                  const val = e.target.value;
+                  if (!val) return;
+                  const sId = Number(val);
+                  if (isNaN(sId)) return;
                   setSelectedScheduleId(sId);
                   loadProfile(sId);
                 }}

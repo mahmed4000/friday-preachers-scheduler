@@ -490,6 +490,9 @@ export function triggerPrintWindow(
 <body>
   <div>${element.outerHTML}</div>
   <script>
+    window.onafterprint = function() {
+      try { window.close(); } catch(e) {}
+    };
     setTimeout(function() {
       window.focus();
       window.print();

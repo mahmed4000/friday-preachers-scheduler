@@ -199,6 +199,9 @@ export function BatchPdfExportModal({
         <body>
           <div>${printContent}</div>
           <script>
+            window.onafterprint = function() {
+              try { window.close(); } catch(e) {}
+            };
             setTimeout(() => {
               window.print();
             }, 600);
