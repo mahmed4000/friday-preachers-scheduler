@@ -138551,7 +138551,15 @@ api.get("/schedules/:id", async (req, res) => {
       };
     });
     const scheduleAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
-    const scheduleConflicts = await db.select().from(conflicts).where(eq(conflicts.scheduleId, scheduleId));
+    const rawConflicts = await db.select().from(conflicts).where(eq(conflicts.scheduleId, scheduleId));
+    const scheduleConflicts = rawConflicts.map((c) => ({
+      ...c,
+      ruleCode: c.conflictType || c.ruleCode,
+      conflictType: c.conflictType || c.ruleCode,
+      message: c.description || c.message,
+      description: c.description || c.message,
+      possibleResolutions: c.possibleResolutions || (c.details?.resolutions ? JSON.stringify(c.details.resolutions) : null)
+    }));
     const scheduleOverrides = await db.select().from(overrides).where(eq(overrides.scheduleId, scheduleId)).orderBy(desc(overrides.createdAt));
     const versions = [];
     const allMosques = await db.select().from(mosques);

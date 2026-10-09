@@ -198,9 +198,14 @@ export interface Conflict {
   mosqueId?: number | null;
   fridayIndex?: number | null;
   imamId?: number | null;
-  ruleCode: string;
-  message: string;
-  possibleResolutions?: string | null; // JSON
+  ruleCode?: string;
+  conflictType?: string;
+  message?: string;
+  description?: string;
+  possibleResolutions?: string | string[] | null; // JSON string or string array
+  details?: any;
+  status?: string;
+  createdAt?: string;
 }
 
 export interface OverrideRecord {
