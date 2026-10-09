@@ -23,7 +23,7 @@ import {
   importSnapshots,
   organizationSettings,
 } from '../db/schema.ts';
-import { eq, desc, asc, and, ilike, ne, inArray } from 'drizzle-orm';
+import { eq, desc, asc, and, or, ilike, ne, inArray } from 'drizzle-orm';
 import { SchedulingEngine, FixedPatternInput } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
 import { optionalAuth, requireAuth, requireAdmin, AuthRequest, extractToken } from '../middleware/auth.ts';
@@ -1954,7 +1954,18 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'الخطيب غير موجود' });
     }
 
-    const availabilities: any[] = [];
+    let availabilities: any[] = [];
+    try {
+      availabilities = await db
+        .select()
+        .from(imamAvailabilities)
+        .where(eq(imamAvailabilities.imamId, id))
+        .orderBy(asc(imamAvailabilities.fridayIndex));
+    } catch (err: any) {
+      console.warn('Could not query imamAvailabilities:', err?.message);
+      availabilities = [];
+    }
+
     const rules = await db.select().from(mosqueImamRules).where(eq(mosqueImamRules.imamId, id));
     const allMosques = await db.select().from(mosques);
     const mosqueMap = new Map(allMosques.map((m) => [m.id, m]));
@@ -2096,7 +2107,17 @@ api.get('/imams/:id/profile', async (req: Request, res: Response) => {
     }).sort((x, y) => y.assignedCount - x.assignedCount);
 
     // Availabilities
-    const availabilities: any[] = [];
+    let availabilities: any[] = [];
+    try {
+      availabilities = await db
+        .select()
+        .from(imamAvailabilities)
+        .where(eq(imamAvailabilities.imamId, id))
+        .orderBy(asc(imamAvailabilities.fridayIndex));
+    } catch (err: any) {
+      console.warn('Could not query imamAvailabilities in profile:', err?.message);
+      availabilities = [];
+    }
 
     // Audit logs
     const logs = await db.select().from(auditLogs).where(and(eq(auditLogs.entityType, 'IMAM'), eq(auditLogs.entityId, id))).orderBy(desc(auditLogs.id)).limit(20);
@@ -2433,17 +2454,65 @@ api.post('/imams/:id/availabilities', requireAuth, async (req: AuthRequest, res:
   try {
     const imamId = Number(req.params.id);
     const { hijriYear, hijriMonth, fridayIndex, isAvailable, reason } = req.body;
-    await logAudit(req, 'SET_IMAM_AVAILABILITY', 'IMAM', imamId, { hijriYear, hijriMonth, fridayIndex, isAvailable, reason });
-    res.json({
+
+    const fIdx = Number(fridayIndex);
+    if (!fIdx || fIdx < 1 || fIdx > 5) {
+      return res.status(400).json({ error: 'رقم الجمعة غير صالح (يجب أن يكون بين 1 و 5)' });
+    }
+
+    const yearVal = hijriYear !== undefined ? Number(hijriYear) : 0;
+    const monthVal = hijriMonth !== undefined ? Number(hijriMonth) : 0;
+
+    // Remove previous record for this imam & fridayIndex to prevent duplicates
+    await db.delete(imamAvailabilities).where(
+      and(
+        eq(imamAvailabilities.imamId, imamId),
+        eq(imamAvailabilities.fridayIndex, fIdx)
+      )
+    );
+
+    const [inserted] = await db.insert(imamAvailabilities).values({
       imamId,
-      hijriYear: Number(hijriYear),
-      hijriMonth: Number(hijriMonth),
-      fridayIndex: Number(fridayIndex),
+      hijriYear: yearVal,
+      hijriMonth: monthVal,
+      fridayIndex: fIdx,
+      isAvailable: isAvailable !== undefined ? Boolean(isAvailable) : false,
+      reason: reason || 'اعتذار رسمي',
+    }).returning();
+
+    await logAudit(req, 'SET_IMAM_AVAILABILITY', 'IMAM', imamId, {
+      hijriYear: yearVal,
+      hijriMonth: monthVal,
+      fridayIndex: fIdx,
       isAvailable: Boolean(isAvailable),
+      reason,
     });
+
+    res.json(inserted);
   } catch (error: any) {
     console.error('DB update availability failed:', error?.message);
     res.status(500).json({ error: 'تعذر تحديث التوفر في قاعدة البيانات', details: safeErrorDetails(error) });
+  }
+});
+
+api.delete('/imams/:id/availabilities/:availId', requireAuth, async (req: AuthRequest, res: Response) => {
+  if (!requireDatabase(res)) return;
+  try {
+    const imamId = Number(req.params.id);
+    const availId = Number(req.params.availId);
+
+    const deleted = await db.delete(imamAvailabilities).where(
+      and(
+        eq(imamAvailabilities.id, availId),
+        eq(imamAvailabilities.imamId, imamId)
+      )
+    ).returning();
+
+    await logAudit(req, 'DELETE_IMAM_AVAILABILITY', 'IMAM', imamId, { availId });
+    res.json({ success: true, count: deleted.length, message: 'تم إلغاء الاعتذار واستعادة التوفر بنجاح' });
+  } catch (error: any) {
+    console.error('DB delete availability failed:', error?.message);
+    res.status(500).json({ error: 'تعذر حذف الاستثناء من قاعدة البيانات', details: safeErrorDetails(error) });
   }
 });
 
@@ -2761,9 +2830,15 @@ api.post('/schedules/:id/generate', requireAuth, async (req: AuthRequest, res: R
     let dbAvailabilities: any[] = [];
     try {
       dbAvailabilities = await db.select().from(imamAvailabilities).where(
-        and(
-          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
         )
       );
     } catch {
@@ -2929,9 +3004,15 @@ api.post('/schedules/:id/redistribute', requireAuth, async (req: AuthRequest, re
     let dbAvailabilities: any[] = [];
     try {
       dbAvailabilities = await db.select().from(imamAvailabilities).where(
-        and(
-          eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-          eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
         )
       );
     } catch {

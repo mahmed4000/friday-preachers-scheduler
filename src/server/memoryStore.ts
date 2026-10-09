@@ -39,6 +39,7 @@ let memoryConflicts = [...(seedData.conflicts || [])];
 let memoryOverrides = [...(seedData.overrides || [])];
 let memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
 let memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+let memoryAvailabilities: any[] = [];
 let memoryAuditLogs: any[] = [
   {
     id: 1,
@@ -63,6 +64,7 @@ export const memoryStore = {
     memoryOverrides = [...(seedData.overrides || [])];
     memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
     memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+    memoryAvailabilities = [];
     memoryAuditLogs = [
       {
         id: 1,
@@ -174,6 +176,7 @@ export const memoryStore = {
       }));
     return {
       ...imam,
+      availabilities: memoryAvailabilities.filter((a: any) => Number(a.imamId) === id),
       rules,
     };
   },
@@ -510,7 +513,7 @@ export const memoryStore = {
       upcomingAssignments,
       linkedMosques,
       rules,
-      availabilities: [],
+      availabilities: memoryAvailabilities.filter((a: any) => a.imamId === id),
       auditLogs: [],
     };
   },
@@ -1375,6 +1378,30 @@ export const memoryStore = {
     memoryPatterns = memoryPatterns.filter((p: any) => Number(p.id) !== pId);
     memoryPatternItems = memoryPatternItems.filter((pi: any) => Number(pi.patternId) !== pId);
     this.persistToDisk();
+    return true;
+  },
+
+  addAvailability(imamId: number, data: any) {
+    const fIdx = Number(data.fridayIndex);
+    memoryAvailabilities = memoryAvailabilities.filter(
+      (a: any) => !(Number(a.imamId) === imamId && Number(a.fridayIndex) === fIdx)
+    );
+    const newEntry = {
+      id: Date.now(),
+      imamId,
+      hijriYear: Number(data.hijriYear) || 0,
+      hijriMonth: Number(data.hijriMonth) || 0,
+      fridayIndex: fIdx,
+      isAvailable: data.isAvailable !== undefined ? Boolean(data.isAvailable) : false,
+      reason: data.reason || 'اعتذار رسمي',
+      createdAt: new Date().toISOString(),
+    };
+    memoryAvailabilities.push(newEntry);
+    return newEntry;
+  },
+
+  deleteAvailability(availId: number) {
+    memoryAvailabilities = memoryAvailabilities.filter((a: any) => Number(a.id) !== Number(availId));
     return true;
   },
 

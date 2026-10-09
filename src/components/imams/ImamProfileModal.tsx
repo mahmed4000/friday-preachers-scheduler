@@ -329,25 +329,42 @@ export function ImamProfileModal({
     if (!imam) return;
     setErrorMessage(null);
     try {
-      const curHijri = CalendarService.getCurrentDateTime().hijri;
       await fetchApi(`/api/imams/${imam.id}/availabilities`, {
         method: 'POST',
         body: JSON.stringify({
-          hijriYear: curHijri.year || 1448,
-          hijriMonth: curHijri.month || 1,
+          hijriYear: 0,
+          hijriMonth: 0,
           fridayIndex: newFridayIndex,
           isAvailable: false,
-          reason: newReason,
+          reason: newReason.trim() || 'اعتذار رسمي',
         }),
       });
 
+      setNewReason('');
       const res = await fetchApi<any>(`/api/imams/${imam.id}`);
       if (res.availabilities) setAvailabilities(res.availabilities);
-      setFeedback('تم تسجيل استثناء عدم التوفر للجمعة المحددة');
+      setFeedback('تم تسجيل استثناء عدم التوفر للجمعة المحددة بنجاح ✓');
       setTimeout(() => setFeedback(null), 3000);
       onSaved();
     } catch (err: any) {
       setErrorMessage(err.message || 'تعذر تسجيل الاستثناء');
+    }
+  };
+
+  const handleDeleteUnavailable = async (availId: number) => {
+    if (!imam) return;
+    setErrorMessage(null);
+    try {
+      await fetchApi(`/api/imams/${imam.id}/availabilities/${availId}`, {
+        method: 'DELETE',
+      });
+      const res = await fetchApi<any>(`/api/imams/${imam.id}`);
+      if (res.availabilities) setAvailabilities(res.availabilities);
+      setFeedback('تم إلغاء الاعتذار واستعادة توفر الخطيب للجمعة بنجاح ✓');
+      setTimeout(() => setFeedback(null), 3000);
+      onSaved();
+    } catch (err: any) {
+      setErrorMessage(err.message || 'تعذر إلغاء الاستثناء');
     }
   };
 
@@ -677,13 +694,22 @@ export function ImamProfileModal({
               ) : (
                 <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white overflow-hidden">
                   {availabilities.map((a) => (
-                    <div key={a.id} className="p-2.5 flex items-center justify-between text-xs">
+                    <div key={a.id} className="p-2.5 flex items-center justify-between text-xs hover:bg-slate-50 transition-colors">
                       <div className="flex items-center gap-2">
                         <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-bold">
                           الجمعة ({a.fridayIndex})
                         </span>
                         <span className="text-slate-600">غير متاح · السبب: {a.reason || 'اعتذار رسمي'}</span>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteUnavailable(a.id)}
+                        className="px-2 py-1 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded flex items-center gap-1 transition-colors"
+                        title="إلغاء الاعتذار واستعادة التوفر"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span className="text-[11px] font-bold">حذف</span>
+                      </button>
                     </div>
                   ))}
                 </div>

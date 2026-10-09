@@ -322,10 +322,12 @@ export const fixedAssignmentPatternItems = pgTable('fixed_assignment_pattern_ite
 export const imamAvailabilities = pgTable('imam_availabilities', {
   id: serial('id').primaryKey(),
   imamId: integer('imam_id').notNull(),
-  hijriYear: integer('hijri_year').notNull(),
-  hijriMonth: integer('hijri_month').notNull(),
+  hijriYear: integer('hijri_year').notNull().default(0),
+  hijriMonth: integer('hijri_month').notNull().default(0),
   fridayIndex: integer('friday_index').notNull(),
   isAvailable: boolean('is_available').default(false).notNull(),
+  reason: text('reason'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 export const scheduleVersions = pgTable('schedule_versions', {
