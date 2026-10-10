@@ -1977,6 +1977,107 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
       mosque: mosqueMap.get(r.mosqueId),
     }));
 
+    // Fetch perpetual fixed patterns (hijriYear: 0, hijriMonth: 0)
+    const perpetualPatterns = await db.select().from(fixedAssignmentPatterns).where(
+      and(eq(fixedAssignmentPatterns.hijriYear, 0), eq(fixedAssignmentPatterns.hijriMonth, 0))
+    );
+    const patternIds = perpetualPatterns.map((p) => p.id);
+    const patternToMosqueMap = new Map(perpetualPatterns.map((p) => [p.id, p.mosqueId]));
+
+    let allPatternItems: any[] = [];
+    if (patternIds.length > 0) {
+      allPatternItems = await db.select().from(fixedAssignmentPatternItems).where(
+        inArray(fixedAssignmentPatternItems.patternId, patternIds)
+      );
+    }
+
+    const unavailableSet = new Set(
+      availabilities.filter((a) => !a.isAvailable).map((a) => a.fridayIndex)
+    );
+
+    const fridayAssignments = [1, 2, 3, 4, 5].map((f) => {
+      if (unavailableSet.has(f)) {
+        return {
+          fridayIndex: f,
+          status: 'UNAVAILABLE',
+          mosqueId: null,
+          mosqueName: null,
+          mosqueCode: null,
+        };
+      }
+
+      // Check if this imam has a pattern item for friday f
+      const myItem = allPatternItems.find((it) => it.fridayIndex === f && it.imamId === id);
+      if (myItem) {
+        const mId = patternToMosqueMap.get(myItem.patternId);
+        const m = mId ? mosqueMap.get(mId) : null;
+        return {
+          fridayIndex: f,
+          status: 'FIXED',
+          mosqueId: m?.id || null,
+          mosqueName: m?.name || null,
+          mosqueCode: m?.code || null,
+        };
+      }
+
+      // If fixedMosque is set for all fridays
+      if (fixedMosque) {
+        return {
+          fridayIndex: f,
+          status: 'FIXED',
+          mosqueId: fixedMosque.id,
+          mosqueName: fixedMosque.name,
+          mosqueCode: fixedMosque.code,
+        };
+      }
+
+      return {
+        fridayIndex: f,
+        status: 'FLEXIBLE',
+        mosqueId: null,
+        mosqueName: null,
+        mosqueCode: null,
+      };
+    });
+
+    // Occupied slots by Friday across all mosques for other imams
+    const occupiedSlots: Record<number, Array<{ mosqueId: number; mosqueName: string; imamId: number; imamName: string }>> = {
+      1: [], 2: [], 3: [], 4: [], 5: []
+    };
+
+    const allActiveImams = await db.select().from(imams);
+    const imamLookup = new Map(allActiveImams.map((i) => [i.id, i.name]));
+
+    for (const it of allPatternItems) {
+      if (it.imamId === id) continue;
+      const mId = patternToMosqueMap.get(it.patternId);
+      const m = mId ? mosqueMap.get(mId) : null;
+      const f = it.fridayIndex;
+      if (f >= 1 && f <= 5 && m) {
+        occupiedSlots[f].push({
+          mosqueId: m.id,
+          mosqueName: m.name,
+          imamId: it.imamId,
+          imamName: imamLookup.get(it.imamId) || `خطيب #${it.imamId}`,
+        });
+      }
+    }
+
+    for (const m of allMosques) {
+      if (m.fixedImamId && m.fixedImamId !== id) {
+        for (let f = 1; f <= 5; f++) {
+          if (!occupiedSlots[f].some((occ) => occ.mosqueId === m.id)) {
+            occupiedSlots[f].push({
+              mosqueId: m.id,
+              mosqueName: m.name,
+              imamId: m.fixedImamId,
+              imamName: imamLookup.get(m.fixedImamId) || `خطيب #${m.fixedImamId}`,
+            });
+          }
+        }
+      }
+    }
+
     res.json({
       ...found[0],
       fixedMosqueId: fixedMosque?.id || null,
@@ -1984,6 +2085,8 @@ api.get('/imams/:id', async (req: Request, res: Response) => {
       fixedMosqueCode: fixedMosque?.code || null,
       availabilities,
       rules: enrichedRules,
+      fridayAssignments,
+      occupiedSlots,
     });
   } catch (error: any) {
     console.error('DB fetch for imam details failed:', error?.message);
@@ -2346,7 +2449,7 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
     }
 
     // Handle allowed Fridays constraints (automatic synchronization with imam_availabilities)
-    if (Array.isArray(data.allowedFridays)) {
+    if (Array.isArray(data.allowedFridays) && !Array.isArray(data.fridayAssignments)) {
       const allowedSet = new Set(data.allowedFridays.map(Number));
       // Delete existing general/perpetual unavailabilities for this imam
       await db.delete(imamAvailabilities).where(
@@ -2371,6 +2474,106 @@ api.patch('/imams/:id', requireAuth, async (req: AuthRequest, res: Response) => 
 
       if (unavailToInsert.length > 0) {
         await db.insert(imamAvailabilities).values(unavailToInsert);
+      }
+    }
+
+    // Handle unified Friday-Mosque Assignments
+    if (Array.isArray(data.fridayAssignments)) {
+      // 1. Delete perpetual unavailabilities for this imam to rewrite them accurately
+      await db.delete(imamAvailabilities).where(
+        and(
+          eq(imamAvailabilities.imamId, id),
+          eq(imamAvailabilities.hijriYear, 0),
+          eq(imamAvailabilities.hijriMonth, 0)
+        )
+      );
+
+      // 2. Fetch all perpetual patterns (hijriYear: 0, hijriMonth: 0)
+      const perpetualPatterns = await db.select().from(fixedAssignmentPatterns).where(
+        and(eq(fixedAssignmentPatterns.hijriYear, 0), eq(fixedAssignmentPatterns.hijriMonth, 0))
+      );
+      const allPatternIds = perpetualPatterns.map((p) => p.id);
+
+      // Remove this imam from any perpetual pattern items across all mosques
+      if (allPatternIds.length > 0) {
+        await db.delete(fixedAssignmentPatternItems).where(
+          and(
+            inArray(fixedAssignmentPatternItems.patternId, allPatternIds),
+            eq(fixedAssignmentPatternItems.imamId, id)
+          )
+        );
+      }
+
+      const unavailList: any[] = [];
+      const fixedItems: Array<{ fridayIndex: number; mosqueId: number }> = [];
+
+      for (const fa of data.fridayAssignments) {
+        const f = Number(fa.fridayIndex);
+        if (f < 1 || f > 5) continue;
+
+        if (fa.status === 'UNAVAILABLE' || fa.isUnavailable) {
+          unavailList.push({
+            imamId: id,
+            hijriYear: 0,
+            hijriMonth: 0,
+            fridayIndex: f,
+            isAvailable: false,
+            reason: fa.reason || 'اعتذار رسمي / غير متاح',
+          });
+        } else if ((fa.status === 'FIXED' || fa.mosqueId) && fa.mosqueId) {
+          const targetMosqueId = Number(fa.mosqueId);
+          fixedItems.push({ fridayIndex: f, mosqueId: targetMosqueId });
+
+          // Ensure perpetual pattern exists for this target mosque
+          let p = perpetualPatterns.find((pat) => pat.mosqueId === targetMosqueId);
+          if (!p) {
+            const [createdPat] = await db.insert(fixedAssignmentPatterns).values({
+              mosqueId: targetMosqueId,
+              hijriYear: 0,
+              hijriMonth: 0,
+            }).returning();
+            p = createdPat;
+            perpetualPatterns.push(p);
+          }
+
+          // In this target mosque's pattern, replace any existing item for this friday with this imam
+          await db.delete(fixedAssignmentPatternItems).where(
+            and(
+              eq(fixedAssignmentPatternItems.patternId, p.id),
+              eq(fixedAssignmentPatternItems.fridayIndex, f)
+            )
+          );
+          await db.insert(fixedAssignmentPatternItems).values({
+            patternId: p.id,
+            fridayIndex: f,
+            imamId: id,
+          });
+        }
+      }
+
+      if (unavailList.length > 0) {
+        await db.insert(imamAvailabilities).values(unavailList);
+      }
+
+      // Sync fixedImamId on mosques table and determine classification type:
+      const distinctMosques = Array.from(new Set(fixedItems.map((fi) => fi.mosqueId)));
+      if (fixedItems.length === 5 && distinctMosques.length === 1) {
+        const soleMosqueId = distinctMosques[0];
+        await db.update(mosques).set({ fixedImamId: id, updatedAt: new Date() }).where(eq(mosques.id, soleMosqueId));
+        await db.update(mosques).set({ fixedImamId: null, updatedAt: new Date() }).where(
+          and(eq(mosques.fixedImamId, id), ne(mosques.id, soleMosqueId))
+        );
+        updateValues.type = 'FIXED';
+      } else if (fixedItems.length > 0) {
+        await db.update(mosques).set({ fixedImamId: null, updatedAt: new Date() }).where(eq(mosques.fixedImamId, id));
+        updateValues.type = 'PARTIAL_FIXED';
+      } else {
+        await db.update(mosques).set({ fixedImamId: null, updatedAt: new Date() }).where(eq(mosques.fixedImamId, id));
+        if (data.type) {
+          updateValues.type = data.type;
+        } else {
+          updateValues.type = 'FLEXIBLE';
+        }
       }
     }
 

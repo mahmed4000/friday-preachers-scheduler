@@ -11,10 +11,28 @@ import {
   Plus,
   Trash2,
   AlertTriangle,
+  CalendarDays,
+  Shuffle,
+  Sparkles,
+  Check,
+  Lock,
+  ArrowRightLeft,
+  Info,
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api.ts';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
 import { CalendarService } from '../../services/calendar/calendarService.ts';
+
+export interface FridayAssignmentState {
+  fridayIndex: number;
+  status: 'FIXED' | 'FLEXIBLE' | 'UNAVAILABLE';
+  mosqueId: number | null;
+  mosqueName?: string | null;
+  mosqueCode?: string | null;
+  reason?: string;
+}
+
+export type ImamAssignmentMode = 'FULL_FIXED' | 'CUSTOM_FRIDAYS' | 'FLEXIBLE';
 
 interface ImamProfileModalProps {
   isOpen: boolean;
@@ -64,6 +82,19 @@ export function ImamProfileModal({
   const [selectedPreferredMosque, setSelectedPreferredMosque] = useState<number | ''>('');
   const [selectedForbiddenMosque, setSelectedForbiddenMosque] = useState<number | ''>('');
 
+  // Unified Friday Mosque Assignment State
+  const [assignmentMode, setAssignmentMode] = useState<ImamAssignmentMode>('FLEXIBLE');
+  const [fridayAssignments, setFridayAssignments] = useState<FridayAssignmentState[]>([
+    { fridayIndex: 1, status: 'FLEXIBLE', mosqueId: null },
+    { fridayIndex: 2, status: 'FLEXIBLE', mosqueId: null },
+    { fridayIndex: 3, status: 'FLEXIBLE', mosqueId: null },
+    { fridayIndex: 4, status: 'FLEXIBLE', mosqueId: null },
+    { fridayIndex: 5, status: 'FLEXIBLE', mosqueId: null },
+  ]);
+  const [occupiedSlots, setOccupiedSlots] = useState<Record<number, Array<{ mosqueId: number; mosqueName: string; imamId: number; imamName: string }>>>({
+    1: [], 2: [], 3: [], 4: [], 5: []
+  });
+
   // Availabilities
   const [availabilities, setAvailabilities] = useState<ImamAvailability[]>([]);
   const [allowedFridays, setAllowedFridays] = useState<number[]>([1, 2, 3, 4, 5]);
@@ -74,6 +105,101 @@ export function ImamProfileModal({
   // New availability exception form
   const [newFridayIndex, setNewFridayIndex] = useState<number>(1);
   const [newReason, setNewReason] = useState<string>('ارتباط مسبق / سفر');
+
+  const handleFridayStatusChange = (fridayIndex: number, newStatus: 'FIXED' | 'FLEXIBLE' | 'UNAVAILABLE') => {
+    setFridayAssignments((prev) =>
+      prev.map((fa) => {
+        if (fa.fridayIndex !== fridayIndex) return fa;
+        let newMosqueId = fa.mosqueId;
+        if (newStatus === 'FIXED' && !newMosqueId && mosques.length > 0) {
+          newMosqueId = mosques[0].id;
+        } else if (newStatus !== 'FIXED') {
+          newMosqueId = null;
+        }
+        return {
+          ...fa,
+          status: newStatus,
+          mosqueId: newMosqueId,
+        };
+      })
+    );
+  };
+
+  const handleFridayMosqueChange = (fridayIndex: number, mosqueId: number) => {
+    setFridayAssignments((prev) =>
+      prev.map((fa) => (fa.fridayIndex === fridayIndex ? { ...fa, status: 'FIXED', mosqueId } : fa))
+    );
+  };
+
+  const applyPreset = (preset: 'all_flexible' | 'only_1_3' | 'only_2_4' | 'only_first') => {
+    if (preset === 'all_flexible') {
+      setFridayAssignments([1, 2, 3, 4, 5].map((idx) => ({
+        fridayIndex: idx,
+        status: 'FLEXIBLE',
+        mosqueId: null,
+      })));
+    } else if (preset === 'only_1_3') {
+      setFridayAssignments((prev) =>
+        [1, 2, 3, 4, 5].map((idx) => {
+          const existing = prev.find((fa) => fa.fridayIndex === idx);
+          if (idx === 1 || idx === 3) {
+            return {
+              fridayIndex: idx,
+              status: existing?.status === 'FIXED' && existing.mosqueId ? 'FIXED' : 'FLEXIBLE',
+              mosqueId: existing?.status === 'FIXED' ? existing.mosqueId : null,
+            };
+          } else {
+            return {
+              fridayIndex: idx,
+              status: 'UNAVAILABLE',
+              mosqueId: null,
+              reason: 'حصر التكليف في الجمعتين 1 و 3',
+            };
+          }
+        })
+      );
+    } else if (preset === 'only_2_4') {
+      setFridayAssignments((prev) =>
+        [1, 2, 3, 4, 5].map((idx) => {
+          const existing = prev.find((fa) => fa.fridayIndex === idx);
+          if (idx === 2 || idx === 4) {
+            return {
+              fridayIndex: idx,
+              status: existing?.status === 'FIXED' && existing.mosqueId ? 'FIXED' : 'FLEXIBLE',
+              mosqueId: existing?.status === 'FIXED' ? existing.mosqueId : null,
+            };
+          } else {
+            return {
+              fridayIndex: idx,
+              status: 'UNAVAILABLE',
+              mosqueId: null,
+              reason: 'حصر التكليف في الجمعتين 2 و 4',
+            };
+          }
+        })
+      );
+    } else if (preset === 'only_first') {
+      setFridayAssignments((prev) =>
+        [1, 2, 3, 4, 5].map((idx) => {
+          const existing = prev.find((fa) => fa.fridayIndex === idx);
+          if (idx === 1) {
+            return {
+              fridayIndex: idx,
+              status: existing?.status === 'FIXED' && existing.mosqueId ? 'FIXED' : 'FLEXIBLE',
+              mosqueId: existing?.status === 'FIXED' ? existing.mosqueId : null,
+            };
+          } else {
+            return {
+              fridayIndex: idx,
+              status: 'UNAVAILABLE',
+              mosqueId: null,
+              reason: 'حصر التكليف في الجمعة الأولى فقط',
+            };
+          }
+        })
+      );
+    }
+  };
 
   useEffect(() => {
     if (imam) {
@@ -124,6 +250,43 @@ export function ImamProfileModal({
           if (res.fixedMosqueId !== undefined) {
             setFixedMosqueId(res.fixedMosqueId ? Number(res.fixedMosqueId) : '');
           }
+
+          if (res.occupiedSlots) {
+            setOccupiedSlots(res.occupiedSlots);
+          }
+
+          if (res.fridayAssignments && Array.isArray(res.fridayAssignments) && res.fridayAssignments.length > 0) {
+            setFridayAssignments(res.fridayAssignments);
+            const fixedItems = res.fridayAssignments.filter((f: any) => f.status === 'FIXED' && f.mosqueId);
+            const unavailItems = res.fridayAssignments.filter((f: any) => f.status === 'UNAVAILABLE');
+            const uniqueMosqueIds = Array.from(new Set(fixedItems.map((f: any) => f.mosqueId)));
+
+            if (fixedItems.length === 5 && uniqueMosqueIds.length === 1) {
+              setAssignmentMode('FULL_FIXED');
+              setFixedMosqueId(Number(uniqueMosqueIds[0]));
+            } else if (fixedItems.length > 0 || unavailItems.length > 0) {
+              setAssignmentMode('CUSTOM_FRIDAYS');
+            } else if (res.type === 'FIXED' && res.fixedMosqueId) {
+              setAssignmentMode('FULL_FIXED');
+            } else {
+              setAssignmentMode('FLEXIBLE');
+            }
+          } else if (res.type === 'FIXED' && res.fixedMosqueId) {
+            setAssignmentMode('FULL_FIXED');
+            const mId = Number(res.fixedMosqueId);
+            setFridayAssignments([1, 2, 3, 4, 5].map((idx) => ({
+              fridayIndex: idx,
+              status: 'FIXED',
+              mosqueId: mId,
+            })));
+          } else {
+            setAssignmentMode('FLEXIBLE');
+            setFridayAssignments([1, 2, 3, 4, 5].map((idx) => ({
+              fridayIndex: idx,
+              status: 'FLEXIBLE',
+              mosqueId: null,
+            })));
+          }
         })
         .catch(() => {});
     } else {
@@ -155,6 +318,14 @@ export function ImamProfileModal({
       setRules([]);
       setSelectedPreferredMosque('');
       setSelectedForbiddenMosque('');
+
+      setAssignmentMode('FLEXIBLE');
+      setFridayAssignments([1, 2, 3, 4, 5].map((idx) => ({
+        fridayIndex: idx,
+        status: 'FLEXIBLE',
+        mosqueId: null,
+      })));
+      setOccupiedSlots({ 1: [], 2: [], 3: [], 4: [], 5: [] });
     }
     setActiveTab('info');
     setFeedback(null);
@@ -259,8 +430,65 @@ export function ImamProfileModal({
     setErrorMessage(null);
 
     try {
-      const finalType = type;
-      const finalFixedMosqueId = finalType === 'FIXED' && fixedMosqueId ? Number(fixedMosqueId) : null;
+      let finalFridayAssignments: FridayAssignmentState[] = [];
+      let finalAllowedFridays = [...allowedFridays];
+      let finalType = type;
+      let finalFixedMosqueId = fixedMosqueId ? Number(fixedMosqueId) : null;
+
+      if (assignmentMode === 'FULL_FIXED') {
+        if (finalFixedMosqueId) {
+          finalType = 'FIXED';
+          finalFridayAssignments = [1, 2, 3, 4, 5].map((idx) => ({
+            fridayIndex: idx,
+            status: 'FIXED',
+            mosqueId: finalFixedMosqueId,
+          }));
+          finalAllowedFridays = [1, 2, 3, 4, 5];
+        } else {
+          finalType = 'FLEXIBLE';
+          finalFixedMosqueId = null;
+          finalFridayAssignments = [1, 2, 3, 4, 5].map((idx) => ({
+            fridayIndex: idx,
+            status: 'FLEXIBLE',
+            mosqueId: null,
+          }));
+        }
+      } else if (assignmentMode === 'CUSTOM_FRIDAYS') {
+        finalFridayAssignments = fridayAssignments.map((fa) => ({
+          fridayIndex: fa.fridayIndex,
+          status: fa.status,
+          mosqueId: fa.status === 'FIXED' ? fa.mosqueId : null,
+          reason: fa.status === 'UNAVAILABLE' ? (fa.reason || 'اعتذار رسمي / غير متاح') : undefined,
+        }));
+
+        const fixedCount = finalFridayAssignments.filter((f) => f.status === 'FIXED' && f.mosqueId).length;
+        const uniqueFixedMosques = Array.from(new Set(finalFridayAssignments.filter((f) => f.status === 'FIXED' && f.mosqueId).map((f) => f.mosqueId)));
+
+        if (fixedCount === 5 && uniqueFixedMosques.length === 1) {
+          finalType = 'FIXED';
+          finalFixedMosqueId = uniqueFixedMosques[0];
+        } else if (fixedCount > 0) {
+          finalType = 'PARTIAL_FIXED';
+          finalFixedMosqueId = null;
+        } else {
+          finalType = 'FLEXIBLE';
+          finalFixedMosqueId = null;
+        }
+
+        finalAllowedFridays = finalFridayAssignments
+          .filter((fa) => fa.status !== 'UNAVAILABLE')
+          .map((fa) => fa.fridayIndex);
+      } else {
+        // FLEXIBLE
+        finalType = 'FLEXIBLE';
+        finalFixedMosqueId = null;
+        finalFridayAssignments = [1, 2, 3, 4, 5].map((idx) => ({
+          fridayIndex: idx,
+          status: 'FLEXIBLE',
+          mosqueId: null,
+        }));
+      }
+
       const payload = {
         name,
         phone,
@@ -284,7 +512,8 @@ export function ImamProfileModal({
         minFridays: Number(minFridays),
         targetFridays: Number(targetFridays),
         maxFridays: Number(maxFridays),
-        allowedFridays,
+        allowedFridays: finalAllowedFridays,
+        fridayAssignments: finalFridayAssignments,
       };
 
       let savedResponse: any;
@@ -466,9 +695,13 @@ export function ImamProfileModal({
           >
             <Building2 className="w-3.5 h-3.5 text-emerald-500" />
             <span>
-              المساجد والارتباط
-              {fixedMosqueId || rules.length > 0
-                ? ` (${fixedMosqueId ? 'راتب' : ''}${rules.length > 0 ? (fixedMosqueId ? ` + ${rules.length}` : rules.length) : ''})`
+              المساجد وتكليف الجمعات
+              {assignmentMode === 'FULL_FIXED' && fixedMosqueId
+                ? ' (راتب كامل)'
+                : assignmentMode === 'CUSTOM_FRIDAYS'
+                ? ` (${fridayAssignments.filter((f) => f.status === 'FIXED').length} مخصص)`
+                : rules.length > 0
+                ? ` (${rules.length} قواعد)`
                 : ''}
             </span>
           </button>
@@ -915,102 +1148,401 @@ export function ImamProfileModal({
         {/* Tab 4: Mosques & Relationship Rules */}
         {activeTab === 'mosques' && (
           <div className="space-y-5">
-            {/* 1. Fixed Mosque Section */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Top Unified Binding Header & Modes */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white p-4 rounded-xl shadow-xs border border-slate-700/80">
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-800 text-white flex items-center justify-center shrink-0">
-                    <Building2 className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
+                    <Sparkles className="w-4 h-4 text-emerald-400" />
                   </div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 font-heading">
-                      تعيين المسجد الراتب (تثبيت دائم للخطيب)
-                    </h4>
-                    <p className="text-[11px] text-slate-500">
-                      عند تحديد مسجد راتب، يتم تثبيت الخطيب تلقائياً في هذا المسجد بكل جمعات الشهر بدلاً من التوزيع العشوائي
+                    <h3 className="text-sm font-bold font-heading">
+                      نظام الربط والتكليف الذكي (Smart Mosque Binding)
+                    </h3>
+                    <p className="text-[11px] text-slate-300">
+                      تزامن ثنائي تلقائي يربط الخطيب بالمساجد وجدول التوزيع بضغطة زر واحدة
                     </p>
                   </div>
                 </div>
-                {fixedMosqueId ? (
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-900 font-bold text-[10px] border border-emerald-300">
-                    خطيب راتب مثبت ✓
-                  </span>
-                ) : null}
+                <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2.5 py-1 rounded-full border border-emerald-500/30 font-bold">
+                  تسمع تلقائياً في ملف المسجد والتوزيع
+                </span>
               </div>
 
-              <div className="pt-1">
-                <label className="block text-xs font-bold text-slate-800 mb-1">
-                  اختر المسجد الراتب المرتبط بالخطيب:
-                </label>
-                <select
-                  value={fixedMosqueId}
-                  onChange={(e) => {
-                    const val = e.target.value ? Number(e.target.value) : '';
-                    setFixedMosqueId(val);
-                    if (val) {
-                      setType('FIXED');
-                    } else if (type === 'FIXED') {
-                      setType('FLEXIBLE');
+              {/* 3 Modes selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssignmentMode('FULL_FIXED');
+                    if (mosques.length > 0 && !fixedMosqueId) {
+                      setFixedMosqueId(mosques[0].id);
                     }
                   }}
-                  className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  className={`p-3 rounded-lg border text-right transition-all flex flex-col gap-1 cursor-pointer ${
+                    assignmentMode === 'FULL_FIXED'
+                      ? 'bg-emerald-600 border-emerald-400 text-white shadow-md ring-2 ring-emerald-300/30'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
                 >
-                  <option value="">بدون مسجد راتب (خطيب مرن خاضع للتوزيع العام)</option>
-                  {mosques.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.code}) — {m.region || 'المنطقة غير محددة'}
-                      {m.fixedImamId && m.fixedImamId !== imam?.id ? ` [مرتبط حالياً بـ: ${m.fixedImamName || 'خطيب آخر'}]` : ''}
-                    </option>
-                  ))}
-                </select>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-heading">1. خطيب راتب كامل</span>
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] opacity-80">مسجد واحد دائم لجميع جمعات الشهر (1 إلى 5)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setAssignmentMode('CUSTOM_FRIDAYS')}
+                  className={`p-3 rounded-lg border text-right transition-all flex flex-col gap-1 cursor-pointer ${
+                    assignmentMode === 'CUSTOM_FRIDAYS'
+                      ? 'bg-sky-600 border-sky-400 text-white shadow-md ring-2 ring-sky-300/30'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-heading">2. تخصيص بالجمعات</span>
+                    <CalendarDays className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] opacity-80">تحديد مسجد أو مرن أو معتذر لكل جمعة</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAssignmentMode('FLEXIBLE');
+                    setFixedMosqueId('');
+                  }}
+                  className={`p-3 rounded-lg border text-right transition-all flex flex-col gap-1 cursor-pointer ${
+                    assignmentMode === 'FLEXIBLE'
+                      ? 'bg-purple-600 border-purple-400 text-white shadow-md ring-2 ring-purple-300/30'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-heading">3. خطيب مرن عام</span>
+                    <Shuffle className="w-4 h-4" />
+                  </div>
+                  <span className="text-[10px] opacity-80">متاح للتوزيع التلقائي دون مساجد ثابتة</span>
+                </button>
               </div>
+            </div>
 
-              {/* Informative Mosque Card if selected */}
-              {fixedMosqueId ? (() => {
-                const selectedM = mosques.find((m) => m.id === Number(fixedMosqueId));
-                if (!selectedM) return null;
-                const hasOtherImam = selectedM.fixedImamId && selectedM.fixedImamId !== imam?.id;
-                return (
-                  <div className="p-3 bg-white border border-emerald-200 rounded-lg space-y-2 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-emerald-950 font-heading text-sm">
-                        {selectedM.name}
-                      </span>
-                      <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
-                        كود: {selectedM.code}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
-                      <div>
-                        <strong>المنطقة:</strong> {selectedM.region || 'منشأة البكاري'}
-                      </div>
-                      <div>
-                        <strong>العنوان:</strong> {selectedM.formattedAddress || selectedM.address || '—'}
-                      </div>
-                      {selectedM.managerName && (
-                        <div>
-                          <strong>مشرف المسجد:</strong> {selectedM.managerName}
-                        </div>
-                      )}
-                      {selectedM.phone && (
-                        <div>
-                          <strong>هاتف التواصل:</strong> {selectedM.phone}
-                        </div>
-                      )}
-                    </div>
+            {/* Mode 1: Full Fixed Mosque */}
+            {assignmentMode === 'FULL_FIXED' && (
+              <div className="p-4 bg-emerald-50/50 border border-emerald-200 rounded-xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-emerald-950 font-heading">
+                      تعيين المسجد الراتب الدائم (تثبيت كامل 100%)
+                    </h4>
+                    <p className="text-[11px] text-emerald-800">
+                      سيتم تثبيت الشيخ رسمياً في هذا المسجد لكافة جمعات الشهر، وتعيينه كخطيب راتب في ملف المسجد مباشرة.
+                    </p>
+                  </div>
+                  {fixedMosqueId ? (
+                    <span className="px-2 py-0.5 rounded-md bg-emerald-600 text-white font-bold text-[10px] shadow-xs">
+                      خطيب راتب مثبت ✓
+                    </span>
+                  ) : null}
+                </div>
 
-                    {hasOtherImam && (
-                      <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center gap-1.5">
-                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                        <span>
-                          <strong>تنبيه:</strong> هذا المسجد كان مرتبطاً بـ ({selectedM.fixedImamName}). عند الحفظ سيتم نقله رسمياً لفضيلة الشيخ الحالي.
+                <div className="pt-1">
+                  <label className="block text-xs font-bold text-slate-800 mb-1">
+                    اختر المسجد الراتب المرتبط بالخطيب:
+                  </label>
+                  <select
+                    value={fixedMosqueId}
+                    onChange={(e) => {
+                      const val = e.target.value ? Number(e.target.value) : '';
+                      setFixedMosqueId(val);
+                    }}
+                    className="w-full text-xs font-semibold text-slate-900 p-2.5 border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
+                  >
+                    <option value="">اختر مسجداً لتثبيت الخطيب به...</option>
+                    {mosques.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name} ({m.code}) — {m.region || 'المنطقة غير محددة'}
+                        {m.fixedImamId && m.fixedImamId !== imam?.id ? ` [مرتبط حالياً بـ: ${m.fixedImamName || 'خطيب آخر'}]` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {fixedMosqueId ? (() => {
+                  const selectedM = mosques.find((m) => m.id === Number(fixedMosqueId));
+                  if (!selectedM) return null;
+                  const hasOtherImam = selectedM.fixedImamId && selectedM.fixedImamId !== imam?.id;
+                  return (
+                    <div className="p-3 bg-white border border-emerald-200 rounded-lg space-y-2 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-950 font-heading text-sm">
+                          {selectedM.name}
+                        </span>
+                        <span className="font-mono text-[11px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                          كود: {selectedM.code}
                         </span>
                       </div>
-                    )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-600">
+                        <div>
+                          <strong>المنطقة:</strong> {selectedM.region || 'منشأة البكاري'}
+                        </div>
+                        <div>
+                          <strong>العنوان:</strong> {selectedM.formattedAddress || selectedM.address || '—'}
+                        </div>
+                        {selectedM.managerName && (
+                          <div>
+                            <strong>مشرف المسجد:</strong> {selectedM.managerName}
+                          </div>
+                        )}
+                        {selectedM.phone && (
+                          <div>
+                            <strong>هاتف التواصل:</strong> {selectedM.phone}
+                          </div>
+                        )}
+                      </div>
+
+                      {hasOtherImam && (
+                        <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center gap-1.5">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                          <span>
+                            <strong>تنبيه:</strong> هذا المسجد مسجل حالياً لـ ({selectedM.fixedImamName}). عند الحفظ سيتم نقله رسمياً لفضيلة الشيخ الحالي.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : null}
+              </div>
+            )}
+
+            {/* Mode 2: Custom Fridays Assignments Grid */}
+            {assignmentMode === 'CUSTOM_FRIDAYS' && (
+              <div className="space-y-3 p-4 bg-sky-50/40 border border-sky-200 rounded-xl">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold text-sky-950 font-heading">
+                      تخصيص الجمعات الخمس للخطيب (جمعة بجمعة)
+                    </h4>
+                    <p className="text-[11px] text-slate-600">
+                      يمكنك تثبيت الشيخ في مسجد محدد بجمعة معينة، أو جعله مرناً للتوزيع التلقائي، أو استبعاده كمعتذر
+                    </p>
                   </div>
-                );
-              })() : null}
-            </div>
+                </div>
+
+                {/* Presets Bar */}
+                <div className="p-2.5 bg-white border border-sky-100 rounded-lg flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-bold text-slate-700 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-amber-500" />
+                    توزيع سريع:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('all_flexible')}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors cursor-pointer"
+                  >
+                    🔄 تفريغ كمرن للكل
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('only_1_3')}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 rounded-md transition-colors cursor-pointer"
+                  >
+                    ⚡ حصر 1 و 3 (واعتذار الباقي)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('only_2_4')}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-md transition-colors cursor-pointer"
+                  >
+                    ⚡ حصر 2 و 4 (واعتذار الباقي)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset('only_first')}
+                    className="px-2.5 py-1 text-[11px] font-semibold bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-200 rounded-md transition-colors cursor-pointer"
+                  >
+                    ⚡ الأولى فقط
+                  </button>
+                </div>
+
+                {/* 5 Friday Interactive Cards */}
+                <div className="space-y-2.5 pt-1">
+                  {[1, 2, 3, 4, 5].map((fIndex) => {
+                    const assignment = fridayAssignments.find((fa) => fa.fridayIndex === fIndex) || {
+                      fridayIndex: fIndex,
+                      status: 'FLEXIBLE',
+                      mosqueId: null,
+                    };
+                    const isFixed = assignment.status === 'FIXED';
+                    const isFlexible = assignment.status === 'FLEXIBLE';
+                    const isUnavailable = assignment.status === 'UNAVAILABLE';
+
+                    const selectedMosque = isFixed && assignment.mosqueId
+                      ? mosques.find((m) => m.id === assignment.mosqueId)
+                      : null;
+
+                    // Check conflict in occupied slots
+                    const occupiedByOther = isFixed && assignment.mosqueId
+                      ? (occupiedSlots[fIndex] || []).find((occ) => occ.mosqueId === assignment.mosqueId)
+                      : null;
+
+                    const fridayLabel =
+                      fIndex === 1
+                        ? 'الجمعة الأولى'
+                        : fIndex === 2
+                        ? 'الجمعة الثانية'
+                        : fIndex === 3
+                        ? 'الجمعة الثالثة'
+                        : fIndex === 4
+                        ? 'الجمعة الرابعة'
+                        : 'الجمعة الخامسة';
+
+                    return (
+                      <div
+                        key={fIndex}
+                        className={`p-3 rounded-xl border transition-all ${
+                          isFixed
+                            ? 'bg-emerald-50/70 border-emerald-300 shadow-2xs'
+                            : isUnavailable
+                            ? 'bg-rose-50/60 border-rose-200 shadow-2xs'
+                            : 'bg-white border-slate-200'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                                isFixed
+                                  ? 'bg-emerald-700 text-white'
+                                  : isUnavailable
+                                  ? 'bg-rose-600 text-white'
+                                  : 'bg-sky-700 text-white'
+                              }`}
+                            >
+                              {fIndex}
+                            </span>
+                            <span className="text-xs font-bold font-heading text-slate-900">
+                              {fridayLabel}
+                            </span>
+                          </div>
+
+                          {/* 3 Status Toggle Buttons */}
+                          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 text-xs">
+                            <button
+                              type="button"
+                              onClick={() => handleFridayStatusChange(fIndex, 'FIXED')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                isFixed
+                                  ? 'bg-emerald-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              <Building2 className="w-3 h-3" />
+                              <span>مسجد محدد</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleFridayStatusChange(fIndex, 'FLEXIBLE')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                isFlexible
+                                  ? 'bg-sky-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              <Shuffle className="w-3 h-3" />
+                              <span>مرن للتوزيع</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleFridayStatusChange(fIndex, 'UNAVAILABLE')}
+                              className={`px-2.5 py-1 rounded-md font-semibold transition-all cursor-pointer flex items-center gap-1 ${
+                                isUnavailable
+                                  ? 'bg-rose-600 text-white shadow-xs'
+                                  : 'text-slate-600 hover:text-slate-900'
+                              }`}
+                            >
+                              <CalendarX2 className="w-3 h-3" />
+                              <span>معتذر / مستبعد</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Body based on status */}
+                        {isFixed && (
+                          <div className="pt-1 space-y-2">
+                            <div className="flex gap-2">
+                              <select
+                                value={assignment.mosqueId || ''}
+                                onChange={(e) => handleFridayMosqueChange(fIndex, Number(e.target.value))}
+                                className="flex-1 text-xs font-semibold text-slate-900 p-2 border border-emerald-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                              >
+                                <option value="">اختر المسجد المراد تثبيت الخطيب به في هذه الجمعة...</option>
+                                {mosques.map((m) => {
+                                  const occ = (occupiedSlots[fIndex] || []).find((o) => o.mosqueId === m.id);
+                                  return (
+                                    <option key={m.id} value={m.id}>
+                                      {m.name} ({m.code}) — {m.region || '—'}
+                                      {occ ? ` [⚠️ مأخوذ لـ: ${occ.imamName}]` : ''}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
+
+                            {occupiedByOther && (
+                              <div className="p-2 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-900 flex items-center gap-1.5">
+                                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                                <span>
+                                  <strong>تنبيه تضارب:</strong> هذا المسجد مخصص حالياً لفضيلة الشيخ (<strong>{occupiedByOther.imamName}</strong>) في {fridayLabel}. عند الحفظ سيتم نقله رسمياً لفضيلة الشيخ الحالي في هذه الجمعة.
+                                </span>
+                              </div>
+                            )}
+
+                            {selectedMosque && !occupiedByOther && (
+                              <div className="text-[11px] text-emerald-800 flex items-center gap-2 bg-emerald-100/60 px-2.5 py-1 rounded">
+                                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                                <span>
+                                  مثبت في <strong>{selectedMosque.name}</strong> ({selectedMosque.region || 'المنطقة غير محددة'})
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {isFlexible && (
+                          <div className="text-[11px] text-slate-600 flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded">
+                            <span className="text-sky-600 font-bold">✓</span>
+                            <span>مرن: متاح للتكليف في أي مسجد بحسب محرك الجدولة والأولويات الجغرافية.</span>
+                          </div>
+                        )}
+
+                        {isUnavailable && (
+                          <div className="text-[11px] text-rose-800 flex items-center gap-1.5 bg-rose-100/70 px-2.5 py-1.5 rounded border border-rose-200">
+                            <span className="font-bold">🚫</span>
+                            <span>معتذر / مستبعد: لن يتم تكليف الخطيب في أي مسجد خلال هذه الجمعة مطلقاً.</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Mode 3: Flexible Note */}
+            {assignmentMode === 'FLEXIBLE' && (
+              <div className="p-4 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-2 text-purple-900 font-bold text-xs font-heading">
+                  <Shuffle className="w-4 h-4 text-purple-600" />
+                  <span>خطيب مرن عام (خاضع للتوزيع الذكي)</span>
+                </div>
+                <p className="text-[11px] text-slate-600 leading-relaxed">
+                  الخطيب غير مرتبط بمسجد ثابت في أي جمعة، ومتاح للتكليف تلقائياً بواسطة خوارزمية الجدولة حسب احتياج المساجد الشاغرة ومعدل الأقرب جغرافياً وقواعد التفضيل أدناه.
+                </p>
+              </div>
+            )}
 
             {/* 2. Preferred Mosques (المساجد المفضلة) */}
             {imam ? (
