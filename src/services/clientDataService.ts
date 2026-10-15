@@ -97,23 +97,36 @@ export async function fetchImamsResilient(): Promise<Imam[]> {
   const client = getSupabaseClient();
   if (client) {
     try {
-      const { data: dbImams } = await client.from('imams').select('*').order('id', { ascending: true });
-      if (dbImams && dbImams.length > 0) {
-        const list: Imam[] = dbImams.map((i: any) => ({
-          id: i.id,
-          name: i.name,
-          phone: i.phone || '',
-          whatsapp: i.whatsapp || i.phone || '',
-          type: i.type || 'FLEXIBLE',
-          region: i.region || 'منشأة البكاري',
-          minFridays: i.min_fridays ?? 1,
-          maxFridays: i.max_fridays ?? 4,
-          targetFridays: i.target_fridays ?? 2,
-          isActive: i.is_active ?? true,
-          notes: i.notes || '',
-          createdAt: i.created_at,
-          updatedAt: i.updated_at,
-        }));
+      const [iRes, avRes] = await Promise.all([
+        client.from('imams').select('*').order('id', { ascending: true }),
+        client.from('imam_availabilities').select('*'),
+      ]);
+      if (iRes.data && iRes.data.length > 0) {
+        const dbAvails = avRes.data || [];
+        const list: Imam[] = iRes.data.map((i: any) => {
+          const excluded = new Set(
+            dbAvails
+              .filter((a: any) => a.imam_id === i.id && !a.is_available)
+              .map((a: any) => a.friday_index)
+          );
+          const availableFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+          return {
+            id: i.id,
+            name: i.name,
+            phone: i.phone || '',
+            whatsapp: i.whatsapp || i.phone || '',
+            type: (availableFridays.length === 5 ? (i.type || 'FLEXIBLE') : 'PARTIAL_FIXED') as any,
+            region: i.region || 'منشأة البكاري',
+            minFridays: Math.min(1, availableFridays.length),
+            maxFridays: availableFridays.length,
+            targetFridays: availableFridays.length,
+            availableFridays,
+            isActive: i.is_active ?? true,
+            notes: i.notes || '',
+            createdAt: i.created_at,
+            updatedAt: i.updated_at,
+          };
+        });
         try { localStorage.setItem('cached_imams', JSON.stringify(list)); } catch {}
         return list;
       }
@@ -336,3 +349,61 @@ export async function directDeleteRule(mosqueId: number, ruleId: number): Promis
     console.warn('API delete rule notification error:', err);
   }
 }
+
+export async function directUpdateImam(
+  id: number,
+  data: Partial<Imam>,
+  availableFridays?: number[]
+): Promise<void> {
+  const client = getSupabaseClient();
+  if (client) {
+    const dbPayload: any = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.name !== undefined) dbPayload.name = data.name;
+    if (data.phone !== undefined) dbPayload.phone = data.phone;
+    if (data.whatsapp !== undefined) dbPayload.whatsapp = data.whatsapp;
+    if (data.type !== undefined) dbPayload.type = data.type;
+    if (data.region !== undefined) dbPayload.region = data.region;
+    if (data.minFridays !== undefined) dbPayload.min_fridays = Number(data.minFridays);
+    if (data.maxFridays !== undefined) dbPayload.max_fridays = Number(data.maxFridays);
+    if (data.targetFridays !== undefined) dbPayload.target_fridays = Number(data.targetFridays);
+    if (data.notes !== undefined) dbPayload.notes = data.notes;
+    if (data.isActive !== undefined) dbPayload.is_active = Boolean(data.isActive);
+
+    try {
+      await client.from('imams').update(dbPayload).eq('id', id);
+
+      if (availableFridays && Array.isArray(availableFridays)) {
+        // Clear previous general availabilities for this imam
+        await client.from('imam_availabilities').delete().eq('imam_id', id);
+
+        const excluded = [1, 2, 3, 4, 5].filter((f) => !availableFridays.includes(f));
+        if (excluded.length > 0) {
+          const insertRows = excluded.map((f) => ({
+            imam_id: id,
+            hijri_year: 0,
+            hijri_month: 0,
+            friday_index: f,
+            is_available: false,
+            reason: 'حصر التكليف في جمعات محددة',
+          }));
+          await client.from('imam_availabilities').insert(insertRows);
+        }
+      }
+    } catch (err) {
+      console.warn('Direct Supabase imam update failed:', err);
+    }
+  }
+
+  // Also notify backend API
+  try {
+    await fetchApi(`/api/imams/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...data, availableFridays }),
+    });
+  } catch (err) {
+    console.warn('API patch imam notification error:', err);
+  }
+}
+

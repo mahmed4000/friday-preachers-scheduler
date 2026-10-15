@@ -122616,7 +122616,7 @@ var SeededRandom = class {
     return this.seed / 233280;
   }
 };
-var SchedulingEngine = class {
+var SchedulingEngine = class _SchedulingEngine {
   /**
    * الدالة الرئيسية لتوليد جدول خطباء الجمعة
    */
@@ -122631,6 +122631,16 @@ var SchedulingEngine = class {
     for (const a of input.availabilities) {
       if (!a.isAvailable) {
         unavailableSet.add(`${a.imamId}:${a.fridayIndex}`);
+      }
+    }
+    for (const imam of activeImams) {
+      if (imam.availableFridays && Array.isArray(imam.availableFridays)) {
+        const allowed = new Set(imam.availableFridays);
+        for (let f3 = 1; f3 <= input.fridaysCount; f3++) {
+          if (!allowed.has(f3)) {
+            unavailableSet.add(`${imam.id}:${f3}`);
+          }
+        }
       }
     }
     const rulesMap = /* @__PURE__ */ new Map();
@@ -122782,7 +122792,19 @@ var SchedulingEngine = class {
         if (isFixedThisFriday) {
           const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f3}`);
           const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f3}`);
-          if (!isUnavailable && !isAlreadyBooked) {
+          if (isUnavailable) {
+            conflicts2.push({
+              severity: "CRITICAL",
+              mosqueId: mosque.id,
+              fridayIndex: f3,
+              imamId: fixedImam.id,
+              ruleCode: "FIXED_UNAVAILABLE",
+              message: `\u062A\u0639\u0627\u0631\u0636 \u062D\u0635\u0631 \u062A\u0643\u0644\u064A\u0641: \u0627\u0644\u0634\u064A\u062E (${fixedImam.name}) \u0645\u062E\u0635\u0635 \u0644\u0645\u0633\u062C\u062F (${mosque.name}) \u0644\u0643\u0646 \u0627\u0644\u062C\u0645\u0639\u0629 (${f3}) \u0645\u0633\u062A\u0628\u0639\u062F\u0629 \u0645\u0646 \u062C\u0645\u0639\u0627\u062A \u0627\u0644\u062A\u0643\u0644\u064A\u0641 \u0627\u0644\u0645\u062A\u0627\u062D\u0629 \u0644\u0647.`,
+              possibleResolutions: ["\u0627\u062E\u062A\u064A\u0627\u0631 \u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0645\u0646 \u0627\u0644\u0628\u062F\u0627\u0626\u0644 \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629 \u0644\u062D\u0644 \u0627\u0644\u062A\u0639\u0627\u0631\u0636 \u064A\u062F\u0648\u064A\u0627\u064B", "\u062A\u0639\u062F\u064A\u0644 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0645\u062A\u0627\u062D\u0629 \u0644\u0644\u062E\u0637\u064A\u0628 \u0644\u062A\u0634\u0645\u0644 \u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629"]
+            });
+            continue;
+          }
+          if (!isAlreadyBooked) {
             assignmentsGrid.set(cellKey, {
               fridayIndex: f3,
               mosqueId: mosque.id,
@@ -122921,16 +122943,33 @@ var SchedulingEngine = class {
         const mosqueId = Number(mIdStr);
         const fridayIndex = Number(fIdxStr);
         const mosque = mosqueMap.get(mosqueId);
+        const altCandidates = _SchedulingEngine.findEmergencyReplacements({
+          fridayIndex,
+          mosqueId,
+          allMosques: input.mosques,
+          allImams: input.imams,
+          rules: input.rules,
+          existingAssignments: Array.from(assignmentsGrid.values()).map((a) => ({
+            fridayIndex: a.fridayIndex,
+            mosqueId: a.mosqueId,
+            imamId: a.imamId
+          })),
+          unavailabilities: Array.from(unavailableSet).map((s2) => {
+            const [iId, fIdx] = s2.split(":");
+            return { imamId: Number(iId), fridayIndex: Number(fIdx), isAvailable: false };
+          })
+        });
+        const suggestedNames = altCandidates.slice(0, 3).map((c) => `\u0627\u0644\u0634\u064A\u062E ${c.imam.name}`).join("\u060C ");
         conflicts2.push({
           severity: "CRITICAL",
           mosqueId,
           fridayIndex,
           ruleCode: "EMPTY_MOSQUE",
-          message: `\u0627\u0644\u0645\u0633\u062C\u062F (${mosque?.name || mosqueId}) \u0628\u062F\u0648\u0646 \u062E\u0637\u064A\u0628 \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${fridayIndex})`,
+          message: `\u0627\u0644\u0645\u0633\u062C\u062F (${mosque?.name || mosqueId}) \u0628\u062F\u0648\u0646 \u062E\u0637\u064A\u0628 \u0641\u064A \u0627\u0644\u062C\u0645\u0639\u0629 (${fridayIndex}) \u0644\u0639\u062F\u0645 \u062A\u0648\u0641\u0631 \u062E\u0637\u064A\u0628 \u0645\u062A\u0627\u062D \u0648\u0645\u0624\u0647\u0644 \u0641\u064A \u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629.`,
           possibleResolutions: [
-            "\u062A\u062C\u0627\u0648\u0632 \u0627\u0644\u062D\u062F \u0627\u0644\u0623\u0642\u0635\u0649 \u0644\u0623\u062D\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0627\u0644\u0645\u0631\u0646\u064A\u0646 \u0627\u0644\u0645\u0624\u0647\u0644\u064A\u0646",
-            "\u0627\u0644\u0633\u0645\u0627\u062D \u0628\u062E\u0637\u064A\u0628 \u063A\u064A\u0631 \u0645\u0641\u0636\u0644 \u0645\u0624\u0642\u062A\u0627\u064B",
-            "\u062A\u0639\u064A\u064A\u0646 \u062E\u0637\u064A\u0628 \u064A\u062F\u0648\u064A\u0627\u064B \u0648\u062A\u0623\u0643\u064A\u062F \u0627\u0633\u062A\u062B\u0646\u0627\u0621 \u0625\u062F\u0627\u0631\u064A"
+            suggestedNames ? `\u0627\u062E\u062A\u064A\u0627\u0631 \u0623\u062D\u062F \u0627\u0644\u0628\u062F\u0627\u0626\u0644 \u0627\u0644\u0645\u0642\u062A\u0631\u062D\u0629: ${suggestedNames}` : "\u0641\u062A\u062D \u0627\u0644\u062A\u0639\u064A\u064A\u0646 \u0648\u0627\u062E\u062A\u064A\u0627\u0631 \u062E\u0637\u064A\u0628 \u0628\u062F\u064A\u0644 \u0645\u062A\u0627\u062D",
+            "\u062A\u0648\u0633\u064A\u0639 \u0627\u0644\u062C\u0645\u0639\u0627\u062A \u0627\u0644\u0645\u062A\u0627\u062D\u0629 \u0644\u0623\u062D\u062F \u0627\u0644\u062E\u0637\u0628\u0627\u0621 \u0641\u064A \u0645\u0644\u0641\u0647 \u0644\u062A\u0634\u0645\u0644 \u0647\u0630\u0647 \u0627\u0644\u062C\u0645\u0639\u0629",
+            "\u062A\u0639\u062F\u064A\u0644 \u0646\u0645\u0637 \u0627\u0644\u062A\u062B\u0628\u064A\u062A \u0623\u0648 \u0642\u0648\u0627\u0639\u062F \u0627\u0644\u0645\u0646\u0639"
           ]
         });
       }
@@ -123105,6 +123144,7 @@ var SchedulingEngine = class {
       if (currentImamId && imam.id === currentImamId) continue;
       if (bookedThisFriday.has(imam.id)) continue;
       if (unavailSet.has(imam.id)) continue;
+      if (imam.availableFridays && !imam.availableFridays.includes(fridayIndex)) continue;
       const rule = rulesMap.get(imam.id);
       if (rule && rule.relationshipType === "FORBIDDEN") continue;
       const currentLoad = imamLoads[imam.id] || 0;
@@ -133888,6 +133928,7 @@ var memoryConflicts = [...seedData.conflicts || []];
 var memoryOverrides = [...seedData.overrides || []];
 var memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
 var memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+var memoryAvailabilities = [...seedData.imamAvailabilities || []];
 var memoryStore = {
   reset() {
     memoryMosques = [...seedData.mosques || []];
@@ -133900,6 +133941,7 @@ var memoryStore = {
     memoryOverrides = [...seedData.overrides || []];
     memoryPatterns = [...seedData.fixedAssignmentPatterns || []];
     memoryPatternItems = [...seedData.fixedAssignmentPatternItems || []];
+    memoryAvailabilities = [...seedData.imamAvailabilities || []];
   },
   hydrate(data) {
     if (data.mosques && data.mosques.length > 0) memoryMosques = [...data.mosques];
@@ -133908,6 +133950,9 @@ var memoryStore = {
     if (data.schedules && data.schedules.length > 0) memorySchedules = [...data.schedules];
     if (data.fridays && data.fridays.length > 0) memoryFridays = [...data.fridays];
     if (data.assignments && data.assignments.length > 0) memoryAssignments = [...data.assignments];
+    if (data.availabilities && data.availabilities.length > 0) memoryAvailabilities = [...data.availabilities];
+    if (data.patterns && data.patterns.length > 0) memoryPatterns = [...data.patterns];
+    if (data.patternItems && data.patternItems.length > 0) memoryPatternItems = [...data.patternItems];
   },
   getMosques(search = "", region = "") {
     const imamMap = new Map(memoryImams.map((i2) => [i2.id, i2.name]));
@@ -134684,23 +134729,40 @@ var memoryStore = {
         fixedPattern: m2.fixedPattern,
         fixedCount: m2.fixedCount
       })),
-      imams: activeImams.map((i2) => ({
-        id: i2.id,
-        name: i2.name,
-        type: i2.type,
-        minFridays: i2.minFridays,
-        targetFridays: i2.targetFridays,
-        maxFridays: i2.maxFridays,
-        isActive: i2.isActive,
-        region: i2.region
-      })),
+      imams: activeImams.map((i2) => {
+        let availFridays = i2.availableFridays;
+        if (!availFridays) {
+          const excluded = new Set(
+            memoryAvailabilities.filter((a) => (a.imamId === i2.id || a.imam_id === i2.id) && (a.isAvailable === false || a.is_available === false)).map((a) => a.fridayIndex || a.friday_index)
+          );
+          availFridays = [1, 2, 3, 4, 5].filter((f3) => !excluded.has(f3));
+        }
+        return {
+          id: i2.id,
+          name: i2.name,
+          type: i2.type,
+          minFridays: Math.min(1, availFridays.length),
+          targetFridays: availFridays.length,
+          maxFridays: availFridays.length,
+          isActive: i2.isActive,
+          region: i2.region,
+          availableFridays: availFridays
+        };
+      }),
       rules: rules.map((r2) => ({
         mosqueId: r2.mosqueId,
         imamId: r2.imamId,
         relationshipType: r2.relationshipType,
         priority: r2.priority || 1
       })),
-      availabilities: [],
+      availabilities: memoryAvailabilities.filter(
+        (a) => a.hijriYear === schedule.hijriYear && a.hijriMonth === schedule.hijriMonth || a.hijriYear === 0 && a.hijriMonth === 0 || a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth || a.hijri_year === 0 && a.hijri_month === 0
+      ).map((a) => ({
+        imamId: a.imamId || a.imam_id,
+        fridayIndex: a.fridayIndex || a.friday_index,
+        isAvailable: a.isAvailable ?? a.is_available,
+        reason: a.reason
+      })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInput,
       distributionMethod: distributionMethod || "Balanced Random",
@@ -135386,16 +135448,34 @@ var SupabaseDataService = {
     if (!client) return false;
     isHydrating = true;
     try {
-      const [mRes, iRes, rRes, sRes, fRes, aRes] = await Promise.all([
+      const [mRes, iRes, rRes, sRes, fRes, aRes, avRes, patRes, patItemRes] = await Promise.all([
         client.from("mosques").select("*").order("id", { ascending: true }),
         client.from("imams").select("*").order("id", { ascending: true }),
         client.from("mosque_imam_rules").select("*").order("id", { ascending: true }),
         client.from("monthly_schedules").select("*").order("id", { ascending: true }),
         client.from("fridays").select("*").order("id", { ascending: true }),
-        client.from("assignments").select("*").order("id", { ascending: true })
+        client.from("assignments").select("*").order("id", { ascending: true }),
+        client.from("imam_availabilities").select("*").order("id", { ascending: true }),
+        client.from("fixed_assignment_patterns").select("*").order("id", { ascending: true }),
+        client.from("fixed_assignment_pattern_items").select("*").order("id", { ascending: true })
       ]);
+      const dbAvails = avRes.data || [];
       const mosques2 = (mRes.data || []).map(mapDbMosque).filter(Boolean);
-      const imams2 = (iRes.data || []).map(mapDbImam).filter(Boolean);
+      const imams2 = (iRes.data || []).map((i2) => {
+        const base = mapDbImam(i2);
+        if (!base) return null;
+        const excluded = new Set(
+          dbAvails.filter((a) => a.imam_id === i2.id && !a.is_available).map((a) => a.friday_index)
+        );
+        const availableFridays = [1, 2, 3, 4, 5].filter((f3) => !excluded.has(f3));
+        return {
+          ...base,
+          availableFridays,
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          minFridays: Math.min(1, availableFridays.length)
+        };
+      }).filter(Boolean);
       const rules = (rRes.data || []).map(mapDbRule).filter(Boolean);
       const schedules = (sRes.data || []).map((s2) => ({
         id: s2.id,
@@ -135435,13 +135515,43 @@ var SupabaseDataService = {
         createdAt: a.created_at,
         updatedAt: a.updated_at
       }));
+      const availabilities = dbAvails.map((av) => ({
+        id: av.id,
+        imamId: av.imam_id,
+        hijriYear: av.hijri_year,
+        hijriMonth: av.hijri_month,
+        fridayIndex: av.friday_index,
+        isAvailable: av.is_available,
+        reason: av.reason
+      }));
+      const patterns = (patRes.data || []).map((p) => ({
+        id: p.id,
+        mosqueId: p.mosque_id,
+        hijriYear: p.hijri_year,
+        hijriMonth: p.hijri_month,
+        patternType: p.pattern_type,
+        fridaysCount: p.fridays_count,
+        isActive: p.is_active,
+        notes: p.notes
+      }));
+      const patternItems = (patItemRes.data || []).map((pi) => ({
+        id: pi.id,
+        patternId: pi.pattern_id,
+        fridayIndex: pi.friday_index,
+        imamId: pi.imam_id,
+        sequence: pi.sequence,
+        notes: pi.notes
+      }));
       memoryStore.hydrate({
         mosques: mosques2,
         imams: imams2,
         rules,
         schedules,
         fridays: fridays2,
-        assignments: assignments2
+        assignments: assignments2,
+        availabilities,
+        patterns,
+        patternItems
       });
       isHydrated = true;
       return true;
@@ -135837,6 +135947,25 @@ var SupabaseDataService = {
       if (data.isActive !== void 0) dbPayload.is_active = Boolean(data.isActive);
       if (data.notes !== void 0) dbPayload.notes = data.notes;
       const { data: updated, error } = await client.from("imams").update(dbPayload).eq("id", id).select().single();
+      if (data.availableFridays && Array.isArray(data.availableFridays)) {
+        try {
+          await client.from("imam_availabilities").delete().eq("imam_id", id);
+          const excluded = [1, 2, 3, 4, 5].filter((f3) => !data.availableFridays.includes(f3));
+          if (excluded.length > 0) {
+            const rows = excluded.map((f3) => ({
+              imam_id: id,
+              hijri_year: 0,
+              hijri_month: 0,
+              friday_index: f3,
+              is_available: false,
+              reason: "\u062D\u0635\u0631 \u0627\u0644\u062A\u0643\u0644\u064A\u0641 \u0641\u064A \u062C\u0645\u0639\u0627\u062A \u0645\u062D\u062F\u062F\u0629"
+            }));
+            await client.from("imam_availabilities").insert(rows);
+          }
+        } catch (avErr) {
+          console.warn("Supabase update imam_availabilities warning:", avErr.message);
+        }
+      }
       if (error) {
         console.warn("Supabase updateImam error:", error.message);
         return memoryStore.getImamDetails(id);
@@ -137875,6 +138004,20 @@ api.patch("/imams/:id", async (req, res) => {
       targetFridays: data.targetFridays !== void 0 ? Number(data.targetFridays) : void 0,
       maxFridays: data.maxFridays !== void 0 ? Number(data.maxFridays) : void 0
     }).where(eq(imams.id, id)).returning();
+    if (data.availableFridays && Array.isArray(data.availableFridays)) {
+      await db.delete(imamAvailabilities).where(eq(imamAvailabilities.imamId, id));
+      const excluded = [1, 2, 3, 4, 5].filter((f3) => !data.availableFridays.includes(f3));
+      for (const f3 of excluded) {
+        await db.insert(imamAvailabilities).values({
+          imamId: id,
+          hijriYear: 0,
+          hijriMonth: 0,
+          fridayIndex: f3,
+          isAvailable: false,
+          reason: "\u062D\u0635\u0631 \u0627\u0644\u062A\u0643\u0644\u064A\u0641 \u0641\u064A \u062C\u0645\u0639\u0627\u062A \u0645\u062D\u062F\u062F\u0629"
+        });
+      }
+    }
     await logAudit(req, "UPDATE_IMAM", "IMAM", id, data);
     SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
@@ -138212,12 +138355,46 @@ api.post("/schedules/:id/generate", async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    let availabilities = [];
+    if (SupabaseDataService.isAvailable()) {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: supaAvails } = await client.from("imam_availabilities").select("*");
+        if (supaAvails) {
+          availabilities = supaAvails.filter(
+            (a) => a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth || a.hijri_year === 0 && a.hijri_month === 0
+          ).map((a) => ({
+            imamId: a.imam_id,
+            hijriYear: a.hijri_year,
+            hijriMonth: a.hijri_month,
+            fridayIndex: a.friday_index,
+            isAvailable: a.is_available,
+            reason: a.reason
+          }));
+        }
+      }
+    }
+    if (availabilities.length === 0 && isDatabaseAvailable()) {
+      availabilities = await db.select().from(imamAvailabilities).where(
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
+        )
+      );
+    }
+    const imamExcludedMap = /* @__PURE__ */ new Map();
+    for (const a of availabilities) {
+      if (!a.isAvailable) {
+        if (!imamExcludedMap.has(a.imamId)) imamExcludedMap.set(a.imamId, /* @__PURE__ */ new Set());
+        imamExcludedMap.get(a.imamId).add(a.fridayIndex);
+      }
+    }
     const pastFridayIndices = new Set(
       monthDetails.fridays.filter((f3) => f3.isPast).map((f3) => f3.fridayIndex)
     );
@@ -138268,16 +138445,21 @@ api.post("/schedules/:id/generate", async (req, res) => {
         fixedPattern: m2.fixedPattern,
         fixedCount: m2.fixedCount
       })),
-      imams: activeImams.map((i2) => ({
-        id: i2.id,
-        name: i2.name,
-        type: i2.type,
-        minFridays: i2.minFridays,
-        targetFridays: i2.targetFridays,
-        maxFridays: i2.maxFridays,
-        isActive: i2.isActive,
-        region: i2.region
-      })),
+      imams: activeImams.map((i2) => {
+        const excluded = imamExcludedMap.get(i2.id) || /* @__PURE__ */ new Set();
+        const availableFridays = [1, 2, 3, 4, 5].filter((f3) => !excluded.has(f3));
+        return {
+          id: i2.id,
+          name: i2.name,
+          type: availableFridays.length === 5 ? i2.type : "PARTIAL_FIXED",
+          minFridays: Math.min(1, availableFridays.length),
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          isActive: i2.isActive,
+          region: i2.region,
+          availableFridays
+        };
+      }),
       rules: rules.map((r2) => ({
         mosqueId: r2.mosqueId,
         imamId: r2.imamId,
@@ -138389,12 +138571,46 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    let availabilities = [];
+    if (SupabaseDataService.isAvailable()) {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: supaAvails } = await client.from("imam_availabilities").select("*");
+        if (supaAvails) {
+          availabilities = supaAvails.filter(
+            (a) => a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth || a.hijri_year === 0 && a.hijri_month === 0
+          ).map((a) => ({
+            imamId: a.imam_id,
+            hijriYear: a.hijri_year,
+            hijriMonth: a.hijri_month,
+            fridayIndex: a.friday_index,
+            isAvailable: a.is_available,
+            reason: a.reason
+          }));
+        }
+      }
+    }
+    if (availabilities.length === 0 && isDatabaseAvailable()) {
+      availabilities = await db.select().from(imamAvailabilities).where(
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
+        )
+      );
+    }
+    const imamExcludedMapRedist = /* @__PURE__ */ new Map();
+    for (const a of availabilities) {
+      if (!a.isAvailable) {
+        if (!imamExcludedMapRedist.has(a.imamId)) imamExcludedMapRedist.set(a.imamId, /* @__PURE__ */ new Set());
+        imamExcludedMapRedist.get(a.imamId).add(a.fridayIndex);
+      }
+    }
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     const lockedAssignments = existingAssignments.filter((a) => a.isLocked || pastFridayIndices.has(a.fridayIndex)).map((a) => ({
       fridayIndex: a.fridayIndex,
@@ -138442,16 +138658,21 @@ api.post("/schedules/:id/redistribute", async (req, res) => {
         fixedPattern: m2.fixedPattern,
         fixedCount: m2.fixedCount
       })),
-      imams: activeImams.map((i2) => ({
-        id: i2.id,
-        name: i2.name,
-        type: i2.type,
-        minFridays: i2.minFridays,
-        targetFridays: i2.targetFridays,
-        maxFridays: i2.maxFridays,
-        isActive: i2.isActive,
-        region: i2.region
-      })),
+      imams: activeImams.map((i2) => {
+        const excluded = imamExcludedMapRedist.get(i2.id) || /* @__PURE__ */ new Set();
+        const availableFridays = [1, 2, 3, 4, 5].filter((f3) => !excluded.has(f3));
+        return {
+          id: i2.id,
+          name: i2.name,
+          type: availableFridays.length === 5 ? i2.type : "PARTIAL_FIXED",
+          minFridays: Math.min(1, availableFridays.length),
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          isActive: i2.isActive,
+          region: i2.region,
+          availableFridays
+        };
+      }),
       rules: rules.map((r2) => ({
         mosqueId: r2.mosqueId,
         imamId: r2.imamId,

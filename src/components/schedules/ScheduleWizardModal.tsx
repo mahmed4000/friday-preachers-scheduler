@@ -226,23 +226,43 @@ export function ScheduleWizardModal({
             fixedPattern: m.fixedPattern as any,
             fixedCount: m.fixedCount,
           })),
-          imams: activeImams.map((i) => ({
-            id: i.id,
-            name: i.name,
-            type: i.type as any,
-            minFridays: i.minFridays,
-            targetFridays: i.targetFridays,
-            maxFridays: i.maxFridays,
-            isActive: i.isActive,
-            region: i.region,
-          })),
+          imams: activeImams.map((i) => {
+            const avail = i.availableFridays && i.availableFridays.length > 0 ? i.availableFridays : [1, 2, 3, 4, 5];
+            return {
+              id: i.id,
+              name: i.name,
+              type: i.type as any,
+              minFridays: Math.min(1, avail.length),
+              targetFridays: avail.length,
+              maxFridays: avail.length,
+              isActive: i.isActive,
+              region: i.region,
+              availableFridays: avail,
+            };
+          }),
           rules: rules.map((r) => ({
             mosqueId: r.mosqueId,
             imamId: r.imamId,
             relationshipType: r.relationshipType as any,
             priority: r.priority || 1,
           })),
-          availabilities: [],
+          availabilities: activeImams.flatMap((i) => {
+            if (i.availableFridays && i.availableFridays.length < 5) {
+              const excluded = [1, 2, 3, 4, 5].filter((f) => !i.availableFridays!.includes(f));
+              return excluded.map((f) => ({
+                imamId: i.id,
+                fridayIndex: f,
+                isAvailable: false,
+                reason: 'حصر التكليف في جمعات محددة',
+              }));
+            }
+            return (i.availabilities || []).map((av) => ({
+              imamId: i.id,
+              fridayIndex: av.fridayIndex,
+              isAvailable: av.isAvailable,
+              reason: av.reason,
+            }));
+          }),
           distributionMethod: distributionMethod as any,
           seed: `${monthName}-${hijriYear}-Direct`,
         });

@@ -22,7 +22,7 @@ import {
   importExportLogs,
   importSnapshots,
 } from '../db/schema.ts';
-import { eq, desc, asc, and, ilike, ne, inArray } from 'drizzle-orm';
+import { eq, desc, asc, and, or, ilike, ne, inArray } from 'drizzle-orm';
 import { SchedulingEngine } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
 import { optionalAuth, AuthRequest } from '../middleware/auth.ts';
@@ -2246,6 +2246,21 @@ api.patch('/imams/:id', async (req: AuthRequest, res: Response) => {
       .where(eq(imams.id, id))
       .returning();
 
+    if (data.availableFridays && Array.isArray(data.availableFridays)) {
+      await db.delete(imamAvailabilities).where(eq(imamAvailabilities.imamId, id));
+      const excluded = [1, 2, 3, 4, 5].filter((f: number) => !data.availableFridays.includes(f));
+      for (const f of excluded) {
+        await db.insert(imamAvailabilities).values({
+          imamId: id,
+          hijriYear: 0,
+          hijriMonth: 0,
+          fridayIndex: f,
+          isAvailable: false,
+          reason: 'حصر التكليف في جمعات محددة',
+        });
+      }
+    }
+
     await logAudit(req, 'UPDATE_IMAM', 'IMAM', id, data);
     SupabaseRealtimeSync.syncImam(updated);
     res.json(updated);
@@ -2636,12 +2651,53 @@ api.post('/schedules/:id/generate', async (req: AuthRequest, res: Response) => {
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    let availabilities: any[] = [];
+    if (SupabaseDataService.isAvailable()) {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: supaAvails } = await client.from('imam_availabilities').select('*');
+        if (supaAvails) {
+          availabilities = supaAvails
+            .filter(
+              (a: any) =>
+                (a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth) ||
+                (a.hijri_year === 0 && a.hijri_month === 0)
+            )
+            .map((a: any) => ({
+              imamId: a.imam_id,
+              hijriYear: a.hijri_year,
+              hijriMonth: a.hijri_month,
+              fridayIndex: a.friday_index,
+              isAvailable: a.is_available,
+              reason: a.reason,
+            }));
+        }
+      }
+    }
+
+    if (availabilities.length === 0 && isDatabaseAvailable()) {
+      availabilities = await db.select().from(imamAvailabilities).where(
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
+        )
+      );
+    }
+
+    // Compute availableFridays per imam
+    const imamExcludedMap = new Map<number, Set<number>>();
+    for (const a of availabilities) {
+      if (!a.isAvailable) {
+        if (!imamExcludedMap.has(a.imamId)) imamExcludedMap.set(a.imamId, new Set());
+        imamExcludedMap.get(a.imamId)!.add(a.fridayIndex);
+      }
+    }
 
     // Identify past fridays (strictly before today) in current month
     const pastFridayIndices = new Set(
@@ -2706,16 +2762,21 @@ api.post('/schedules/:id/generate', async (req: AuthRequest, res: Response) => {
         fixedPattern: m.fixedPattern as any,
         fixedCount: m.fixedCount,
       })),
-      imams: activeImams.map((i) => ({
-        id: i.id,
-        name: i.name,
-        type: i.type as any,
-        minFridays: i.minFridays,
-        targetFridays: i.targetFridays,
-        maxFridays: i.maxFridays,
-        isActive: i.isActive,
-        region: i.region,
-      })),
+      imams: activeImams.map((i) => {
+        const excluded = imamExcludedMap.get(i.id) || new Set();
+        const availableFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+        return {
+          id: i.id,
+          name: i.name,
+          type: (availableFridays.length === 5 ? i.type : 'PARTIAL_FIXED') as any,
+          minFridays: Math.min(1, availableFridays.length),
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          isActive: i.isActive,
+          region: i.region,
+          availableFridays,
+        };
+      }),
       rules: rules.map((r) => ({
         mosqueId: r.mosqueId,
         imamId: r.imamId,
@@ -2853,12 +2914,53 @@ api.post('/schedules/:id/redistribute', async (req: AuthRequest, res: Response) 
     const activeMosques = await db.select().from(mosques).where(eq(mosques.isActive, true));
     const activeImams = await db.select().from(imams).where(eq(imams.isActive, true));
     const rules = await db.select().from(mosqueImamRules);
-    const availabilities = await db.select().from(imamAvailabilities).where(
-      and(
-        eq(imamAvailabilities.hijriYear, schedule.hijriYear),
-        eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
-      )
-    );
+    let availabilities: any[] = [];
+    if (SupabaseDataService.isAvailable()) {
+      const client = getSupabaseClient();
+      if (client) {
+        const { data: supaAvails } = await client.from('imam_availabilities').select('*');
+        if (supaAvails) {
+          availabilities = supaAvails
+            .filter(
+              (a: any) =>
+                (a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth) ||
+                (a.hijri_year === 0 && a.hijri_month === 0)
+            )
+            .map((a: any) => ({
+              imamId: a.imam_id,
+              hijriYear: a.hijri_year,
+              hijriMonth: a.hijri_month,
+              fridayIndex: a.friday_index,
+              isAvailable: a.is_available,
+              reason: a.reason,
+            }));
+        }
+      }
+    }
+
+    if (availabilities.length === 0 && isDatabaseAvailable()) {
+      availabilities = await db.select().from(imamAvailabilities).where(
+        or(
+          and(
+            eq(imamAvailabilities.hijriYear, schedule.hijriYear),
+            eq(imamAvailabilities.hijriMonth, schedule.hijriMonth)
+          ),
+          and(
+            eq(imamAvailabilities.hijriYear, 0),
+            eq(imamAvailabilities.hijriMonth, 0)
+          )
+        )
+      );
+    }
+
+    // Compute availableFridays per imam
+    const imamExcludedMapRedist = new Map<number, Set<number>>();
+    for (const a of availabilities) {
+      if (!a.isAvailable) {
+        if (!imamExcludedMapRedist.has(a.imamId)) imamExcludedMapRedist.set(a.imamId, new Set());
+        imamExcludedMapRedist.get(a.imamId)!.add(a.fridayIndex);
+      }
+    }
 
     const existingAssignments = await db.select().from(assignments).where(eq(assignments.scheduleId, scheduleId));
     
@@ -2917,16 +3019,21 @@ api.post('/schedules/:id/redistribute', async (req: AuthRequest, res: Response) 
         fixedPattern: m.fixedPattern as any,
         fixedCount: m.fixedCount,
       })),
-      imams: activeImams.map((i) => ({
-        id: i.id,
-        name: i.name,
-        type: i.type as any,
-        minFridays: i.minFridays,
-        targetFridays: i.targetFridays,
-        maxFridays: i.maxFridays,
-        isActive: i.isActive,
-        region: i.region,
-      })),
+      imams: activeImams.map((i) => {
+        const excluded = imamExcludedMapRedist.get(i.id) || new Set();
+        const availableFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+        return {
+          id: i.id,
+          name: i.name,
+          type: (availableFridays.length === 5 ? i.type : 'PARTIAL_FIXED') as any,
+          minFridays: Math.min(1, availableFridays.length),
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          isActive: i.isActive,
+          region: i.region,
+          availableFridays,
+        };
+      }),
       rules: rules.map((r) => ({
         mosqueId: r.mosqueId,
         imamId: r.imamId,

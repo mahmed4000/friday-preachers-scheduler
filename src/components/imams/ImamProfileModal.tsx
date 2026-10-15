@@ -3,17 +3,15 @@ import { Imam, ImamAvailability } from '../../types/index.ts';
 import { Modal } from '../common/Modal.tsx';
 import {
   Users2,
-  Sliders,
-  CalendarX2,
-  Building2,
+  Calendar,
   Save,
   CheckCircle2,
-  Plus,
-  Trash2,
+  CalendarCheck,
+  AlertTriangle,
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api.ts';
 import { EgyptianAddressSelector, EgyptianAddressValue } from '../common/EgyptianAddressSelector.tsx';
-import { CalendarService } from '../../services/calendar/calendarService.ts';
+import { directUpdateImam } from '../../services/clientDataService.ts';
 
 interface ImamProfileModalProps {
   isOpen: boolean;
@@ -28,7 +26,7 @@ export function ImamProfileModal({
   imam,
   onSaved,
 }: ImamProfileModalProps) {
-  const [activeTab, setActiveTab] = useState<'info' | 'limits' | 'availability' | 'mosques'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'limits'>('info');
 
   // Form fields
   const [name, setName] = useState('');
@@ -49,21 +47,12 @@ export function ImamProfileModal({
   const [isActive, setIsActive] = useState(true);
   const [notes, setNotes] = useState('');
 
-  // Limits
-  const [type, setType] = useState<'FIXED' | 'PARTIAL_FIXED' | 'FLEXIBLE'>('FLEXIBLE');
-  const [minFridays, setMinFridays] = useState<number>(1);
-  const [targetFridays, setTargetFridays] = useState<number>(4);
-  const [maxFridays, setMaxFridays] = useState<number>(5);
+  // Available Fridays (حصر التكليف)
+  const [selectedFridays, setSelectedFridays] = useState<number[]>([1, 2, 3, 4, 5]);
 
-  // Availabilities
-  const [availabilities, setAvailabilities] = useState<ImamAvailability[]>([]);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // New availability exception form
-  const [newFridayIndex, setNewFridayIndex] = useState<number>(1);
-  const [newReason, setNewReason] = useState<string>('ارتباط مسبق / سفر');
 
   useEffect(() => {
     if (imam) {
@@ -86,14 +75,23 @@ export function ImamProfileModal({
       setIsActive(imam.isActive);
       setNotes(imam.notes || '');
 
-      setType(imam.type);
-      setMinFridays(imam.minFridays);
-      setTargetFridays(imam.targetFridays);
-      setMaxFridays(imam.maxFridays);
+      if (imam.availableFridays && Array.isArray(imam.availableFridays) && imam.availableFridays.length > 0) {
+        setSelectedFridays([...imam.availableFridays].sort((a, b) => a - b));
+      } else if (imam.availabilities && imam.availabilities.length > 0) {
+        const excluded = new Set(imam.availabilities.filter((a) => !a.isAvailable).map((a) => a.fridayIndex));
+        setSelectedFridays([1, 2, 3, 4, 5].filter((f) => !excluded.has(f)));
+      } else {
+        setSelectedFridays([1, 2, 3, 4, 5]);
+      }
 
       fetchApi<any>(`/api/imams/${imam.id}`)
         .then((res) => {
-          if (res.availabilities) setAvailabilities(res.availabilities);
+          if (res.availableFridays && Array.isArray(res.availableFridays) && res.availableFridays.length > 0) {
+            setSelectedFridays([...res.availableFridays].sort((a, b) => a - b));
+          } else if (res.availabilities && Array.isArray(res.availabilities) && res.availabilities.length > 0) {
+            const excluded = new Set(res.availabilities.filter((a: any) => !a.isAvailable).map((a: any) => a.fridayIndex));
+            setSelectedFridays([1, 2, 3, 4, 5].filter((f) => !excluded.has(f)));
+          }
         })
         .catch(() => {});
     } else {
@@ -115,16 +113,31 @@ export function ImamProfileModal({
 
       setIsActive(true);
       setNotes('');
-      setType('FLEXIBLE');
-      setMinFridays(1);
-      setTargetFridays(4);
-      setMaxFridays(5);
-      setAvailabilities([]);
+      setSelectedFridays([1, 2, 3, 4, 5]);
     }
     setActiveTab('info');
     setFeedback(null);
     setErrorMessage(null);
   }, [imam, isOpen]);
+
+  const toggleFriday = (fridayIndex: number) => {
+    setSelectedFridays((prev) => {
+      if (prev.includes(fridayIndex)) {
+        return prev.filter((idx) => idx !== fridayIndex).sort((a, b) => a - b);
+      } else {
+        return [...prev, fridayIndex].sort((a, b) => a - b);
+      }
+    });
+  };
+
+  const handleSetPreset = (preset: number[]) => {
+    setSelectedFridays([...preset].sort((a, b) => a - b));
+  };
+
+  const isMatchesPreset = (preset: number[]) => {
+    if (selectedFridays.length !== preset.length) return false;
+    return preset.every((idx) => selectedFridays.includes(idx));
+  };
 
   const handleAddressSelectorChange = (addr: EgyptianAddressValue) => {
     setCountryId(addr.countryId);
@@ -151,13 +164,15 @@ export function ImamProfileModal({
       setErrorMessage('اسم الخطيب مطلوب');
       return;
     }
-    if (minFridays > targetFridays || targetFridays > maxFridays) {
-      setErrorMessage('يجب أن يكون: الحد الأدنى <= المستهدف <= الحد الأقصى');
-      return;
-    }
 
     setSaving(true);
     setFeedback(null);
+
+    const calculatedTarget = selectedFridays.length;
+    const calculatedMax = selectedFridays.length;
+    const calculatedMin = Math.min(1, selectedFridays.length);
+    const calculatedType: 'FIXED' | 'PARTIAL_FIXED' | 'FLEXIBLE' =
+      selectedFridays.length === 5 ? 'FLEXIBLE' : 'PARTIAL_FIXED';
 
     // 1. Optimistic Imam object (0ms UI latency)
     const optimisticImam: Imam = {
@@ -179,10 +194,11 @@ export function ImamProfileModal({
       longitude,
       isActive,
       notes,
-      type,
-      minFridays: Number(minFridays),
-      targetFridays: Number(targetFridays),
-      maxFridays: Number(maxFridays),
+      type: calculatedType,
+      minFridays: calculatedMin,
+      targetFridays: calculatedTarget,
+      maxFridays: calculatedMax,
+      availableFridays: selectedFridays,
     };
 
     // 2. Trigger instant UI update in parent view
@@ -194,7 +210,7 @@ export function ImamProfileModal({
       onClose();
     }, 350);
 
-    // 4. Background Server Persistence
+    // 4. Background Persistence (Direct to Supabase + API)
     try {
       const payload = {
         name,
@@ -214,21 +230,18 @@ export function ImamProfileModal({
         longitude,
         isActive,
         notes,
-        type,
-        minFridays: Number(minFridays),
-        targetFridays: Number(targetFridays),
-        maxFridays: Number(maxFridays),
+        type: calculatedType,
+        minFridays: calculatedMin,
+        targetFridays: calculatedTarget,
+        maxFridays: calculatedMax,
       };
 
       if (imam) {
-        await fetchApi(`/api/imams/${imam.id}`, {
-          method: 'PATCH',
-          body: JSON.stringify(payload),
-        });
+        await directUpdateImam(imam.id, payload, selectedFridays);
       } else {
         await fetchApi('/api/imams', {
           method: 'POST',
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ ...payload, availableFridays: selectedFridays }),
         });
       }
     } catch (err: any) {
@@ -238,38 +251,19 @@ export function ImamProfileModal({
     }
   };
 
-  const handleAddUnavailable = async () => {
-    if (!imam) return;
-    setErrorMessage(null);
-    try {
-      const curHijri = CalendarService.getCurrentDateTime().hijri;
-      await fetchApi(`/api/imams/${imam.id}/availabilities`, {
-        method: 'POST',
-        body: JSON.stringify({
-          hijriYear: curHijri.year || 1448,
-          hijriMonth: curHijri.month || 1,
-          fridayIndex: newFridayIndex,
-          isAvailable: false,
-          reason: newReason,
-        }),
-      });
-
-      const res = await fetchApi<any>(`/api/imams/${imam.id}`);
-      if (res.availabilities) setAvailabilities(res.availabilities);
-      setFeedback('تم تسجيل استثناء عدم التوفر للجمعة المحددة');
-      setTimeout(() => setFeedback(null), 3000);
-      onSaved();
-    } catch (err: any) {
-      setErrorMessage(err.message || 'تعذر تسجيل الاستثناء');
-    }
-  };
+  const fridaysSummary =
+    selectedFridays.length === 5
+      ? 'متاح طوال الشهر (الجمعات 1-5)'
+      : selectedFridays.length === 0
+      ? 'غير متاح لأي جمعة'
+      : `متاح في الجمعات: ${selectedFridays.map((f) => `الجمعة ${f}`).join('، ')}`;
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
       title={imam ? `ملف الخطيب: ${imam.name}` : 'إضافة خطيب جديد'}
-      subtitle={imam ? `نوع التعيين: ${imam.type === 'FIXED' ? 'ثابت' : imam.type === 'PARTIAL_FIXED' ? 'ثابت جزئي' : 'مرن'} · المنطقة: ${imam.region || 'غير محددة'}` : 'تسجيل خطيب جديد في قاعدة البيانات'}
+      subtitle={imam ? `${fridaysSummary} · المنطقة: ${imam.region || 'غير محددة'}` : 'تسجيل خطيب جديد في قاعدة البيانات'}
       maxWidth="3xl"
     >
       <div className="space-y-5">
@@ -291,7 +285,7 @@ export function ImamProfileModal({
         <div className="flex items-center gap-1 border-b border-slate-200 pb-2 overflow-x-auto">
           <button
             onClick={() => setActiveTab('info')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'info'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
@@ -303,29 +297,15 @@ export function ImamProfileModal({
 
           <button
             onClick={() => setActiveTab('limits')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap cursor-pointer ${
               activeTab === 'limits'
                 ? 'bg-slate-900 text-white shadow-xs'
                 : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
             }`}
           >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>حدود التوزيع والأحمال</span>
+            <Calendar className="w-3.5 h-3.5" />
+            <span>الجمعات المتاحة للتوزيع في الشهر ({selectedFridays.length}/5)</span>
           </button>
-
-          {imam && (
-            <button
-              onClick={() => setActiveTab('availability')}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                activeTab === 'availability'
-                  ? 'bg-slate-900 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              <CalendarX2 className="w-3.5 h-3.5 text-rose-500" />
-              <span>عدم التوفر ({availabilities.length})</span>
-            </button>
-          )}
         </div>
 
         {/* Tab 1: Info */}
@@ -425,170 +405,100 @@ export function ImamProfileModal({
           </div>
         )}
 
-        {/* Tab 2: Limits */}
+        {/* Tab 2: Available Fridays only (حصر التكليف) */}
         {activeTab === 'limits' && (
-          <div className="space-y-4 bg-slate-50/50 p-4 rounded-xl border border-slate-200">
+          <div className="space-y-5 bg-slate-50/60 p-4 sm:p-5 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">نوع التعيين (Imam Classification)</label>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setType('FIXED')}
-                  className={`p-3 rounded-lg border text-right transition-all ${
-                    type === 'FIXED'
-                      ? 'bg-white border-emerald-600 shadow-2xs text-slate-900'
-                      : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs font-bold font-heading">ثابت (FIXED)</span>
-                  <span className="text-[11px] text-slate-500">مخصص لجامع محدد بشكل دائم طوال الشهر</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setType('PARTIAL_FIXED')}
-                  className={`p-3 rounded-lg border text-right transition-all ${
-                    type === 'PARTIAL_FIXED'
-                      ? 'bg-white border-amber-600 shadow-2xs text-slate-900'
-                      : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs font-bold font-heading">ثابت جزئي (PARTIAL)</span>
-                  <span className="text-[11px] text-slate-500">ثابت لعدد معين من الجمعات وباقي الشهر مرن</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setType('FLEXIBLE')}
-                  className={`p-3 rounded-lg border text-right transition-all ${
-                    type === 'FLEXIBLE'
-                      ? 'bg-white border-sky-600 shadow-2xs text-slate-900'
-                      : 'bg-white/50 border-slate-200 text-slate-600 hover:bg-white'
-                  }`}
-                >
-                  <span className="block text-xs font-bold font-heading">مرن (FLEXIBLE)</span>
-                  <span className="text-[11px] text-slate-500">يوزع حسب الاحتياج والتفضيلات وعدالة الأحمال</span>
-                </button>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <CalendarCheck className="w-4 h-4 text-emerald-600" />
+                  <span>الجمعات المتاحة للتوزيع في الشهر (حصر التكليف)</span>
+                </label>
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  تم تحديد {selectedFridays.length} من 5 جمعات
+                </span>
               </div>
-            </div>
+              <p className="text-[11px] text-slate-500 mb-3 leading-relaxed">
+                حدد بدقة الجمعات التي يمكن للخطيب إلقاء الخطبة فيها خلال الشهر. يلتزم محرك التوزيع التزاماً صارماً وقاطعاً بهذه الجمعات ولا يتم تعيينه إطلاقاً في الجمعات المستبعدة.
+              </p>
 
-            <div className="grid grid-cols-3 gap-4 pt-3 border-t border-slate-200">
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">الحد الأدنى (Minimum)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={5}
-                  value={minFridays}
-                  onChange={(e) => setMinFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-                />
-                <span className="block text-[10px] text-slate-500 mt-1 text-center">أقل عدد جمعات مطلوب</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-emerald-800 mb-1">المستهدف (Target)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={targetFridays}
-                  onChange={(e) => setTargetFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border-2 border-emerald-500 rounded-lg bg-white text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
-                <span className="block text-[10px] text-emerald-700 mt-1 text-center font-bold">الهدف الأساسي للمحرك</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-800 mb-1">الحد الأقصى (Maximum)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={5}
-                  value={maxFridays}
-                  onChange={(e) => setMaxFridays(Number(e.target.value))}
-                  className="w-full text-xs p-2.5 font-bold text-center border border-slate-300 rounded-lg bg-white text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600"
-                />
-                <span className="block text-[10px] text-slate-500 mt-1 text-center">قيد صارم لا يتجاوز دون استثناء</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Availability Exceptions */}
-        {activeTab === 'availability' && imam && (
-          <div className="space-y-4">
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-600">
-              <span className="font-bold text-slate-900">مبدأ التوفر:</span> الخطيب متاح افتراضياً في جميع جمعات الشهر، ويتم تسجيل استثناء فقط في حال اعتذاره عن جمعة محددة.
-            </div>
-
-            {/* Add unavailable entry */}
-            <div className="p-3 border border-slate-200 rounded-xl bg-white space-y-3">
-              <h4 className="text-xs font-bold text-slate-800">تسجيل اعتذار / عدم توفر في جمعة</h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div>
-                  <label className="block text-[11px] text-slate-500 mb-1">رقم الجمعة</label>
-                  <select
-                    value={newFridayIndex}
-                    onChange={(e) => setNewFridayIndex(Number(e.target.value))}
-                    className="w-full text-xs p-2 border border-slate-200 rounded bg-white"
-                  >
-                    <option value={1}>الجمعة الأولى (1)</option>
-                    <option value={2}>الجمعة الثانية (2)</option>
-                    <option value={3}>الجمعة الثالثة (3)</option>
-                    <option value={4}>الجمعة الرابعة (4)</option>
-                    <option value={5}>الجمعة الخامسة (5)</option>
-                  </select>
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-[11px] text-slate-500 mb-1">سبب الاعتذار</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newReason}
-                      onChange={(e) => setNewReason(e.target.value)}
-                      placeholder="سفر، إجازة سنوية، عذر طارئ..."
-                      className="flex-1 text-xs p-2 border border-slate-200 rounded"
-                    />
+              {/* Presets */}
+              <div className="flex flex-wrap items-center gap-1.5 mb-4">
+                <span className="text-[11px] text-slate-500 font-medium ml-1">خيارات سريعة:</span>
+                {[
+                  { label: 'تحديد الكل (1-5)', value: [1, 2, 3, 4, 5] },
+                  { label: 'الجمعة 1 + 3', value: [1, 3] },
+                  { label: 'الجمعة 2 + 4', value: [2, 4] },
+                  { label: 'الجمعة 1 فقط', value: [1] },
+                  { label: 'الجمعة 2 فقط', value: [2] },
+                ].map((preset) => {
+                  const isSelected = isMatchesPreset(preset.value);
+                  return (
                     <button
+                      key={preset.label}
                       type="button"
-                      onClick={handleAddUnavailable}
-                      className="px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded text-xs font-semibold flex items-center gap-1 shrink-0"
+                      onClick={() => handleSetPreset(preset.value)}
+                      className={`px-2.5 py-1 text-xs rounded-lg border font-medium transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                          : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-100 hover:border-slate-400'
+                      }`}
                     >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>تسجيل الاعتذار</span>
+                      {preset.label}
                     </button>
-                  </div>
-                </div>
+                  );
+                })}
+              </div>
+
+              {/* 5 Friday Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+                {[1, 2, 3, 4, 5].map((fridayNum) => {
+                  const isAvailable = selectedFridays.includes(fridayNum);
+                  return (
+                    <button
+                      key={fridayNum}
+                      type="button"
+                      onClick={() => toggleFriday(fridayNum)}
+                      className={`p-3 rounded-xl border-2 text-center transition-all flex flex-col items-center justify-center gap-1.5 cursor-pointer select-none ${
+                        isAvailable
+                          ? 'bg-emerald-50/80 border-emerald-600 text-emerald-950 shadow-xs ring-1 ring-emerald-600/30'
+                          : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600'
+                      }`}
+                    >
+                      <span className={`text-xs font-black ${isAvailable ? 'text-emerald-900' : 'text-slate-600'}`}>
+                        الجمعة {fridayNum}
+                      </span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isAvailable
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-slate-100 text-slate-500 border border-slate-200'
+                        }`}
+                      >
+                        {isAvailable ? 'متاح للتوزيع ✓' : 'مستبعد ✕'}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
-            {/* List of unavailable exceptions */}
-            <div className="space-y-2">
-              <h4 className="text-xs font-bold text-slate-700">الجمعات المسجل بها عدم توفر:</h4>
-              {availabilities.length === 0 ? (
-                <div className="p-4 text-center bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-400">
-                  الخطيب متاح في كافة الجمعات دون استثناءات.
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg bg-white overflow-hidden">
-                  {availabilities.map((a) => (
-                    <div key={a.id} className="p-2.5 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-bold">
-                          الجمعة ({a.fridayIndex})
-                        </span>
-                        <span className="text-slate-600">غير متاح · السبب: {a.reason || 'اعتذار رسمي'}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+            {/* Dynamic Notice Alert */}
+            <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-amber-950">
+                  ⚡ تنبيه حصر التوزيع الصارم:
+                </p>
+                <p className="text-[11px] leading-relaxed text-amber-900/90">
+                  تم اعتماد <span className="font-bold text-emerald-900">{selectedFridays.length}</span> جمعات متاحة لهذا الخطيب ({selectedFridays.length === 5 ? 'كامل جمعات الشهر' : selectedFridays.map((f) => `الجمعة ${f}`).join('، ')}). سيلتزم محرك التوزيع التزاماً صارماً وقاطعاً بعدم إسناد أي مسجد له في الجمعات المستبعدة، مع الحفاظ التام على ربط بيانات المساجد والخطباء.
+                </p>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Sticky Footer Actions (Always visible at the bottom of the modal) */}
+        {/* Sticky Footer Actions */}
         <div className="sticky bottom-0 -mx-3.5 sm:-mx-6 -mb-3.5 sm:-mb-6 p-3 sm:p-4 bg-white/95 backdrop-blur-xs border-t border-slate-200 flex items-center justify-between z-20 shadow-xs">
           <button
             type="button"
@@ -598,17 +508,15 @@ export function ImamProfileModal({
             إلغاء وإغلاق
           </button>
 
-          {(activeTab === 'info' || activeTab === 'limits') && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={handleSave}
-              className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all cursor-pointer"
-            >
-              <Save className="w-4 h-4" />
-              <span>{saving ? 'جارٍ حفظ البيانات...' : 'حفظ بيانات الخطيب'}</span>
-            </button>
-          )}
+          <button
+            type="button"
+            disabled={saving}
+            onClick={handleSave}
+            className="px-5 py-2.5 bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+          >
+            <Save className="w-4 h-4" />
+            <span>{saving ? 'جارٍ حفظ البيانات...' : 'حفظ بيانات الخطيب'}</span>
+          </button>
         </div>
       </div>
     </Modal>

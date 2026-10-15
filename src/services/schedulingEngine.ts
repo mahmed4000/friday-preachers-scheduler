@@ -32,6 +32,7 @@ export interface ImamInput {
   maxFridays: number;
   isActive: boolean;
   region?: string | null;
+  availableFridays?: number[];
 }
 
 export interface RuleInput {
@@ -182,6 +183,18 @@ export class SchedulingEngine {
     for (const a of input.availabilities) {
       if (!a.isAvailable) {
         unavailableSet.add(`${a.imamId}:${a.fridayIndex}`);
+      }
+    }
+
+    // Foundational constraint: Strict adherence to each Imam's available Fridays
+    for (const imam of activeImams) {
+      if (imam.availableFridays && Array.isArray(imam.availableFridays)) {
+        const allowed = new Set(imam.availableFridays);
+        for (let f = 1; f <= input.fridaysCount; f++) {
+          if (!allowed.has(f)) {
+            unavailableSet.add(`${imam.id}:${f}`);
+          }
+        }
       }
     }
 
@@ -372,7 +385,20 @@ export class SchedulingEngine {
           const isUnavailable = unavailableSet.has(`${fixedImam.id}:${f}`);
           const isAlreadyBooked = fridayImamBooking.has(`${fixedImam.id}:${f}`);
 
-          if (!isUnavailable && !isAlreadyBooked) {
+          if (isUnavailable) {
+            conflicts.push({
+              severity: 'CRITICAL',
+              mosqueId: mosque.id,
+              fridayIndex: f,
+              imamId: fixedImam.id,
+              ruleCode: 'FIXED_UNAVAILABLE',
+              message: `تعارض حصر تكليف: الشيخ (${fixedImam.name}) مخصص لمسجد (${mosque.name}) لكن الجمعة (${f}) مستبعدة من جمعات التكليف المتاحة له.`,
+              possibleResolutions: ['اختيار خطيب بديل من البدائل المقترحة لحل التعارض يدوياً', 'تعديل الجمعات المتاحة للخطيب لتشمل هذه الجمعة'],
+            });
+            continue;
+          }
+
+          if (!isAlreadyBooked) {
             assignmentsGrid.set(cellKey, {
               fridayIndex: f,
               mosqueId: mosque.id,
@@ -576,16 +602,36 @@ export class SchedulingEngine {
         const fridayIndex = Number(fIdxStr);
         const mosque = mosqueMap.get(mosqueId);
 
+        // Find available candidate recommendations for this empty mosque slot
+        const altCandidates = SchedulingEngine.findEmergencyReplacements({
+          fridayIndex,
+          mosqueId,
+          allMosques: input.mosques,
+          allImams: input.imams,
+          rules: input.rules,
+          existingAssignments: Array.from(assignmentsGrid.values()).map((a) => ({
+            fridayIndex: a.fridayIndex,
+            mosqueId: a.mosqueId,
+            imamId: a.imamId,
+          })),
+          unavailabilities: Array.from(unavailableSet).map((s) => {
+            const [iId, fIdx] = s.split(':');
+            return { imamId: Number(iId), fridayIndex: Number(fIdx), isAvailable: false };
+          }),
+        });
+
+        const suggestedNames = altCandidates.slice(0, 3).map((c) => `الشيخ ${c.imam.name}`).join('، ');
+
         conflicts.push({
           severity: 'CRITICAL',
           mosqueId,
           fridayIndex,
           ruleCode: 'EMPTY_MOSQUE',
-          message: `المسجد (${mosque?.name || mosqueId}) بدون خطيب في الجمعة (${fridayIndex})`,
+          message: `المسجد (${mosque?.name || mosqueId}) بدون خطيب في الجمعة (${fridayIndex}) لعدم توفر خطيب متاح ومؤهل في هذه الجمعة.`,
           possibleResolutions: [
-            'تجاوز الحد الأقصى لأحد الخطباء المرنين المؤهلين',
-            'السماح بخطيب غير مفضل مؤقتاً',
-            'تعيين خطيب يدوياً وتأكيد استثناء إداري',
+            suggestedNames ? `اختيار أحد البدائل المقترحة: ${suggestedNames}` : 'فتح التعيين واختيار خطيب بديل متاح',
+            'توسيع الجمعات المتاحة لأحد الخطباء في ملفه لتشمل هذه الجمعة',
+            'تعديل نمط التثبيت أو قواعد المنع',
           ],
         });
       }
@@ -814,6 +860,7 @@ export class SchedulingEngine {
 
       // 2. Hard constraint: Unavailable on this Friday
       if (unavailSet.has(imam.id)) continue;
+      if (imam.availableFridays && !imam.availableFridays.includes(fridayIndex)) continue;
 
       // 3. Hard constraint: FORBIDDEN in this mosque
       const rule = rulesMap.get(imam.id);

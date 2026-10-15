@@ -39,6 +39,7 @@ let memoryConflicts = [...(seedData.conflicts || [])];
 let memoryOverrides = [...(seedData.overrides || [])];
 let memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
 let memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+let memoryAvailabilities = [...(seedData.imamAvailabilities || [])];
 
 export const memoryStore = {
   reset() {
@@ -52,6 +53,7 @@ export const memoryStore = {
     memoryOverrides = [...(seedData.overrides || [])];
     memoryPatterns = [...(seedData.fixedAssignmentPatterns || [])];
     memoryPatternItems = [...(seedData.fixedAssignmentPatternItems || [])];
+    memoryAvailabilities = [...(seedData.imamAvailabilities || [])];
   },
 
   hydrate(data: {
@@ -61,6 +63,9 @@ export const memoryStore = {
     schedules?: any[];
     fridays?: any[];
     assignments?: any[];
+    availabilities?: any[];
+    patterns?: any[];
+    patternItems?: any[];
   }) {
     if (data.mosques && data.mosques.length > 0) memoryMosques = [...data.mosques];
     if (data.imams && data.imams.length > 0) memoryImams = [...data.imams];
@@ -68,6 +73,9 @@ export const memoryStore = {
     if (data.schedules && data.schedules.length > 0) memorySchedules = [...data.schedules];
     if (data.fridays && data.fridays.length > 0) memoryFridays = [...data.fridays];
     if (data.assignments && data.assignments.length > 0) memoryAssignments = [...data.assignments];
+    if (data.availabilities && data.availabilities.length > 0) memoryAvailabilities = [...data.availabilities];
+    if (data.patterns && data.patterns.length > 0) memoryPatterns = [...data.patterns];
+    if (data.patternItems && data.patternItems.length > 0) memoryPatternItems = [...data.patternItems];
   },
 
   getMosques(search: string = '', region: string = '') {
@@ -982,23 +990,47 @@ export const memoryStore = {
         fixedPattern: m.fixedPattern,
         fixedCount: m.fixedCount,
       })),
-      imams: activeImams.map((i: any) => ({
-        id: i.id,
-        name: i.name,
-        type: i.type,
-        minFridays: i.minFridays,
-        targetFridays: i.targetFridays,
-        maxFridays: i.maxFridays,
-        isActive: i.isActive,
-        region: i.region,
-      })),
+      imams: activeImams.map((i: any) => {
+        let availFridays = i.availableFridays;
+        if (!availFridays) {
+          const excluded = new Set(
+            memoryAvailabilities
+              .filter((a: any) => (a.imamId === i.id || a.imam_id === i.id) && (a.isAvailable === false || a.is_available === false))
+              .map((a: any) => a.fridayIndex || a.friday_index)
+          );
+          availFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+        }
+        return {
+          id: i.id,
+          name: i.name,
+          type: i.type,
+          minFridays: Math.min(1, availFridays.length),
+          targetFridays: availFridays.length,
+          maxFridays: availFridays.length,
+          isActive: i.isActive,
+          region: i.region,
+          availableFridays: availFridays,
+        };
+      }),
       rules: rules.map((r: any) => ({
         mosqueId: r.mosqueId,
         imamId: r.imamId,
         relationshipType: r.relationshipType,
         priority: r.priority || 1,
       })),
-      availabilities: [],
+      availabilities: memoryAvailabilities
+        .filter((a: any) =>
+          (a.hijriYear === schedule.hijriYear && a.hijriMonth === schedule.hijriMonth) ||
+          (a.hijriYear === 0 && a.hijriMonth === 0) ||
+          (a.hijri_year === schedule.hijriYear && a.hijri_month === schedule.hijriMonth) ||
+          (a.hijri_year === 0 && a.hijri_month === 0)
+        )
+        .map((a: any) => ({
+          imamId: a.imamId || a.imam_id,
+          fridayIndex: a.fridayIndex || a.friday_index,
+          isAvailable: a.isAvailable ?? a.is_available,
+          reason: a.reason,
+        })),
       lockedAssignments,
       fixedPatterns: fixedPatternsInput,
       distributionMethod: (distributionMethod as any) || 'Balanced Random',

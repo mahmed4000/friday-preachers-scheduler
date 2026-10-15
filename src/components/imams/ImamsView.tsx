@@ -12,7 +12,7 @@ import {
   Upload,
   CheckSquare,
 } from 'lucide-react';
-import { Imam, Mosque, MonthlyScheduleData, Assignment, Friday, MonthlySchedule } from '../../types/index.ts';
+import { Imam, Mosque, Assignment, Friday, MonthlySchedule } from '../../types/index.ts';
 import { fetchApi } from '../../lib/api.ts';
 import { Badge } from '../common/Badge.tsx';
 import { ClickableImam } from '../../context/ProfileNavigationContext.tsx';
@@ -22,12 +22,20 @@ import { BatchPdfExportModal } from '../import-export/BatchPdfExportModal.tsx';
 import { PreacherMobileCardModal, PreacherCardAssignmentItem } from '../portal/PreacherMobileCardModal.tsx';
 import { FileText, Sparkles, Smartphone } from 'lucide-react';
 
+export interface ActiveScheduleData {
+  schedule?: MonthlySchedule | null;
+  fridays?: Friday[];
+  assignments?: Assignment[];
+  conflicts?: any[];
+  overrides?: any[];
+}
+
 interface ImamsViewProps {
   imams: Imam[];
   onAddImam: () => void;
   onEditImam: (imam: Imam) => void;
   onRefresh?: () => void;
-  activeScheduleData?: MonthlyScheduleData | null;
+  activeScheduleData?: ActiveScheduleData | null;
   mosques?: Mosque[];
 }
 
@@ -59,14 +67,14 @@ export function ImamsView({
 
   const handleOpenSmartCard = (imam: Imam) => {
     const imamAssignments =
-      activeScheduleData?.assignments?.filter((a) => a.imamId === imam.id) || [];
+      activeScheduleData?.assignments?.filter((a: Assignment) => a.imamId === imam.id) || [];
 
     if (imamAssignments.length > 0) {
       const items: PreacherCardAssignmentItem[] = [];
       for (const a of imamAssignments) {
-        const m = mosques?.find((x) => x.id === a.mosqueId) || null;
+        const m = mosques?.find((x: Mosque) => x.id === a.mosqueId) || null;
         const f =
-          activeScheduleData?.fridays?.find((x) => x.fridayIndex === a.fridayIndex) || null;
+          activeScheduleData?.fridays?.find((x: Friday) => x.fridayIndex === a.fridayIndex) || null;
         if (m && f) {
           items.push({ assignment: a, mosque: m, friday: f });
         }
@@ -155,7 +163,7 @@ export function ImamsView({
         <div>
           <h3 className="text-base font-bold text-slate-900 font-heading">سجل الخطباء والدعاة</h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            إدارة بيانات الخطباء، حدود التوزيع (الأدنى، المستهدف، الأقصى)، والاستيراد والتصدير
+            إدارة بيانات الخطباء، الجمعات المتاحة للتوزيع (حصر التكليف)، والاستيراد والتصدير
           </p>
         </div>
 
@@ -298,7 +306,7 @@ export function ImamsView({
                 <th className="py-3 px-4">كود الخطيب</th>
                 <th className="py-3 px-4">اسم الخطيب</th>
                 <th className="py-3 px-4">النوع والتصنيف</th>
-                <th className="py-3 px-4">حدود الجمعات (أدنى / مستهدف / أقصى)</th>
+                <th className="py-3 px-4">الجمعات المتاحة للتوزيع</th>
                 <th className="py-3 px-4">رقم الهاتف والتواصل</th>
                 <th className="py-3 px-4">المنطقة والسكن</th>
                 <th className="py-3 px-4 text-center">الحالة</th>
@@ -316,6 +324,11 @@ export function ImamsView({
               ) : (
                 filteredImams.map((imam) => {
                   const isSelected = selectedImamIds.includes(imam.id);
+                  const availableFridays =
+                    imam.availableFridays && imam.availableFridays.length > 0
+                      ? imam.availableFridays
+                      : [1, 2, 3, 4, 5];
+
                   return (
                     <tr
                       key={imam.id}
@@ -348,17 +361,28 @@ export function ImamsView({
                           <Badge variant="default">مرن</Badge>
                         )}
                       </td>
-                      <td className="py-3 px-4 font-mono whitespace-nowrap">
-                        <div className="flex items-center gap-1 text-slate-700">
-                          <span className="text-slate-400 text-[10px]">أدنى:</span>
-                          <span className="font-bold">{imam.minFridays}</span>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-emerald-700 text-[10px] font-bold">هدف:</span>
-                          <span className="font-bold text-emerald-800">{imam.targetFridays}</span>
-                          <span className="text-slate-300">|</span>
-                          <span className="text-slate-400 text-[10px]">أقصى:</span>
-                          <span className="font-bold">{imam.maxFridays}</span>
-                        </div>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {availableFridays.length === 5 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
+                            كامل الشهر (1-5)
+                          </span>
+                        ) : availableFridays.length === 0 ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
+                            مستبعد طوال الشهر
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1">
+                            {availableFridays.map((f) => (
+                              <span
+                                key={f}
+                                className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-bold"
+                              >
+                                جـ{f}
+                              </span>
+                            ))}
+                            <span className="text-[10px] text-slate-500 font-medium">({availableFridays.length}/5)</span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-700 whitespace-nowrap">
                         {imam.phone ? (

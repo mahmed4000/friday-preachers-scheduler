@@ -99,6 +99,7 @@ export interface Imam {
   isActive: boolean;
   notes?: string | null;
   availabilities?: ImamAvailability[];
+  availableFridays?: number[];
   rules?: MosqueImamRule[];
   createdAt?: string | Date;
 }

@@ -78,17 +78,35 @@ export const SupabaseDataService = {
 
     isHydrating = true;
     try {
-      const [mRes, iRes, rRes, sRes, fRes, aRes] = await Promise.all([
+      const [mRes, iRes, rRes, sRes, fRes, aRes, avRes, patRes, patItemRes] = await Promise.all([
         client.from('mosques').select('*').order('id', { ascending: true }),
         client.from('imams').select('*').order('id', { ascending: true }),
         client.from('mosque_imam_rules').select('*').order('id', { ascending: true }),
         client.from('monthly_schedules').select('*').order('id', { ascending: true }),
         client.from('fridays').select('*').order('id', { ascending: true }),
         client.from('assignments').select('*').order('id', { ascending: true }),
+        client.from('imam_availabilities').select('*').order('id', { ascending: true }),
+        client.from('fixed_assignment_patterns').select('*').order('id', { ascending: true }),
+        client.from('fixed_assignment_pattern_items').select('*').order('id', { ascending: true }),
       ]);
 
+      const dbAvails = avRes.data || [];
       const mosques = (mRes.data || []).map(mapDbMosque).filter(Boolean);
-      const imams = (iRes.data || []).map(mapDbImam).filter(Boolean);
+      const imams = (iRes.data || []).map((i: any) => {
+        const base = mapDbImam(i);
+        if (!base) return null;
+        const excluded = new Set(
+          dbAvails.filter((a: any) => a.imam_id === i.id && !a.is_available).map((a: any) => a.friday_index)
+        );
+        const availableFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+        return {
+          ...base,
+          availableFridays,
+          targetFridays: availableFridays.length,
+          maxFridays: availableFridays.length,
+          minFridays: Math.min(1, availableFridays.length),
+        };
+      }).filter(Boolean);
       const rules = (rRes.data || []).map(mapDbRule).filter(Boolean);
       const schedules = (sRes.data || []).map((s: any) => ({
         id: s.id,
@@ -129,6 +147,36 @@ export const SupabaseDataService = {
         updatedAt: a.updated_at,
       }));
 
+      const availabilities = dbAvails.map((av: any) => ({
+        id: av.id,
+        imamId: av.imam_id,
+        hijriYear: av.hijri_year,
+        hijriMonth: av.hijri_month,
+        fridayIndex: av.friday_index,
+        isAvailable: av.is_available,
+        reason: av.reason,
+      }));
+
+      const patterns = (patRes.data || []).map((p: any) => ({
+        id: p.id,
+        mosqueId: p.mosque_id,
+        hijriYear: p.hijri_year,
+        hijriMonth: p.hijri_month,
+        patternType: p.pattern_type,
+        fridaysCount: p.fridays_count,
+        isActive: p.is_active,
+        notes: p.notes,
+      }));
+
+      const patternItems = (patItemRes.data || []).map((pi: any) => ({
+        id: pi.id,
+        patternId: pi.pattern_id,
+        fridayIndex: pi.friday_index,
+        imamId: pi.imam_id,
+        sequence: pi.sequence,
+        notes: pi.notes,
+      }));
+
       memoryStore.hydrate({
         mosques,
         imams,
@@ -136,6 +184,9 @@ export const SupabaseDataService = {
         schedules,
         fridays,
         assignments,
+        availabilities,
+        patterns,
+        patternItems,
       });
 
       isHydrated = true;
@@ -642,6 +693,26 @@ export const SupabaseDataService = {
         .eq('id', id)
         .select()
         .single();
+
+      if (data.availableFridays && Array.isArray(data.availableFridays)) {
+        try {
+          await client.from('imam_availabilities').delete().eq('imam_id', id);
+          const excluded = [1, 2, 3, 4, 5].filter((f: number) => !data.availableFridays.includes(f));
+          if (excluded.length > 0) {
+            const rows = excluded.map((f: number) => ({
+              imam_id: id,
+              hijri_year: 0,
+              hijri_month: 0,
+              friday_index: f,
+              is_available: false,
+              reason: 'حصر التكليف في جمعات محددة',
+            }));
+            await client.from('imam_availabilities').insert(rows);
+          }
+        } catch (avErr: any) {
+          console.warn('Supabase update imam_availabilities warning:', avErr.message);
+        }
+      }
 
       if (error) {
         console.warn('Supabase updateImam error:', error.message);

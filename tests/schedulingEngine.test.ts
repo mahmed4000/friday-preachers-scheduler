@@ -273,6 +273,61 @@ function runTests() {
     assert('18. منع تعيين نفس الخطيب في أكثر من مسجد في نفس الجمعة منعاً باتاً', !doubleBookingDetected);
   }
 
+  // 19: Strict adherence to availableFridays (حصر التكليف)
+  {
+    const restrictedImam: ImamInput = {
+      id: 50,
+      name: 'الشيخ المحصور في جمعتين',
+      type: 'PARTIAL_FIXED',
+      minFridays: 2,
+      targetFridays: 2,
+      maxFridays: 2,
+      availableFridays: [1, 3], // Only fridays 1 and 3
+      isActive: true,
+    };
+    const res = SchedulingEngine.generate({
+      monthName: 'شوال',
+      hijriYear: 1448,
+      hijriMonth: 10,
+      fridaysCount: 5,
+      mosques: [
+        { id: 201, name: 'مسجد 1', code: 'M1', region: 'الوسط', isActive: true },
+      ],
+      imams: [restrictedImam],
+      rules: [],
+      availabilities: [],
+    });
+    const assignedFridays = res.assignments
+      .filter((a) => a.imamId === 50)
+      .map((a) => a.fridayIndex);
+    const violated = assignedFridays.some((f) => f !== 1 && f !== 3);
+    assert(
+      '19. الالتزام الصارم بحصر التكليف (availableFridays) وعدم التعيين في أي جمعة مستبعدة',
+      !violated && assignedFridays.length === 2 && assignedFridays.includes(1) && assignedFridays.includes(3)
+    );
+  }
+
+  // 20: Fixed imam unavailable due to availableFridays generates critical conflict with suggested alternatives
+  {
+    const res = SchedulingEngine.generate({
+      monthName: 'شوال',
+      hijriYear: 1448,
+      hijriMonth: 10,
+      fridaysCount: 4,
+      mosques: [
+        { id: 301, name: 'مسجد الاختبار', code: 'MTEST', region: 'الوسط', isActive: true, fixedImamId: 60, fixedPattern: 'ALL' },
+      ],
+      imams: [
+        { id: 60, name: 'الشيخ الثابت غير المتاح', type: 'PARTIAL_FIXED', minFridays: 1, targetFridays: 2, maxFridays: 2, availableFridays: [1, 2], isActive: true },
+        { id: 61, name: 'الشيخ البديل المتاح', type: 'FLEXIBLE', minFridays: 1, targetFridays: 4, maxFridays: 4, availableFridays: [1, 2, 3, 4], isActive: true },
+      ],
+      rules: [],
+      availabilities: [],
+    });
+    const conflictF3 = res.conflicts.find((c) => c.fridayIndex === 3 && c.ruleCode === 'FIXED_UNAVAILABLE');
+    assert('20. توليد تعارض حصر تكليف عند استبعاد جمعة لخطيب مثبت مع اقتراح البدائل للمستخدم', !!conflictF3);
+  }
+
   console.log(`\nنتائج الاختبارات: ${passed} نجح / ${failed} فشل`);
   if (failed > 0) {
     process.exit(1);
