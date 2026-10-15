@@ -361,6 +361,10 @@ export default function App() {
         try { localStorage.setItem('cached_mosques', JSON.stringify(next)); } catch {}
         return next;
       });
+      // Broadcast event so active MosqueProfileView can immediately reload
+      try {
+        window.dispatchEvent(new CustomEvent('app:mosque-saved', { detail: updatedMosque }));
+      } catch {}
     }
     clearMosqueProfileCache();
   };
@@ -375,6 +379,10 @@ export default function App() {
         try { localStorage.setItem('cached_imams', JSON.stringify(next)); } catch {}
         return next;
       });
+      // Broadcast event so active ImamProfileView can immediately reload
+      try {
+        window.dispatchEvent(new CustomEvent('app:imam-saved', { detail: updatedImam }));
+      } catch {}
     }
   };
 
@@ -454,7 +462,16 @@ export default function App() {
   };
 
   const handleOpenEditMosque = (m: Mosque) => {
-    setEditingMosque(m);
+    let latest = mosques.find((item) => item.id === m.id) || m;
+    try {
+      const cached = localStorage.getItem('cached_mosques');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const fromCache = parsed.find((item: any) => item.id === m.id);
+        if (fromCache) latest = { ...latest, ...fromCache };
+      }
+    } catch {}
+    setEditingMosque(latest);
     setIsMosqueModalOpen(true);
   };
 
@@ -465,7 +482,16 @@ export default function App() {
   };
 
   const handleOpenEditImam = (i: Imam) => {
-    setEditingImam(i);
+    let latest = imams.find((item) => item.id === i.id) || i;
+    try {
+      const cached = localStorage.getItem('cached_imams');
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const fromCache = parsed.find((item: any) => item.id === i.id);
+        if (fromCache) latest = { ...latest, ...fromCache };
+      }
+    } catch {}
+    setEditingImam(latest);
     setIsImamModalOpen(true);
   };
 

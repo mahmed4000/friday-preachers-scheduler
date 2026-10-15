@@ -152,6 +152,18 @@ export function ImamProfileView({
     loadProfile(undefined);
   }, [imamId]);
 
+  useEffect(() => {
+    const handleSaved = (e: any) => {
+      const saved = e.detail;
+      if (saved && saved.id === imamId) {
+        setData((prev) => (prev ? { ...prev, imam: { ...prev.imam, ...saved } } : prev));
+        loadProfile(selectedScheduleId);
+      }
+    };
+    window.addEventListener('app:imam-saved', handleSaved);
+    return () => window.removeEventListener('app:imam-saved', handleSaved);
+  }, [imamId, selectedScheduleId]);
+
   const handlePrint = () => {
     if (!data?.imam) {
       setPdfModalOpen(true);

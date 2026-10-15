@@ -240,20 +240,47 @@ export function MosqueProfileModal({
 
       loadFixedPattern(mosque.id, patternYear, patternMonth);
 
-      // Load rules for this mosque
+      // Load fresh mosque details and rules
       fetchApi<any>(`/api/mosques/${mosque.id}`)
         .then((res) => {
           if (isCancelled) return;
-          if (Array.isArray(res.rules)) {
-            setRules(res.rules);
-          } else if (res.rules && typeof res.rules === 'object') {
-            const flattened: MosqueImamRule[] = [
-              ...(res.rules.preferred || []),
-              ...(res.rules.forbidden || []),
-              ...(res.rules.allowed || []),
-              ...(res.rules.discouraged || []),
-            ];
-            setRules(flattened);
+          if (res) {
+            if (res.name) setName(res.name);
+            if (res.code) setCode(res.code);
+            if (res.region) setRegion(res.region);
+            if (res.notes !== undefined && res.notes !== null) setNotes(res.notes);
+            if (res.managerName !== undefined && res.managerName !== null) setManagerName(res.managerName);
+            if (res.phone !== undefined && res.phone !== null) setPhone(res.phone);
+            if (res.whatsapp !== undefined && res.whatsapp !== null) setWhatsapp(res.whatsapp);
+            if (res.street !== undefined && res.street !== null) setStreet(res.street);
+            if (res.buildingNumber !== undefined && res.buildingNumber !== null) setBuildingNumber(res.buildingNumber);
+            if (res.landmark !== undefined && res.landmark !== null) setLandmark(res.landmark);
+            if (res.formattedAddress || res.address) {
+              setFormattedAddress(res.formattedAddress || res.address);
+              setAddress(res.formattedAddress || res.address);
+            }
+            if (res.latitude) setLatitude(String(res.latitude));
+            if (res.longitude) setLongitude(String(res.longitude));
+            if (res.governorateId) setGovernorateId(Number(res.governorateId));
+            if (res.districtId !== undefined) setDistrictId(res.districtId !== null ? Number(res.districtId) : null);
+            if (res.areaId !== undefined) setAreaId(res.areaId !== null ? Number(res.areaId) : null);
+            if (res.isActive !== undefined) setIsActive(Boolean(res.isActive));
+            if (res.fixedImamId !== undefined) {
+              const fId = res.fixedImamId ? Number(res.fixedImamId) : '';
+              setSingleImamId(fId);
+              setHasFixedPattern(Boolean(fId));
+            }
+            if (Array.isArray(res.rules)) {
+              setRules(res.rules);
+            } else if (res.rules && typeof res.rules === 'object') {
+              const flattened: MosqueImamRule[] = [
+                ...(res.rules.preferred || []),
+                ...(res.rules.forbidden || []),
+                ...(res.rules.allowed || []),
+                ...(res.rules.discouraged || []),
+              ];
+              setRules(flattened);
+            }
           }
         })
         .catch(() => {});
@@ -482,6 +509,12 @@ export function MosqueProfileModal({
         if (patternSaveRes?.patternId) {
           setExistingPatternId(patternSaveRes.patternId);
         }
+      } else if (!hasFixedPattern && existingPatternId && savedMosqueId) {
+        // If fixed pattern was turned off, delete the existing pattern
+        try {
+          await fetchApi(`/api/mosques/${savedMosqueId}/fixed-patterns/${existingPatternId}`, { method: 'DELETE' });
+          setExistingPatternId(null);
+        } catch {}
       }
 
       const selectedFixedImam = hasFixedPattern && singleImamId
@@ -491,11 +524,26 @@ export function MosqueProfileModal({
       const fullSavedMosque: Mosque = {
         ...(mosque || {}),
         ...savedMosqueRes,
-        id: savedMosqueId || Date.now(),
+        id: savedMosqueId || mosque?.id || Date.now(),
         name,
         code,
         region: region || 'منشأة البكاري',
         address: formattedAddress || address,
+        countryId,
+        governorateId,
+        districtId,
+        areaId,
+        street,
+        buildingNumber,
+        landmark,
+        formattedAddress: formattedAddress || address,
+        latitude: latitude ? Number(latitude) : undefined,
+        longitude: longitude ? Number(longitude) : undefined,
+        managerName,
+        phone,
+        whatsapp,
+        isActive,
+        notes,
         fixedImamId: hasFixedPattern && singleImamId ? Number(singleImamId) : null,
         fixedImamName: selectedFixedImam ? selectedFixedImam.name : null,
         fixedPattern: hasFixedPattern ? (patternType === 'SAME_ALL' ? 'ALL' : 'SPECIFIC_FRIDAYS') : 'ALL',

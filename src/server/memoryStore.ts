@@ -1280,12 +1280,17 @@ export const memoryStore = {
       memoryPatternItems.push(...itemsToInsert);
     }
 
-    // Update legacy fixed pattern on mosque if SAME_ALL
+    // Update legacy fixed pattern on mosque
     if (patternType === 'SAME_ALL' && items[0]?.imamId) {
       this.updateMosque(mosqueId, {
         fixedImamId: Number(items[0].imamId),
         fixedPattern: 'ALL',
         fixedCount: Number(fridaysCount) || 5,
+      });
+    } else if (patternType === 'SPECIFIC_FRIDAYS') {
+      this.updateMosque(mosqueId, {
+        fixedPattern: 'SPECIFIC_FRIDAYS',
+        fixedCount: items.length,
       });
     }
 

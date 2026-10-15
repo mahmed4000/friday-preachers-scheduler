@@ -1054,9 +1054,16 @@ api.patch('/mosques/:id', async (req: AuthRequest, res: Response) => {
       return res.json(updated);
     }
 
+    memoryStore.updateMosque(id, data);
+
     const [updated] = await db.update(mosques)
       .set({
         ...data,
+        notes: data.notes !== undefined ? data.notes : undefined,
+        street: data.street !== undefined ? data.street : undefined,
+        buildingNumber: data.buildingNumber !== undefined ? data.buildingNumber : undefined,
+        landmark: data.landmark !== undefined ? data.landmark : undefined,
+        formattedAddress: data.formattedAddress !== undefined ? data.formattedAddress : undefined,
         countryId: data.countryId !== undefined ? (data.countryId ? Number(data.countryId) : 1) : undefined,
         governorateId: data.governorateId !== undefined ? (data.governorateId ? Number(data.governorateId) : null) : undefined,
         districtId: data.districtId !== undefined ? (data.districtId ? Number(data.districtId) : null) : undefined,
@@ -1470,6 +1477,11 @@ api.post('/mosques/:id/fixed-patterns', async (req: AuthRequest, res: Response) 
         fixedImamId: Number(items[0].imamId),
         fixedPattern: 'ALL',
         fixedCount: Number(fridaysCount) || 5,
+      }).where(eq(mosques.id, mosqueId));
+    } else if (patternType === 'SPECIFIC_FRIDAYS') {
+      await db.update(mosques).set({
+        fixedPattern: 'SPECIFIC_FRIDAYS',
+        fixedCount: items.length,
       }).where(eq(mosques.id, mosqueId));
     }
 

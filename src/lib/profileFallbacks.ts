@@ -15,7 +15,12 @@ export function getFallbackImamProfile(
   id: number,
   scheduleId?: number
 ): ImamProfileData | null {
-  const imam = (seed.imams || []).find((i: any) => i.id === id);
+  let imamList = seed.imams || [];
+  try {
+    const cachedI = localStorage.getItem('cached_imams');
+    if (cachedI) imamList = JSON.parse(cachedI);
+  } catch {}
+  const imam = imamList.find((i: any) => i.id === id);
   if (!imam) return null;
 
   const mosques = seed.mosques || [];
@@ -157,7 +162,12 @@ export function getFallbackMosqueProfile(
   id: number,
   scheduleId?: number
 ): MosqueProfileData | null {
-  const mosque = (seed.mosques || []).find((m: any) => m.id === id);
+  let mosqueList = seed.mosques || [];
+  try {
+    const cachedM = localStorage.getItem('cached_mosques');
+    if (cachedM) mosqueList = JSON.parse(cachedM);
+  } catch {}
+  const mosque = mosqueList.find((m: any) => m.id === id);
   if (!mosque) return null;
 
   const imams = seed.imams || [];

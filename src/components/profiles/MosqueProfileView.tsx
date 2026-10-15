@@ -163,6 +163,18 @@ export function MosqueProfileView({
     loadProfile(undefined);
   }, [mosqueId]);
 
+  useEffect(() => {
+    const handleSaved = (e: any) => {
+      const saved = e.detail;
+      if (saved && saved.id === mosqueId) {
+        setData((prev) => (prev ? { ...prev, mosque: { ...prev.mosque, ...saved } } : prev));
+        loadProfile(selectedScheduleId);
+      }
+    };
+    window.addEventListener('app:mosque-saved', handleSaved);
+    return () => window.removeEventListener('app:mosque-saved', handleSaved);
+  }, [mosqueId, selectedScheduleId]);
+
   const handlePrint = () => {
     if (!data?.mosque) {
       setPdfModalOpen(true);

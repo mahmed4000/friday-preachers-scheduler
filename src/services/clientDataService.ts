@@ -49,8 +49,8 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
             whatsapp: m.whatsapp || m.phone || '',
             fixedImamId: m.fixed_imam_id || null,
             fixedImamName: m.fixed_imam_id ? imamMap.get(m.fixed_imam_id) || null : null,
-            fixedPattern: (m.fixed_imam_id ? 'ALL' : undefined) as any,
-            fixedCount: m.fixed_imam_id ? 5 : 0,
+            fixedPattern: (m.fixed_pattern || (m.fixed_imam_id ? 'ALL' : undefined)) as any,
+            fixedCount: m.fixed_count ?? (m.fixed_imam_id ? 5 : 0),
             preferencesCount: mRules.filter((r: any) => r.relationship_type === 'PREFERRED').length,
             forbiddenCount: mRules.filter((r: any) => r.relationship_type === 'FORBIDDEN').length,
             isActive: m.is_active ?? true,
@@ -59,6 +59,11 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
             governorateId: m.governorate_id || 1,
             districtId: m.district_id || 101,
             areaId: m.area_id || 1001,
+            street: m.street || '',
+            buildingNumber: m.building_number || '',
+            landmark: m.landmark || '',
+            latitude: m.latitude || undefined,
+            longitude: m.longitude || undefined,
             createdAt: m.created_at,
             updatedAt: m.updated_at,
           };
@@ -264,17 +269,27 @@ export async function directUpdateMosque(id: number, data: Partial<Mosque>): Pro
     if (data.name !== undefined) dbPayload.name = data.name;
     if (data.code !== undefined) dbPayload.code = data.code;
     if (data.region !== undefined) dbPayload.region = data.region;
-    if (data.address !== undefined) dbPayload.address = data.address;
+    if (data.address !== undefined || data.formattedAddress !== undefined) {
+      dbPayload.address = data.formattedAddress || data.address || null;
+      dbPayload.formatted_address = data.formattedAddress || data.address || null;
+    }
     if (data.managerName !== undefined) dbPayload.manager_name = data.managerName;
     if (data.phone !== undefined) dbPayload.phone = data.phone;
     if (data.whatsapp !== undefined) dbPayload.whatsapp = data.whatsapp;
-    if (data.fixedImamId !== undefined) dbPayload.fixed_imam_id = data.fixedImamId;
+    if (data.fixedImamId !== undefined) dbPayload.fixed_imam_id = data.fixedImamId ? Number(data.fixedImamId) : null;
+    if (data.fixedPattern !== undefined) dbPayload.fixed_pattern = data.fixedPattern;
+    if (data.fixedCount !== undefined) dbPayload.fixed_count = Number(data.fixedCount);
     if (data.notes !== undefined) dbPayload.notes = data.notes;
     if (data.isActive !== undefined) dbPayload.is_active = data.isActive;
     if (data.countryId !== undefined) dbPayload.country_id = data.countryId;
     if (data.governorateId !== undefined) dbPayload.governorate_id = data.governorateId;
     if (data.districtId !== undefined) dbPayload.district_id = data.districtId;
     if (data.areaId !== undefined) dbPayload.area_id = data.areaId;
+    if (data.street !== undefined) dbPayload.street = data.street;
+    if (data.buildingNumber !== undefined) dbPayload.building_number = data.buildingNumber;
+    if (data.landmark !== undefined) dbPayload.landmark = data.landmark;
+    if (data.latitude !== undefined) dbPayload.latitude = data.latitude ? String(data.latitude) : null;
+    if (data.longitude !== undefined) dbPayload.longitude = data.longitude ? String(data.longitude) : null;
 
     try {
       await client.from('mosques').update(dbPayload).eq('id', id);
@@ -282,6 +297,19 @@ export async function directUpdateMosque(id: number, data: Partial<Mosque>): Pro
       console.warn('Direct Supabase mosque update failed:', err);
     }
   }
+
+  // Update local cached_mosques in localStorage synchronously
+  try {
+    const cachedStr = localStorage.getItem('cached_mosques');
+    if (cachedStr) {
+      const list = JSON.parse(cachedStr);
+      const idx = list.findIndex((m: any) => m.id === id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...data };
+        localStorage.setItem('cached_mosques', JSON.stringify(list));
+      }
+    }
+  } catch {}
 
   // Also notify backend API
   try {

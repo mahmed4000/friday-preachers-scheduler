@@ -9,21 +9,27 @@ export function mapDbMosque(m: any) {
     name: m.name,
     code: m.code,
     region: m.region || 'الوسط',
-    address: m.address || '',
-    formattedAddress: m.address || '',
-    managerName: m.manager_name || '',
-    phone: m.phone || '',
-    whatsapp: m.whatsapp || m.phone || '',
-    fixedImamId: m.fixed_imam_id || null,
-    fixedPattern: m.fixed_imam_id ? 'ALL' : undefined,
-    isActive: m.is_active ?? true,
-    notes: m.notes || '',
-    countryId: m.country_id || 1,
-    governorateId: m.governorate_id || 1,
-    districtId: m.district_id || 101,
-    areaId: m.area_id || 1001,
-    createdAt: m.created_at,
-    updatedAt: m.updated_at,
+    address: m.formatted_address || m.formattedAddress || m.address || '',
+    formattedAddress: m.formatted_address || m.formattedAddress || m.address || '',
+    managerName: m.manager_name ?? m.managerName ?? '',
+    phone: m.phone ?? '',
+    whatsapp: m.whatsapp ?? m.phone ?? '',
+    fixedImamId: m.fixed_imam_id !== undefined ? (m.fixed_imam_id ? Number(m.fixed_imam_id) : null) : (m.fixedImamId !== undefined ? (m.fixedImamId ? Number(m.fixedImamId) : null) : null),
+    fixedPattern: m.fixed_pattern || m.fixedPattern || (m.fixed_imam_id || m.fixedImamId ? 'ALL' : undefined),
+    fixedCount: m.fixed_count ?? m.fixedCount ?? (m.fixed_imam_id || m.fixedImamId ? 5 : 0),
+    isActive: m.is_active !== undefined ? Boolean(m.is_active) : (m.isActive !== undefined ? Boolean(m.isActive) : true),
+    notes: m.notes ?? '',
+    countryId: m.country_id ?? m.countryId ?? 1,
+    governorateId: m.governorate_id ?? m.governorateId ?? 1,
+    districtId: m.district_id !== undefined ? m.district_id : (m.districtId !== undefined ? m.districtId : 101),
+    areaId: m.area_id !== undefined ? m.area_id : (m.areaId !== undefined ? m.areaId : 1001),
+    street: m.street ?? '',
+    buildingNumber: m.building_number ?? m.buildingNumber ?? '',
+    landmark: m.landmark ?? '',
+    latitude: m.latitude !== undefined && m.latitude !== null ? String(m.latitude) : undefined,
+    longitude: m.longitude !== undefined && m.longitude !== null ? String(m.longitude) : undefined,
+    createdAt: m.created_at ?? m.createdAt,
+    updatedAt: m.updated_at ?? m.updatedAt,
   };
 }
 
@@ -32,17 +38,28 @@ export function mapDbImam(i: any) {
   return {
     id: i.id,
     name: i.name,
-    phone: i.phone || '',
-    whatsapp: i.whatsapp || i.phone || '',
-    type: i.type || 'FLEXIBLE',
-    region: i.region || 'الوسط',
-    minFridays: i.min_fridays ?? 1,
-    maxFridays: i.max_fridays ?? 4,
-    targetFridays: i.target_fridays ?? 2,
-    isActive: i.is_active ?? true,
-    notes: i.notes || '',
-    createdAt: i.created_at,
-    updatedAt: i.updated_at,
+    phone: i.phone ?? '',
+    whatsapp: i.whatsapp ?? i.phone ?? '',
+    type: i.type ?? 'FLEXIBLE',
+    region: i.region ?? 'الوسط',
+    address: i.formatted_address || i.formattedAddress || i.address || '',
+    formattedAddress: i.formatted_address || i.formattedAddress || i.address || '',
+    minFridays: i.min_fridays ?? i.minFridays ?? 1,
+    maxFridays: i.max_fridays ?? i.maxFridays ?? 4,
+    targetFridays: i.target_fridays ?? i.targetFridays ?? 2,
+    isActive: i.is_active !== undefined ? Boolean(i.is_active) : (i.isActive !== undefined ? Boolean(i.isActive) : true),
+    notes: i.notes ?? '',
+    countryId: i.country_id ?? i.countryId ?? 1,
+    governorateId: i.governorate_id ?? i.governorateId ?? 1,
+    districtId: i.district_id !== undefined ? i.district_id : (i.districtId !== undefined ? i.districtId : 101),
+    areaId: i.area_id !== undefined ? i.area_id : (i.areaId !== undefined ? i.areaId : 1001),
+    street: i.street ?? '',
+    buildingNumber: i.building_number ?? i.buildingNumber ?? '',
+    landmark: i.landmark ?? '',
+    latitude: i.latitude !== undefined && i.latitude !== null ? String(i.latitude) : undefined,
+    longitude: i.longitude !== undefined && i.longitude !== null ? String(i.longitude) : undefined,
+    createdAt: i.created_at ?? i.createdAt,
+    updatedAt: i.updated_at ?? i.updatedAt,
   };
 }
 
@@ -309,6 +326,7 @@ export const SupabaseDataService = {
       if (data.region !== undefined) dbPayload.region = data.region;
       if (data.address !== undefined || data.formattedAddress !== undefined) {
         dbPayload.address = data.formattedAddress || data.address || null;
+        dbPayload.formatted_address = data.formattedAddress || data.address || null;
       }
       if (data.managerName !== undefined) dbPayload.manager_name = data.managerName;
       if (data.phone !== undefined) dbPayload.phone = data.phone;
@@ -316,8 +334,19 @@ export const SupabaseDataService = {
       if (data.fixedImamId !== undefined) {
         dbPayload.fixed_imam_id = data.fixedImamId ? Number(data.fixedImamId) : null;
       }
+      if (data.fixedPattern !== undefined) dbPayload.fixed_pattern = data.fixedPattern;
+      if (data.fixedCount !== undefined) dbPayload.fixed_count = Number(data.fixedCount);
       if (data.isActive !== undefined) dbPayload.is_active = Boolean(data.isActive);
       if (data.notes !== undefined) dbPayload.notes = data.notes;
+      if (data.countryId !== undefined) dbPayload.country_id = data.countryId;
+      if (data.governorateId !== undefined) dbPayload.governorate_id = data.governorateId;
+      if (data.districtId !== undefined) dbPayload.district_id = data.districtId;
+      if (data.areaId !== undefined) dbPayload.area_id = data.areaId;
+      if (data.street !== undefined) dbPayload.street = data.street;
+      if (data.buildingNumber !== undefined) dbPayload.building_number = data.buildingNumber;
+      if (data.landmark !== undefined) dbPayload.landmark = data.landmark;
+      if (data.latitude !== undefined) dbPayload.latitude = data.latitude ? String(data.latitude) : null;
+      if (data.longitude !== undefined) dbPayload.longitude = data.longitude ? String(data.longitude) : null;
 
       const { data: updated, error } = await client
         .from('mosques')
@@ -370,12 +399,24 @@ export const SupabaseDataService = {
         code: data.code,
         region: data.region || 'الوسط',
         address: data.formattedAddress || data.address || null,
+        formatted_address: data.formattedAddress || data.address || null,
         manager_name: data.managerName || null,
         phone: data.phone || null,
         whatsapp: data.whatsapp || data.phone || null,
         fixed_imam_id: data.fixedImamId ? Number(data.fixedImamId) : null,
+        fixed_pattern: data.fixedPattern || 'ALL',
+        fixed_count: data.fixedCount ? Number(data.fixedCount) : 0,
         is_active: data.isActive ?? true,
         notes: data.notes || null,
+        country_id: data.countryId || 1,
+        governorate_id: data.governorateId || 1,
+        district_id: data.districtId || 101,
+        area_id: data.areaId || 1001,
+        street: data.street || null,
+        building_number: data.buildingNumber || null,
+        landmark: data.landmark || null,
+        latitude: data.latitude ? String(data.latitude) : null,
+        longitude: data.longitude ? String(data.longitude) : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };

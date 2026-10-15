@@ -134990,6 +134990,11 @@ var memoryStore = {
         fixedPattern: "ALL",
         fixedCount: Number(fridaysCount) || 5
       });
+    } else if (patternType === "SPECIFIC_FRIDAYS") {
+      this.updateMosque(mosqueId, {
+        fixedPattern: "SPECIFIC_FRIDAYS",
+        fixedCount: items.length
+      });
     }
     this.persistToDisk();
     return {
@@ -135385,21 +135390,27 @@ function mapDbMosque(m2) {
     name: m2.name,
     code: m2.code,
     region: m2.region || "\u0627\u0644\u0648\u0633\u0637",
-    address: m2.address || "",
-    formattedAddress: m2.address || "",
-    managerName: m2.manager_name || "",
-    phone: m2.phone || "",
-    whatsapp: m2.whatsapp || m2.phone || "",
-    fixedImamId: m2.fixed_imam_id || null,
-    fixedPattern: m2.fixed_imam_id ? "ALL" : void 0,
-    isActive: m2.is_active ?? true,
-    notes: m2.notes || "",
-    countryId: m2.country_id || 1,
-    governorateId: m2.governorate_id || 1,
-    districtId: m2.district_id || 101,
-    areaId: m2.area_id || 1001,
-    createdAt: m2.created_at,
-    updatedAt: m2.updated_at
+    address: m2.formatted_address || m2.formattedAddress || m2.address || "",
+    formattedAddress: m2.formatted_address || m2.formattedAddress || m2.address || "",
+    managerName: m2.manager_name ?? m2.managerName ?? "",
+    phone: m2.phone ?? "",
+    whatsapp: m2.whatsapp ?? m2.phone ?? "",
+    fixedImamId: m2.fixed_imam_id !== void 0 ? m2.fixed_imam_id ? Number(m2.fixed_imam_id) : null : m2.fixedImamId !== void 0 ? m2.fixedImamId ? Number(m2.fixedImamId) : null : null,
+    fixedPattern: m2.fixed_pattern || m2.fixedPattern || (m2.fixed_imam_id || m2.fixedImamId ? "ALL" : void 0),
+    fixedCount: m2.fixed_count ?? m2.fixedCount ?? (m2.fixed_imam_id || m2.fixedImamId ? 5 : 0),
+    isActive: m2.is_active !== void 0 ? Boolean(m2.is_active) : m2.isActive !== void 0 ? Boolean(m2.isActive) : true,
+    notes: m2.notes ?? "",
+    countryId: m2.country_id ?? m2.countryId ?? 1,
+    governorateId: m2.governorate_id ?? m2.governorateId ?? 1,
+    districtId: m2.district_id !== void 0 ? m2.district_id : m2.districtId !== void 0 ? m2.districtId : 101,
+    areaId: m2.area_id !== void 0 ? m2.area_id : m2.areaId !== void 0 ? m2.areaId : 1001,
+    street: m2.street ?? "",
+    buildingNumber: m2.building_number ?? m2.buildingNumber ?? "",
+    landmark: m2.landmark ?? "",
+    latitude: m2.latitude !== void 0 && m2.latitude !== null ? String(m2.latitude) : void 0,
+    longitude: m2.longitude !== void 0 && m2.longitude !== null ? String(m2.longitude) : void 0,
+    createdAt: m2.created_at ?? m2.createdAt,
+    updatedAt: m2.updated_at ?? m2.updatedAt
   };
 }
 function mapDbImam(i2) {
@@ -135407,17 +135418,28 @@ function mapDbImam(i2) {
   return {
     id: i2.id,
     name: i2.name,
-    phone: i2.phone || "",
-    whatsapp: i2.whatsapp || i2.phone || "",
-    type: i2.type || "FLEXIBLE",
-    region: i2.region || "\u0627\u0644\u0648\u0633\u0637",
-    minFridays: i2.min_fridays ?? 1,
-    maxFridays: i2.max_fridays ?? 4,
-    targetFridays: i2.target_fridays ?? 2,
-    isActive: i2.is_active ?? true,
-    notes: i2.notes || "",
-    createdAt: i2.created_at,
-    updatedAt: i2.updated_at
+    phone: i2.phone ?? "",
+    whatsapp: i2.whatsapp ?? i2.phone ?? "",
+    type: i2.type ?? "FLEXIBLE",
+    region: i2.region ?? "\u0627\u0644\u0648\u0633\u0637",
+    address: i2.formatted_address || i2.formattedAddress || i2.address || "",
+    formattedAddress: i2.formatted_address || i2.formattedAddress || i2.address || "",
+    minFridays: i2.min_fridays ?? i2.minFridays ?? 1,
+    maxFridays: i2.max_fridays ?? i2.maxFridays ?? 4,
+    targetFridays: i2.target_fridays ?? i2.targetFridays ?? 2,
+    isActive: i2.is_active !== void 0 ? Boolean(i2.is_active) : i2.isActive !== void 0 ? Boolean(i2.isActive) : true,
+    notes: i2.notes ?? "",
+    countryId: i2.country_id ?? i2.countryId ?? 1,
+    governorateId: i2.governorate_id ?? i2.governorateId ?? 1,
+    districtId: i2.district_id !== void 0 ? i2.district_id : i2.districtId !== void 0 ? i2.districtId : 101,
+    areaId: i2.area_id !== void 0 ? i2.area_id : i2.areaId !== void 0 ? i2.areaId : 1001,
+    street: i2.street ?? "",
+    buildingNumber: i2.building_number ?? i2.buildingNumber ?? "",
+    landmark: i2.landmark ?? "",
+    latitude: i2.latitude !== void 0 && i2.latitude !== null ? String(i2.latitude) : void 0,
+    longitude: i2.longitude !== void 0 && i2.longitude !== null ? String(i2.longitude) : void 0,
+    createdAt: i2.created_at ?? i2.createdAt,
+    updatedAt: i2.updated_at ?? i2.updatedAt
   };
 }
 function mapDbRule(r2) {
@@ -135651,6 +135673,7 @@ var SupabaseDataService = {
       if (data.region !== void 0) dbPayload.region = data.region;
       if (data.address !== void 0 || data.formattedAddress !== void 0) {
         dbPayload.address = data.formattedAddress || data.address || null;
+        dbPayload.formatted_address = data.formattedAddress || data.address || null;
       }
       if (data.managerName !== void 0) dbPayload.manager_name = data.managerName;
       if (data.phone !== void 0) dbPayload.phone = data.phone;
@@ -135658,8 +135681,19 @@ var SupabaseDataService = {
       if (data.fixedImamId !== void 0) {
         dbPayload.fixed_imam_id = data.fixedImamId ? Number(data.fixedImamId) : null;
       }
+      if (data.fixedPattern !== void 0) dbPayload.fixed_pattern = data.fixedPattern;
+      if (data.fixedCount !== void 0) dbPayload.fixed_count = Number(data.fixedCount);
       if (data.isActive !== void 0) dbPayload.is_active = Boolean(data.isActive);
       if (data.notes !== void 0) dbPayload.notes = data.notes;
+      if (data.countryId !== void 0) dbPayload.country_id = data.countryId;
+      if (data.governorateId !== void 0) dbPayload.governorate_id = data.governorateId;
+      if (data.districtId !== void 0) dbPayload.district_id = data.districtId;
+      if (data.areaId !== void 0) dbPayload.area_id = data.areaId;
+      if (data.street !== void 0) dbPayload.street = data.street;
+      if (data.buildingNumber !== void 0) dbPayload.building_number = data.buildingNumber;
+      if (data.landmark !== void 0) dbPayload.landmark = data.landmark;
+      if (data.latitude !== void 0) dbPayload.latitude = data.latitude ? String(data.latitude) : null;
+      if (data.longitude !== void 0) dbPayload.longitude = data.longitude ? String(data.longitude) : null;
       const { data: updated, error } = await client.from("mosques").update(dbPayload).eq("id", id).select().single();
       if (error) {
         console.warn("Supabase updateMosque error, using memoryStore data:", error.message);
@@ -135699,12 +135733,24 @@ var SupabaseDataService = {
         code: data.code,
         region: data.region || "\u0627\u0644\u0648\u0633\u0637",
         address: data.formattedAddress || data.address || null,
+        formatted_address: data.formattedAddress || data.address || null,
         manager_name: data.managerName || null,
         phone: data.phone || null,
         whatsapp: data.whatsapp || data.phone || null,
         fixed_imam_id: data.fixedImamId ? Number(data.fixedImamId) : null,
+        fixed_pattern: data.fixedPattern || "ALL",
+        fixed_count: data.fixedCount ? Number(data.fixedCount) : 0,
         is_active: data.isActive ?? true,
         notes: data.notes || null,
+        country_id: data.countryId || 1,
+        governorate_id: data.governorateId || 1,
+        district_id: data.districtId || 101,
+        area_id: data.areaId || 1001,
+        street: data.street || null,
+        building_number: data.buildingNumber || null,
+        landmark: data.landmark || null,
+        latitude: data.latitude ? String(data.latitude) : null,
+        longitude: data.longitude ? String(data.longitude) : null,
         created_at: (/* @__PURE__ */ new Date()).toISOString(),
         updated_at: (/* @__PURE__ */ new Date()).toISOString()
       };
@@ -136973,8 +137019,14 @@ api.patch("/mosques/:id", async (req, res) => {
       await logAudit(req, "UPDATE_MOSQUE", "MOSQUE", id, data);
       return res.json(updated2);
     }
+    memoryStore.updateMosque(id, data);
     const [updated] = await db.update(mosques).set({
       ...data,
+      notes: data.notes !== void 0 ? data.notes : void 0,
+      street: data.street !== void 0 ? data.street : void 0,
+      buildingNumber: data.buildingNumber !== void 0 ? data.buildingNumber : void 0,
+      landmark: data.landmark !== void 0 ? data.landmark : void 0,
+      formattedAddress: data.formattedAddress !== void 0 ? data.formattedAddress : void 0,
       countryId: data.countryId !== void 0 ? data.countryId ? Number(data.countryId) : 1 : void 0,
       governorateId: data.governorateId !== void 0 ? data.governorateId ? Number(data.governorateId) : null : void 0,
       districtId: data.districtId !== void 0 ? data.districtId ? Number(data.districtId) : null : void 0,
@@ -137327,6 +137379,11 @@ api.post("/mosques/:id/fixed-patterns", async (req, res) => {
         fixedImamId: Number(items[0].imamId),
         fixedPattern: "ALL",
         fixedCount: Number(fridaysCount) || 5
+      }).where(eq(mosques.id, mosqueId));
+    } else if (patternType === "SPECIFIC_FRIDAYS") {
+      await db.update(mosques).set({
+        fixedPattern: "SPECIFIC_FRIDAYS",
+        fixedCount: items.length
       }).where(eq(mosques.id, mosqueId));
     }
     await logAudit(req, "SAVE_FIXED_PATTERN", "MOSQUE", mosqueId, {
