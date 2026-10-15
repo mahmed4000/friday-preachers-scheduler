@@ -144,18 +144,31 @@ export function MosqueProfileModal({
   const loadFixedPattern = async (mId: number, yr: number, mo: number) => {
     try {
       setPatternConflictWarning(null);
-      const res = await fetchApi<any>(`/api/mosques/${mId}/fixed-patterns?year=${yr}&month=${mo}`);
-      if (res.exists && res.pattern) {
-        setHasFixedPattern(true);
-        setExistingPatternId(res.pattern.id);
-        setPatternType(res.pattern.patternType || 'SAME_ALL');
 
-        if (res.pattern.items && res.pattern.items.length > 0) {
-          if (res.pattern.patternType === 'SAME_ALL') {
-            setSingleImamId(res.pattern.items[0].imamId);
+      // Check local cache first
+      let localCachedPat: any = null;
+      try {
+        const raw = localStorage.getItem('cached_fixed_patterns');
+        if (raw) {
+          const dict = JSON.parse(raw);
+          localCachedPat = dict[`${mId}_${yr}_${mo}`] || null;
+        }
+      } catch {}
+
+      const res = await fetchApi<any>(`/api/mosques/${mId}/fixed-patterns?year=${yr}&month=${mo}`).catch(() => null);
+      const activePattern = (res && res.exists && res.pattern) ? res.pattern : localCachedPat;
+
+      if (activePattern) {
+        setHasFixedPattern(true);
+        if (activePattern.id) setExistingPatternId(activePattern.id);
+        setPatternType(activePattern.patternType || 'SAME_ALL');
+
+        if (activePattern.items && activePattern.items.length > 0) {
+          if (activePattern.patternType === 'SAME_ALL') {
+            setSingleImamId(activePattern.items[0].imamId);
           }
 
-          const loadedSlots = res.pattern.items.map((it: any) => ({
+          const loadedSlots = activePattern.items.map((it: any) => ({
             fridayIndex: it.fridayIndex,
             imamId: it.imamId,
             notes: it.notes || '',
@@ -240,7 +253,7 @@ export function MosqueProfileModal({
 
       loadFixedPattern(mosque.id, patternYear, patternMonth);
 
-      // Load fresh mosque details and rules
+      // Load fresh mosque details and rules without overwriting already loaded values with empty strings
       fetchApi<any>(`/api/mosques/${mosque.id}`)
         .then((res) => {
           if (isCancelled) return;
@@ -248,24 +261,24 @@ export function MosqueProfileModal({
             if (res.name) setName(res.name);
             if (res.code) setCode(res.code);
             if (res.region) setRegion(res.region);
-            if (res.notes !== undefined && res.notes !== null) setNotes(res.notes);
-            if (res.managerName !== undefined && res.managerName !== null) setManagerName(res.managerName);
-            if (res.phone !== undefined && res.phone !== null) setPhone(res.phone);
-            if (res.whatsapp !== undefined && res.whatsapp !== null) setWhatsapp(res.whatsapp);
-            if (res.street !== undefined && res.street !== null) setStreet(res.street);
-            if (res.buildingNumber !== undefined && res.buildingNumber !== null) setBuildingNumber(res.buildingNumber);
-            if (res.landmark !== undefined && res.landmark !== null) setLandmark(res.landmark);
-            if (res.formattedAddress || res.address) {
+            if (res.notes && !mosque.notes) setNotes(res.notes);
+            if (res.managerName && !mosque.managerName) setManagerName(res.managerName);
+            if (res.phone && !mosque.phone) setPhone(res.phone);
+            if (res.whatsapp && !mosque.whatsapp) setWhatsapp(res.whatsapp);
+            if (res.street && !mosque.street) setStreet(res.street);
+            if (res.buildingNumber && !mosque.buildingNumber) setBuildingNumber(res.buildingNumber);
+            if (res.landmark && !mosque.landmark) setLandmark(res.landmark);
+            if ((res.formattedAddress || res.address) && !mosque.formattedAddress && !mosque.address) {
               setFormattedAddress(res.formattedAddress || res.address);
               setAddress(res.formattedAddress || res.address);
             }
-            if (res.latitude) setLatitude(String(res.latitude));
-            if (res.longitude) setLongitude(String(res.longitude));
-            if (res.governorateId) setGovernorateId(Number(res.governorateId));
-            if (res.districtId !== undefined) setDistrictId(res.districtId !== null ? Number(res.districtId) : null);
-            if (res.areaId !== undefined) setAreaId(res.areaId !== null ? Number(res.areaId) : null);
-            if (res.isActive !== undefined) setIsActive(Boolean(res.isActive));
-            if (res.fixedImamId !== undefined) {
+            if (res.latitude && !mosque.latitude) setLatitude(String(res.latitude));
+            if (res.longitude && !mosque.longitude) setLongitude(String(res.longitude));
+            if (res.governorateId && !mosque.governorateId) setGovernorateId(Number(res.governorateId));
+            if (res.districtId !== undefined && mosque.districtId === undefined) setDistrictId(res.districtId !== null ? Number(res.districtId) : null);
+            if (res.areaId !== undefined && mosque.areaId === undefined) setAreaId(res.areaId !== null ? Number(res.areaId) : null);
+            if (res.isActive !== undefined && mosque.isActive === undefined) setIsActive(Boolean(res.isActive));
+            if (res.fixedImamId !== undefined && !mosque.fixedImamId) {
               const fId = res.fixedImamId ? Number(res.fixedImamId) : '';
               setSingleImamId(fId);
               setHasFixedPattern(Boolean(fId));
@@ -509,11 +522,35 @@ export function MosqueProfileModal({
         if (patternSaveRes?.patternId) {
           setExistingPatternId(patternSaveRes.patternId);
         }
+
+        // Cache pattern locally so it is immediately and permanently persistent
+        try {
+          const raw = localStorage.getItem('cached_fixed_patterns') || '{}';
+          const dict = JSON.parse(raw);
+          dict[`${savedMosqueId}_${patternYear}_${patternMonth}`] = {
+            id: patternSaveRes?.patternId || existingPatternId || Date.now(),
+            mosqueId: savedMosqueId,
+            hijriYear: patternYear,
+            hijriMonth: patternMonth,
+            patternType,
+            fridaysCount: actualFridaysCount,
+            items: itemsToSave,
+          };
+          localStorage.setItem('cached_fixed_patterns', JSON.stringify(dict));
+        } catch {}
       } else if (!hasFixedPattern && existingPatternId && savedMosqueId) {
         // If fixed pattern was turned off, delete the existing pattern
         try {
           await fetchApi(`/api/mosques/${savedMosqueId}/fixed-patterns/${existingPatternId}`, { method: 'DELETE' });
           setExistingPatternId(null);
+        } catch {}
+        try {
+          const raw = localStorage.getItem('cached_fixed_patterns');
+          if (raw) {
+            const dict = JSON.parse(raw);
+            delete dict[`${savedMosqueId}_${patternYear}_${patternMonth}`];
+            localStorage.setItem('cached_fixed_patterns', JSON.stringify(dict));
+          }
         } catch {}
       }
 
@@ -550,7 +587,23 @@ export function MosqueProfileModal({
         fixedCount: hasFixedPattern ? actualFridaysCount : 0,
         preferencesCount: rules.filter((r) => r.relationshipType === 'PREFERRED').length,
         forbiddenCount: rules.filter((r) => r.relationshipType === 'FORBIDDEN' || r.relationshipType === 'DISCOURAGED').length,
+        updatedAt: new Date().toISOString(),
       };
+
+      // SYNCHRONOUSLY write to localStorage so changes are 100% durable
+      try {
+        const cachedStr = localStorage.getItem('cached_mosques');
+        if (cachedStr) {
+          const list: Mosque[] = JSON.parse(cachedStr);
+          const idx = list.findIndex((m) => m.id === fullSavedMosque.id);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...fullSavedMosque };
+          } else {
+            list.unshift(fullSavedMosque);
+          }
+          localStorage.setItem('cached_mosques', JSON.stringify(list));
+        }
+      } catch {}
 
       onSaved(fullSavedMosque);
       setFeedback('تم حفظ بيانات المسجد ونمط التثبيت بنجاح ✓');

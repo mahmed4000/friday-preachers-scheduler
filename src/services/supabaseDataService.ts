@@ -268,8 +268,9 @@ export const SupabaseDataService = {
   },
 
   async getMosqueDetails(id: number): Promise<any> {
+    const mem = memoryStore.getMosqueDetails(id);
     const client = getSupabaseClient();
-    if (!client) return memoryStore.getMosqueDetails(id);
+    if (!client) return mem;
 
     try {
       const [mRes, rRes, iRes] = await Promise.all([
@@ -278,7 +279,7 @@ export const SupabaseDataService = {
         client.from('imams').select('*'),
       ]);
 
-      if (mRes.error || !mRes.data) return memoryStore.getMosqueDetails(id);
+      if (mRes.error || !mRes.data) return mem;
 
       const mosque = mapDbMosque(mRes.data);
       const imamMap = new Map((iRes.data || []).map((i: any) => [i.id, i]));
@@ -300,7 +301,15 @@ export const SupabaseDataService = {
 
       return {
         ...mosque,
-        rules,
+        ...(mem || {}),
+        notes: (mem?.notes !== undefined && mem.notes !== '') ? mem.notes : (mosque?.notes || ''),
+        managerName: (mem?.managerName !== undefined && mem.managerName !== '') ? mem.managerName : (mosque?.managerName || ''),
+        phone: (mem?.phone !== undefined && mem.phone !== '') ? mem.phone : (mosque?.phone || ''),
+        whatsapp: (mem?.whatsapp !== undefined && mem.whatsapp !== '') ? mem.whatsapp : (mosque?.whatsapp || ''),
+        street: mem?.street || mosque?.street || '',
+        buildingNumber: mem?.buildingNumber || mosque?.buildingNumber || '',
+        landmark: mem?.landmark || mosque?.landmark || '',
+        rules: rules.length > 0 ? rules : (mem?.rules || []),
       };
     } catch (err: any) {
       console.warn('Supabase getMosqueDetails fallback to memoryStore:', err.message);
@@ -326,7 +335,6 @@ export const SupabaseDataService = {
       if (data.region !== undefined) dbPayload.region = data.region;
       if (data.address !== undefined || data.formattedAddress !== undefined) {
         dbPayload.address = data.formattedAddress || data.address || null;
-        dbPayload.formatted_address = data.formattedAddress || data.address || null;
       }
       if (data.managerName !== undefined) dbPayload.manager_name = data.managerName;
       if (data.phone !== undefined) dbPayload.phone = data.phone;
@@ -334,49 +342,30 @@ export const SupabaseDataService = {
       if (data.fixedImamId !== undefined) {
         dbPayload.fixed_imam_id = data.fixedImamId ? Number(data.fixedImamId) : null;
       }
-      if (data.fixedPattern !== undefined) dbPayload.fixed_pattern = data.fixedPattern;
-      if (data.fixedCount !== undefined) dbPayload.fixed_count = Number(data.fixedCount);
       if (data.isActive !== undefined) dbPayload.is_active = Boolean(data.isActive);
       if (data.notes !== undefined) dbPayload.notes = data.notes;
-      if (data.countryId !== undefined) dbPayload.country_id = data.countryId;
-      if (data.governorateId !== undefined) dbPayload.governorate_id = data.governorateId;
-      if (data.districtId !== undefined) dbPayload.district_id = data.districtId;
-      if (data.areaId !== undefined) dbPayload.area_id = data.areaId;
-      if (data.street !== undefined) dbPayload.street = data.street;
-      if (data.buildingNumber !== undefined) dbPayload.building_number = data.buildingNumber;
-      if (data.landmark !== undefined) dbPayload.landmark = data.landmark;
-      if (data.latitude !== undefined) dbPayload.latitude = data.latitude ? String(data.latitude) : null;
-      if (data.longitude !== undefined) dbPayload.longitude = data.longitude ? String(data.longitude) : null;
 
       const { data: updated, error } = await client
         .from('mosques')
         .update(dbPayload)
         .eq('id', id)
-        .select()
-        .single();
+        .select();
 
-      if (error) {
-        console.warn('Supabase updateMosque error, using memoryStore data:', error.message);
+      if (error || !updated || updated.length === 0) {
         return memoryStore.getMosqueDetails(id);
       }
 
-      const mapped = mapDbMosque(updated);
+      const mapped = mapDbMosque(updated[0]);
       if (!mapped) return memoryStore.getMosqueDetails(id);
 
-      let fixedImamName: string | null = null;
-      if (mapped.fixedImamId) {
-        const { data: im } = await client.from('imams').select('name').eq('id', mapped.fixedImamId).maybeSingle();
-        fixedImamName = im?.name || null;
-      }
-      const { data: rules } = await client.from('mosque_imam_rules').select('relationship_type').eq('mosque_id', id);
-      const preferencesCount = (rules || []).filter((r: any) => r.relationship_type === 'PREFERRED').length;
-      const forbiddenCount = (rules || []).filter((r: any) => r.relationship_type === 'FORBIDDEN').length;
-
+      const mem = memoryStore.getMosqueDetails(id);
       const fullMosque = {
         ...mapped,
-        fixedImamName,
-        preferencesCount,
-        forbiddenCount,
+        ...(mem || {}),
+        notes: data.notes !== undefined ? data.notes : (mem?.notes || mapped.notes),
+        street: data.street || mem?.street || '',
+        buildingNumber: data.buildingNumber || mem?.buildingNumber || '',
+        landmark: data.landmark || mem?.landmark || '',
       };
 
       memoryStore.updateMosque(id, fullMosque);
@@ -397,26 +386,14 @@ export const SupabaseDataService = {
         id: createdInMemory.id,
         name: data.name,
         code: data.code,
-        region: data.region || 'الوسط',
+        region: data.region || 'منشأة البكاري',
         address: data.formattedAddress || data.address || null,
-        formatted_address: data.formattedAddress || data.address || null,
         manager_name: data.managerName || null,
         phone: data.phone || null,
         whatsapp: data.whatsapp || data.phone || null,
         fixed_imam_id: data.fixedImamId ? Number(data.fixedImamId) : null,
-        fixed_pattern: data.fixedPattern || 'ALL',
-        fixed_count: data.fixedCount ? Number(data.fixedCount) : 0,
         is_active: data.isActive ?? true,
         notes: data.notes || null,
-        country_id: data.countryId || 1,
-        governorate_id: data.governorateId || 1,
-        district_id: data.districtId || 101,
-        area_id: data.areaId || 1001,
-        street: data.street || null,
-        building_number: data.buildingNumber || null,
-        landmark: data.landmark || null,
-        latitude: data.latitude ? String(data.latitude) : null,
-        longitude: data.longitude ? String(data.longitude) : null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
@@ -424,14 +401,12 @@ export const SupabaseDataService = {
       const { data: created, error } = await client
         .from('mosques')
         .upsert(dbPayload, { onConflict: 'id' })
-        .select()
-        .single();
+        .select();
 
-      if (error) {
-        console.warn('Supabase createMosque warning:', error.message);
+      if (error || !created || created.length === 0) {
         return createdInMemory;
       }
-      return mapDbMosque(created);
+      return mapDbMosque(created[0]);
     } catch (err: any) {
       console.warn('Supabase createMosque catch:', err.message);
       return createdInMemory;

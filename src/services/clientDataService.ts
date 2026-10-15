@@ -21,7 +21,19 @@ export function ensureCleanCache() {
 }
 
 export async function fetchMosquesResilient(): Promise<Mosque[]> {
-  // 1. Primary: Direct Supabase Cloud Query (authoritative source of truth)
+  // Read local cache first so local edits are never lost
+  const localCachedStr = localStorage.getItem('cached_mosques');
+  const localMap = new Map<number, Mosque>();
+  if (localCachedStr) {
+    try {
+      const arr: Mosque[] = JSON.parse(localCachedStr);
+      for (const m of arr) {
+        if (m && m.id) localMap.set(m.id, m);
+      }
+    } catch {}
+  }
+
+  // 1. Primary: Direct Supabase Cloud Query
   const client = getSupabaseClient();
   if (client) {
     try {
@@ -36,38 +48,47 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
         const rules = rRes.data || [];
 
         const list: Mosque[] = mRes.data.map((m: any) => {
+          const local = localMap.get(m.id);
           const mRules = rules.filter((r: any) => r.mosque_id === m.id);
+
           return {
             id: m.id,
-            name: m.name,
-            code: m.code,
-            region: m.region || 'منشأة البكاري',
-            address: m.address || 'منشأة البكاري، حي الهرم، محافظة الجيزة، جمهورية مصر العربية',
-            formattedAddress: m.address || 'منشأة البكاري، حي الهرم، محافظة الجيزة، جمهورية مصر العربية',
-            managerName: m.manager_name || '',
-            phone: m.phone || '',
-            whatsapp: m.whatsapp || m.phone || '',
-            fixedImamId: m.fixed_imam_id || null,
-            fixedImamName: m.fixed_imam_id ? imamMap.get(m.fixed_imam_id) || null : null,
-            fixedPattern: (m.fixed_pattern || (m.fixed_imam_id ? 'ALL' : undefined)) as any,
-            fixedCount: m.fixed_count ?? (m.fixed_imam_id ? 5 : 0),
-            preferencesCount: mRules.filter((r: any) => r.relationship_type === 'PREFERRED').length,
-            forbiddenCount: mRules.filter((r: any) => r.relationship_type === 'FORBIDDEN').length,
-            isActive: m.is_active ?? true,
-            notes: m.notes || '',
-            countryId: m.country_id || 1,
-            governorateId: m.governorate_id || 1,
-            districtId: m.district_id || 101,
-            areaId: m.area_id || 1001,
-            street: m.street || '',
-            buildingNumber: m.building_number || '',
-            landmark: m.landmark || '',
-            latitude: m.latitude || undefined,
-            longitude: m.longitude || undefined,
+            name: local?.name || m.name,
+            code: local?.code || m.code,
+            region: local?.region || m.region || 'منشأة البكاري',
+            address: local?.address || m.address || 'منشأة البكاري، حي الهرم، محافظة الجيزة، جمهورية مصر العربية',
+            formattedAddress: local?.formattedAddress || local?.address || m.address || 'منشأة البكاري، حي الهرم، محافظة الجيزة، جمهورية مصر العربية',
+            managerName: local?.managerName !== undefined && local.managerName !== '' ? local.managerName : (m.manager_name || ''),
+            phone: local?.phone !== undefined && local.phone !== '' ? local.phone : (m.phone || ''),
+            whatsapp: local?.whatsapp !== undefined && local.whatsapp !== '' ? local.whatsapp : (m.whatsapp || m.phone || ''),
+            fixedImamId: local?.fixedImamId !== undefined ? local.fixedImamId : (m.fixed_imam_id || null),
+            fixedImamName: (local?.fixedImamId || m.fixed_imam_id) ? imamMap.get(local?.fixedImamId || m.fixed_imam_id) || null : null,
+            fixedPattern: (local?.fixedPattern || m.fixed_pattern || (m.fixed_imam_id ? 'ALL' : undefined)) as any,
+            fixedCount: local?.fixedCount !== undefined ? local.fixedCount : (m.fixed_count ?? (m.fixed_imam_id ? 5 : 0)),
+            preferencesCount: local?.preferencesCount !== undefined ? local.preferencesCount : mRules.filter((r: any) => r.relationship_type === 'PREFERRED').length,
+            forbiddenCount: local?.forbiddenCount !== undefined ? local.forbiddenCount : mRules.filter((r: any) => r.relationship_type === 'FORBIDDEN').length,
+            isActive: local?.isActive !== undefined ? local.isActive : (m.is_active ?? true),
+            notes: local?.notes !== undefined && local.notes !== '' ? local.notes : (m.notes || ''),
+            countryId: local?.countryId || m.country_id || 1,
+            governorateId: local?.governorateId || m.governorate_id || 1,
+            districtId: local?.districtId !== undefined ? local.districtId : (m.district_id || 101),
+            areaId: local?.areaId !== undefined ? local.areaId : (m.area_id || 1001),
+            street: local?.street || m.street || '',
+            buildingNumber: local?.buildingNumber || m.building_number || '',
+            landmark: local?.landmark || m.landmark || '',
+            latitude: local?.latitude || m.latitude || undefined,
+            longitude: local?.longitude || m.longitude || undefined,
             createdAt: m.created_at,
-            updatedAt: m.updated_at,
+            updatedAt: local?.updatedAt || m.updated_at,
           };
         });
+
+        // Also preserve any newly added mosques from local cache that are not in remote yet
+        for (const [lId, lMosque] of localMap.entries()) {
+          if (!list.some((item) => item.id === lId)) {
+            list.push(lMosque);
+          }
+        }
 
         try { localStorage.setItem('cached_mosques', JSON.stringify(list)); } catch {}
         return list;
@@ -98,6 +119,17 @@ export async function fetchMosquesResilient(): Promise<Mosque[]> {
 }
 
 export async function fetchImamsResilient(): Promise<Imam[]> {
+  const localCachedStr = localStorage.getItem('cached_imams');
+  const localMap = new Map<number, Imam>();
+  if (localCachedStr) {
+    try {
+      const arr: Imam[] = JSON.parse(localCachedStr);
+      for (const i of arr) {
+        if (i && i.id) localMap.set(i.id, i);
+      }
+    } catch {}
+  }
+
   // 1. Primary: Direct Supabase Cloud Query
   const client = getSupabaseClient();
   if (client) {
@@ -109,29 +141,37 @@ export async function fetchImamsResilient(): Promise<Imam[]> {
       if (iRes.data && iRes.data.length > 0) {
         const dbAvails = avRes.data || [];
         const list: Imam[] = iRes.data.map((i: any) => {
+          const local = localMap.get(i.id);
           const excluded = new Set(
             dbAvails
               .filter((a: any) => a.imam_id === i.id && !a.is_available)
               .map((a: any) => a.friday_index)
           );
-          const availableFridays = [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
+          const availableFridays = local?.availableFridays || [1, 2, 3, 4, 5].filter((f) => !excluded.has(f));
           return {
             id: i.id,
-            name: i.name,
-            phone: i.phone || '',
-            whatsapp: i.whatsapp || i.phone || '',
-            type: (availableFridays.length === 5 ? (i.type || 'FLEXIBLE') : 'PARTIAL_FIXED') as any,
-            region: i.region || 'منشأة البكاري',
-            minFridays: Math.min(1, availableFridays.length),
-            maxFridays: availableFridays.length,
-            targetFridays: availableFridays.length,
+            name: local?.name || i.name,
+            phone: local?.phone !== undefined && local.phone !== '' ? local.phone : (i.phone || ''),
+            whatsapp: local?.whatsapp !== undefined && local.whatsapp !== '' ? local.whatsapp : (i.whatsapp || i.phone || ''),
+            type: local?.type || ((availableFridays.length === 5 ? (i.type || 'FLEXIBLE') : 'PARTIAL_FIXED') as any),
+            region: local?.region || i.region || 'منشأة البكاري',
+            minFridays: local?.minFridays !== undefined ? local.minFridays : Math.min(1, availableFridays.length),
+            maxFridays: local?.maxFridays !== undefined ? local.maxFridays : availableFridays.length,
+            targetFridays: local?.targetFridays !== undefined ? local.targetFridays : availableFridays.length,
             availableFridays,
-            isActive: i.is_active ?? true,
-            notes: i.notes || '',
+            isActive: local?.isActive !== undefined ? local.isActive : (i.is_active ?? true),
+            notes: local?.notes !== undefined && local.notes !== '' ? local.notes : (i.notes || ''),
             createdAt: i.created_at,
-            updatedAt: i.updated_at,
+            updatedAt: local?.updatedAt || i.updated_at,
           };
         });
+
+        for (const [lId, lImam] of localMap.entries()) {
+          if (!list.some((item) => item.id === lId)) {
+            list.push(lImam);
+          }
+        }
+
         try { localStorage.setItem('cached_imams', JSON.stringify(list)); } catch {}
         return list;
       }
@@ -263,33 +303,37 @@ export async function fetchSchedulesResilient(): Promise<MonthlySchedule[]> {
  * Direct Supabase Mutators for instant, multi-device real-time sync
  */
 export async function directUpdateMosque(id: number, data: Partial<Mosque>): Promise<void> {
+  // 1. Synchronously update local cache FIRST so local edits are instantly persistent
+  try {
+    const cachedStr = localStorage.getItem('cached_mosques');
+    if (cachedStr) {
+      const list = JSON.parse(cachedStr);
+      const idx = list.findIndex((m: any) => m.id === id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...data, updatedAt: new Date().toISOString() };
+        localStorage.setItem('cached_mosques', JSON.stringify(list));
+      }
+    }
+  } catch {}
+
+  // 2. Direct Supabase Cloud update (only columns that exist in Supabase mosques table)
   const client = getSupabaseClient();
   if (client) {
-    const dbPayload: any = {};
+    const dbPayload: any = {
+      updated_at: new Date().toISOString(),
+    };
     if (data.name !== undefined) dbPayload.name = data.name;
     if (data.code !== undefined) dbPayload.code = data.code;
     if (data.region !== undefined) dbPayload.region = data.region;
     if (data.address !== undefined || data.formattedAddress !== undefined) {
       dbPayload.address = data.formattedAddress || data.address || null;
-      dbPayload.formatted_address = data.formattedAddress || data.address || null;
     }
     if (data.managerName !== undefined) dbPayload.manager_name = data.managerName;
     if (data.phone !== undefined) dbPayload.phone = data.phone;
     if (data.whatsapp !== undefined) dbPayload.whatsapp = data.whatsapp;
     if (data.fixedImamId !== undefined) dbPayload.fixed_imam_id = data.fixedImamId ? Number(data.fixedImamId) : null;
-    if (data.fixedPattern !== undefined) dbPayload.fixed_pattern = data.fixedPattern;
-    if (data.fixedCount !== undefined) dbPayload.fixed_count = Number(data.fixedCount);
     if (data.notes !== undefined) dbPayload.notes = data.notes;
     if (data.isActive !== undefined) dbPayload.is_active = data.isActive;
-    if (data.countryId !== undefined) dbPayload.country_id = data.countryId;
-    if (data.governorateId !== undefined) dbPayload.governorate_id = data.governorateId;
-    if (data.districtId !== undefined) dbPayload.district_id = data.districtId;
-    if (data.areaId !== undefined) dbPayload.area_id = data.areaId;
-    if (data.street !== undefined) dbPayload.street = data.street;
-    if (data.buildingNumber !== undefined) dbPayload.building_number = data.buildingNumber;
-    if (data.landmark !== undefined) dbPayload.landmark = data.landmark;
-    if (data.latitude !== undefined) dbPayload.latitude = data.latitude ? String(data.latitude) : null;
-    if (data.longitude !== undefined) dbPayload.longitude = data.longitude ? String(data.longitude) : null;
 
     try {
       await client.from('mosques').update(dbPayload).eq('id', id);
@@ -298,20 +342,7 @@ export async function directUpdateMosque(id: number, data: Partial<Mosque>): Pro
     }
   }
 
-  // Update local cached_mosques in localStorage synchronously
-  try {
-    const cachedStr = localStorage.getItem('cached_mosques');
-    if (cachedStr) {
-      const list = JSON.parse(cachedStr);
-      const idx = list.findIndex((m: any) => m.id === id);
-      if (idx !== -1) {
-        list[idx] = { ...list[idx], ...data };
-        localStorage.setItem('cached_mosques', JSON.stringify(list));
-      }
-    }
-  } catch {}
-
-  // Also notify backend API
+  // 3. Notify backend API
   try {
     await fetchApi(`/api/mosques/${id}`, {
       method: 'PATCH',
@@ -383,6 +414,19 @@ export async function directUpdateImam(
   data: Partial<Imam>,
   availableFridays?: number[]
 ): Promise<void> {
+  // 1. Synchronously update local cache FIRST
+  try {
+    const cachedStr = localStorage.getItem('cached_imams');
+    if (cachedStr) {
+      const list = JSON.parse(cachedStr);
+      const idx = list.findIndex((i: any) => i.id === id);
+      if (idx !== -1) {
+        list[idx] = { ...list[idx], ...data, availableFridays, updatedAt: new Date().toISOString() };
+        localStorage.setItem('cached_imams', JSON.stringify(list));
+      }
+    }
+  } catch {}
+
   const client = getSupabaseClient();
   if (client) {
     const dbPayload: any = {
@@ -403,7 +447,6 @@ export async function directUpdateImam(
       await client.from('imams').update(dbPayload).eq('id', id);
 
       if (availableFridays && Array.isArray(availableFridays)) {
-        // Clear previous general availabilities for this imam
         await client.from('imam_availabilities').delete().eq('imam_id', id);
 
         const excluded = [1, 2, 3, 4, 5].filter((f) => !availableFridays.includes(f));

@@ -12386,5 +12386,46 @@
       "created_at": "2026-10-04T10:46:02.169553+00:00",
       "updated_at": "2026-10-06T03:53:00.849+00:00"
     }
+  ],
+  "conflicts": [],
+  "overrides": [],
+  "fixedAssignmentPatterns": [
+    {
+      "id": 1,
+      "mosqueId": 16,
+      "hijriYear": 1448,
+      "hijriMonth": 9,
+      "patternType": "SPECIFIC_FRIDAYS",
+      "fridaysCount": 4,
+      "isActive": true,
+      "notes": null,
+      "createdAt": "2026-10-15T22:09:35.354Z"
+    }
+  ],
+  "fixedAssignmentPatternItems": [
+    {
+      "id": 1,
+      "patternId": 1,
+      "fridayIndex": 1,
+      "imamId": 39,
+      "sequence": 1,
+      "notes": null
+    },
+    {
+      "id": 2,
+      "patternId": 1,
+      "fridayIndex": 2,
+      "imamId": 39,
+      "sequence": 2,
+      "notes": null
+    },
+    {
+      "id": 3,
+      "patternId": 1,
+      "fridayIndex": 3,
+      "imamId": 39,
+      "sequence": 3,
+      "notes": null
+    }
   ]
 }

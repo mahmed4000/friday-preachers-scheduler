@@ -361,6 +361,7 @@ export default function App() {
         try { localStorage.setItem('cached_mosques', JSON.stringify(next)); } catch {}
         return next;
       });
+      setEditingMosque(updatedMosque);
       // Broadcast event so active MosqueProfileView can immediately reload
       try {
         window.dispatchEvent(new CustomEvent('app:mosque-saved', { detail: updatedMosque }));
