@@ -733,40 +733,40 @@ export function MosqueProfileModal({
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">اسم المسجد *</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">اسم المسجد *</label>
                 <input
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="مثال: مسجد الرحمن الرحيم"
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  className="w-full text-xs font-semibold text-slate-900 p-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 placeholder:text-slate-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">كود المسجد *</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">كود المسجد *</label>
                 <input
                   type="text"
                   value={code}
                   onChange={(e) => setCode(e.target.value)}
                   placeholder="MSQ-01"
-                  className="w-full text-xs p-2.5 font-mono border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  className="w-full text-xs font-mono font-semibold text-slate-900 p-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 placeholder:text-slate-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">اسم المشرف / مسؤول المسجد</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">اسم المشرف / مسؤول المسجد</label>
                 <input
                   type="text"
                   value={managerName}
                   onChange={(e) => setManagerName(e.target.value)}
                   placeholder="الاسم الثلاثي"
-                  className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  className="w-full text-xs font-semibold text-slate-900 p-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 placeholder:text-slate-400"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 mb-1">رقم الهاتف / الواتساب</label>
+                <label className="block text-xs font-bold text-slate-800 mb-1">رقم الهاتف / الواتساب</label>
                 <input
                   type="text"
                   value={whatsapp || phone}
@@ -775,7 +775,7 @@ export function MosqueProfileModal({
                     setPhone(e.target.value);
                   }}
                   placeholder="01012345678"
-                  className="w-full text-xs p-2.5 font-mono border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                  className="w-full text-xs font-mono font-semibold text-slate-900 p-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 placeholder:text-slate-400 text-right"
                 />
               </div>
             </div>
@@ -809,17 +809,17 @@ export function MosqueProfileModal({
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
                 />
-                <span className="text-xs font-medium text-slate-800">المسجد نشط ويدخل في توزيع الجداول الشهرية</span>
+                <span className="text-xs font-bold text-slate-800">المسجد نشط ويدخل في توزيع الجداول الشهرية</span>
               </label>
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">ملاحظات إضافية</label>
+              <label className="block text-xs font-bold text-slate-800 mb-1">ملاحظات إضافية</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
-                className="w-full text-xs p-2.5 border border-slate-200 rounded-lg focus:outline-none focus:border-emerald-600"
+                className="w-full text-xs font-semibold text-slate-900 p-2.5 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-600 placeholder:text-slate-400"
                 placeholder="سعة المسجد، أوقات معينة، أي شروط خاصة..."
               />
             </div>

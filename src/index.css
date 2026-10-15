@@ -28,6 +28,19 @@
     font-family: 'Cairo', 'Tajawal', 'Alexandria', system-ui, sans-serif;
     letter-spacing: -0.02em;
   }
+
+  /* Ensure all form inputs, textareas, and selects default to clear, visible dark text */
+  input,
+  textarea,
+  select {
+    color: #0f172a;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #94a3b8;
+    opacity: 1;
+  }
 }
 
 .font-amiri {

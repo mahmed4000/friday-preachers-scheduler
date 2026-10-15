@@ -332,7 +332,7 @@ export function EgyptianAddressSelector({
               emitChange({ street: e.target.value });
             }}
             placeholder="مثال: شارع الجمعية الشرعية الرئيسي / شارع داير الناحية"
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
           />
         </div>
 
@@ -346,7 +346,7 @@ export function EgyptianAddressSelector({
               emitChange({ buildingNumber: e.target.value });
             }}
             placeholder="مثال: 12"
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs text-center"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs text-center"
           />
         </div>
 
@@ -360,7 +360,7 @@ export function EgyptianAddressSelector({
               emitChange({ landmark: e.target.value });
             }}
             placeholder="مثال: بجوار مجمع المعاهد الأزهرية"
-            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+            className="w-full bg-white border border-slate-300 rounded-lg px-3 py-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
           />
         </div>
       </div>
@@ -381,7 +381,7 @@ export function EgyptianAddressSelector({
                 emitChange({ latitude: e.target.value });
               }}
               placeholder="مثال: 30.0125"
-              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400"
             />
           </div>
 
@@ -398,7 +398,7 @@ export function EgyptianAddressSelector({
                 emitChange({ longitude: e.target.value });
               }}
               placeholder="مثال: 31.1412"
-              className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-mono text-slate-800"
+              className="w-full bg-white border border-slate-300 rounded-lg px-2.5 py-1.5 text-xs font-mono font-semibold text-slate-900 placeholder:text-slate-400"
             />
           </div>
         </div>

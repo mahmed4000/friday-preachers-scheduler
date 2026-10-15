@@ -703,7 +703,16 @@ export function PublishingCenterView({
                             {mosque.name}
                           </span>
                           <span className="text-xs text-slate-500">
-                            {mosque.region} · {mosque.address || ''}
+                            {(() => {
+                              const fullAddr = (mosque.formattedAddress || mosque.address || '').trim();
+                              const reg = (mosque.region || '').trim();
+                              if (!fullAddr) return reg || 'منشأة البكاري';
+                              if (!reg) return fullAddr;
+                              if (fullAddr.includes(reg)) {
+                                return fullAddr;
+                              }
+                              return `${reg} · ${fullAddr}`;
+                            })()}
                           </span>
                         </div>
                       ) : (
