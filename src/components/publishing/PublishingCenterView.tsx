@@ -677,9 +677,10 @@ export function PublishingCenterView({
                 return (
                   <div
                     key={f.id}
-                    className="p-3.5 rounded-xl border border-[#e8dfcf] bg-white/95 flex items-center justify-between shadow-2xs"
+                    className="p-3.5 rounded-xl border border-[#e8dfcf] bg-white/95 flex items-center justify-between gap-4 shadow-2xs"
                   >
-                    <div className="flex items-center gap-3">
+                    {/* Right column: Star number & Friday Dates */}
+                    <div className="flex items-center gap-3 shrink-0 w-44 sm:w-48 text-right">
                       <IslamicStarNumber number={i + 1} />
                       <div>
                         <span className="text-xs font-bold text-[#103b2c] font-heading block">
@@ -689,20 +690,21 @@ export function PublishingCenterView({
                           {f.hijriDate}
                         </span>
                         {f.gregorianDate && (
-                          <span className="text-[10px] text-slate-400 font-mono">
+                          <span className="text-[10px] text-slate-400 font-mono block">
                             {f.gregorianDate}
                           </span>
                         )}
                       </div>
                     </div>
 
-                    <div className="text-left">
+                    {/* Center column: Mosque name & Address in the middle */}
+                    <div className="flex-1 text-center px-2">
                       {mosque ? (
-                        <div>
-                          <span className="text-sm font-bold text-slate-900 font-heading block">
+                        <div className="space-y-0.5">
+                          <span className="text-sm sm:text-base font-black text-slate-900 font-heading block">
                             {mosque.name}
                           </span>
-                          <span className="text-xs text-slate-500">
+                          <span className="text-[11px] sm:text-xs text-slate-600 block leading-relaxed max-w-md mx-auto">
                             {(() => {
                               const fullAddr = (mosque.formattedAddress || mosque.address || '').trim();
                               const reg = (mosque.region || '').trim();
@@ -716,7 +718,22 @@ export function PublishingCenterView({
                           </span>
                         </div>
                       ) : (
-                        <span className="text-xs text-slate-400 italic">راحة / غير مكلف</span>
+                        <span className="text-xs text-slate-500 font-medium italic">
+                          راحة / غير مكلف بخطبة هذه الجمعة
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Left column: Status Badge / Indicator */}
+                    <div className="shrink-0 w-24 sm:w-28 text-left flex justify-end">
+                      {mosque ? (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300 text-[11px] font-bold shadow-2xs">
+                          تكليف بالخطابة
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 border border-slate-200 text-[11px] font-medium">
+                          راحة
+                        </span>
                       )}
                     </div>
                   </div>
