@@ -25,7 +25,7 @@ import {
 import { eq, desc, asc, and, or, ilike, ne, inArray } from 'drizzle-orm';
 import { SchedulingEngine } from '../services/schedulingEngine.ts';
 import { seedDatabase, clearAllDatabaseData } from '../db/seed.ts';
-import { optionalAuth, AuthRequest } from '../middleware/auth.ts';
+import { requireAuth, AuthRequest } from '../middleware/auth.ts';
 import { DEFAULT_ORGANIZATION_SETTINGS, DEFAULT_SHARIA_LOGO } from '../lib/defaultLogo.ts';
 import { OrganizationSettings } from '../types/index.ts';
 import { CalendarService } from '../services/calendar/calendarService.ts';
@@ -58,7 +58,8 @@ if (SupabaseDataService.isAvailable()) {
 const api = express.Router({ mergeParams: true });
 api.use(express.json({ limit: '50mb' }));
 api.use(express.urlencoded({ limit: '50mb', extended: true }));
-api.use(optionalAuth);
+// كل المسارات محتاجة جلسة مسؤول، ما عدا فحص الحالة
+api.use((req, res, next) => (req.path === '/health' ? next() : requireAuth(req as AuthRequest, res, next)));
 
 // In-memory / persistent organization settings cache
 let cachedOrganizationSettings: OrganizationSettings = {

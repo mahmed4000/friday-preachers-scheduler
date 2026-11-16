@@ -595,7 +595,6 @@ export default function App() {
               activeTitle={headerInfo.title}
               activeSubtitle={headerInfo.subtitle}
               onOpenWizard={() => setIsWizardOpen(true)}
-              onResetDemo={handleResetDemo}
               onOpenSettings={() => setCurrentTab('settings')}
               onOpenCloud={() => setCurrentTab('cloud')}
               onToggleMobileMenu={() => setIsMobileMenuOpen((prev) => !prev)}
