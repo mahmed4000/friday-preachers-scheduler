@@ -4,6 +4,7 @@ import App from './App.tsx';
 import { StoreProvider } from './data/store.tsx';
 import { ConfirmProvider } from './ui/confirm.tsx';
 import { PortalPage } from './pages/Portal.tsx';
+import { AuthGate } from './auth/AuthGate.tsx';
 import './index.css';
 
 // صفحة الخطيب (/p/<الرابط الخاص>) مستقلة تمامًا عن صفحات المسؤول
@@ -14,11 +15,13 @@ createRoot(document.getElementById('root')!).render(
     {portalMatch ? (
       <PortalPage token={portalMatch[1]} />
     ) : (
-      <StoreProvider>
-        <ConfirmProvider>
-          <App />
-        </ConfirmProvider>
-      </StoreProvider>
+      <AuthGate>
+        <StoreProvider>
+          <ConfirmProvider>
+            <App />
+          </ConfirmProvider>
+        </StoreProvider>
+      </AuthGate>
     )}
   </StrictMode>
 );
