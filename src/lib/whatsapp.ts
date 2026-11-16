@@ -2,8 +2,8 @@
 
 /** 01xxxxxxxxx → 201xxxxxxxxx */
 export function normalizePhone(phone: string): string {
-  let p = (phone || '').replace(/[^\d+]/g, '').replace(/^\+/, '');
-  p = p.replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  let p = (phone || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  p = p.replace(/[^\d+]/g, '').replace(/^\+/, '');
   if (p.startsWith('00')) p = p.slice(2);
   if (p.startsWith('0') && p.length === 11) p = `2${p}`;
   if (p.length === 10 && p.startsWith('1')) p = `20${p}`;

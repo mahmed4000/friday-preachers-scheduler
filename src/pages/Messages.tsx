@@ -1,13 +1,85 @@
 import { useMemo, useState } from 'react';
-import { BellRing, Check, Copy, Landmark, MessageCircle, PhoneOff, Users } from 'lucide-react';
+import { BellRing, Check, Copy, FileDown, FileText, Landmark, Loader2, MessageCircle, PhoneOff, Users } from 'lucide-react';
 import { useStore } from '../data/store.tsx';
 import type { Assignment, Month } from '../data/types.ts';
-import { Button, Card, Empty, PageTitle, Select, StatusPill, Tag, clsx } from '../ui/kit.tsx';
+import { Button, Card, Empty, Modal, PageTitle, Select, StatusPill, Tag, clsx } from '../ui/kit.tsx';
 import { byId, currentMonth, fridaysOf, monthAssignments, nextFriday, sortMonths } from '../data/selectors.ts';
 import { diffDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthTitle, todayIso } from '../lib/hijri.ts';
 import { isValidPhone, portalUrl, waLink } from '../lib/whatsapp.ts';
 import { monthMessage, mosqueMessage, reminderMessage } from '../lib/messages.ts';
 import { queryParam } from '../lib/router.ts';
+import { canShareFiles, downloadAndOpenChat, downloadBlob, mosquePdf, preacherPdf, shareFile, type PdfFile } from '../lib/schedulePdf.ts';
+
+/** زرار PDF: على الموبايل بيفتح المشاركة بالملف (واتساب)، وعلى الكمبيوتر بينزّله ويفتح المحادثة */
+function PdfButton({ build, phone, onSent }: { build: () => Promise<PdfFile>; phone: string; onSent?: () => void }) {
+  const { toast } = useStore();
+  const [busy, setBusy] = useState(false);
+  const [ready, setReady] = useState<PdfFile | null>(null);
+
+  const go = async () => {
+    const mobile = canShareFiles();
+    // لازم نفتح النافذة قبل أي انتظار، وإلا المتصفح بيمنعها
+    const win = !mobile && phone ? window.open('about:blank', '_blank') : null;
+    setBusy(true);
+    try {
+      const file = await build();
+      if (mobile) {
+        const r = await shareFile(file);
+        if (r === 'shared') onSent?.();
+        if (r === 'needs-tap') setReady(file);
+      } else if (phone) {
+        downloadAndOpenChat(file, phone, win);
+        onSent?.();
+        toast('الملف اتنزل. اسحبه جوه محادثة الواتساب اللي اتفتحت.');
+      } else {
+        downloadBlob(file.blob, file.filename);
+        toast('اتنزل ملف الـ PDF');
+      }
+    } catch (e) {
+      win?.close();
+      toast(`ما قدرتش أعمل الملف: ${e instanceof Error ? e.message : ''}`, 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={go}
+        disabled={busy}
+        title="ملف PDF بالجدول، يتبعت على واتساب"
+        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold border bg-brown-800 text-gold-200 border-brown-900 hover:bg-brown-700 disabled:opacity-60 cursor-pointer"
+      >
+        {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+        PDF
+      </button>
+      {ready && (
+        <Modal open title="الملف جاهز" onClose={() => setReady(null)}>
+          <p className="text-sm text-muted mb-4">{ready.filename}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              className="flex-1"
+              onClick={async () => {
+                const r = await shareFile(ready).catch(() => 'cancelled' as const);
+                if (r === 'shared') onSent?.();
+                if (r !== 'needs-tap') setReady(null);
+              }}
+            >
+              <MessageCircle className="w-4 h-4" />
+              ابعته على واتساب
+            </Button>
+            <Button variant="outline" onClick={() => { downloadBlob(ready.blob, ready.filename); setReady(null); }}>
+              <FileDown className="w-4 h-4" />
+              تنزيل
+            </Button>
+          </div>
+        </Modal>
+      )}
+    </>
+  );
+}
 
 type Tab = 'month' | 'reminder' | 'mosques';
 
@@ -19,6 +91,7 @@ function Row({
   sent,
   onSent,
   extra,
+  pdf,
 }: {
   title: string;
   subtitle: React.ReactNode;
@@ -27,6 +100,7 @@ function Row({
   sent: boolean;
   onSent?: () => void;
   extra?: React.ReactNode;
+  pdf?: () => Promise<PdfFile>;
 }) {
   const { toast } = useStore();
   const hasPhone = phone && isValidPhone(phone);
@@ -49,6 +123,7 @@ function Row({
         <div className="text-[13px] text-muted mt-0.5">{subtitle}</div>
       </div>
       <div className="flex gap-1.5">
+        {pdf && <PdfButton build={pdf} phone={hasPhone ? phone : ''} onSent={onSent} />}
         <Button size="sm" variant="ghost" onClick={copy} title="نسخ نص الرسالة">
           <Copy className="w-4 h-4" />
         </Button>
@@ -175,7 +250,8 @@ export function MessagesPage() {
               .sort((x, y) => x.friday_index - y.friday_index)
               .map((a) => {
                 const fr = f.find((x) => x.index === a.friday_index)!;
-                return { fridayIndex: a.friday_index, date: fr.date, hijriDay: fr.hijriDay, preacher: preachers.get(a.preacher_id!)?.name ?? '' };
+                const pr = preachers.get(a.preacher_id!);
+                return { fridayIndex: a.friday_index, date: fr.date, hijriDay: fr.hijriDay, preacher: pr?.name ?? '', phone: pr?.phone ?? '' };
               });
             if (!rows.length) return null;
             return (
@@ -186,6 +262,7 @@ export function MessagesPage() {
                 phone={m.phone}
                 text={mosqueMessage(m.name, month, rows, org)}
                 sent={false}
+                pdf={() => mosquePdf(data.settings, month, m.name, rows)}
               />
             );
           })}
@@ -217,6 +294,7 @@ export function MessagesPage() {
               text={monthMessage(g.preacher.name, month, g.items, portalUrl(g.preacher.portal_token), org)}
               sent={g.rows.every((r) => r.notified_at)}
               onSent={() => markSent(g.rows, 'notified_at')}
+              pdf={() => preacherPdf(data.settings, month, g.preacher.name, g.items, portalUrl(g.preacher.portal_token))}
             />
           ))}
         </ul>
