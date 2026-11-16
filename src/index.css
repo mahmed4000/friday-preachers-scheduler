@@ -1,0 +1,111 @@
+@import "tailwindcss";
+
+/* الهوية: بني وذهبي بطابع إسلامي. خط أميري للعناوين، و IBM Plex Sans Arabic للنصوص. */
+@theme {
+  --font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --font-display: 'Amiri', 'Traditional Arabic', serif;
+
+  --color-ink: #2b1d12;
+  --color-muted: #7a6650;
+  --color-parchment: #f7f0e3;
+  --color-paper: #fffcf6;
+  --color-sand: #e9dcc3;
+  --color-sand-dark: #d6c3a0;
+
+  --color-brown-950: #1f130a;
+  --color-brown-900: #2f1d10;
+  --color-brown-800: #452a16;
+  --color-brown-700: #63401f;
+  --color-brown-600: #84582d;
+  --color-brown-100: #f1e6d6;
+
+  --color-gold-200: #f3e5bf;
+  --color-gold-300: #e8cf8f;
+  --color-gold-400: #d8b45f;
+  --color-gold-500: #c39a3c;
+  --color-gold-600: #9f7a25;
+  --color-gold-700: #7c5d18;
+
+  --color-ok: #2f6b3a;
+  --color-ok-soft: #e4efe3;
+  --color-wait: #a8701a;
+  --color-wait-soft: #f8ecd2;
+  --color-bad: #a2382a;
+  --color-bad-soft: #f6e0db;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    @apply bg-parchment text-ink font-sans antialiased;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    line-height: 1.35;
+    text-wrap: balance;
+  }
+  input, select, textarea, button {
+    font: inherit;
+    color: inherit;
+  }
+  ::selection {
+    background: var(--color-gold-300);
+    color: var(--color-brown-950);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold-500);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* زخرفة: نجمة ثمانية متكررة (خاتم سليمان) بخط ذهبي خفيف */
+.pattern-stars {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23d8b45f' stroke-width='1'%3E%3Crect x='16' y='16' width='24' height='24'/%3E%3Crect x='16' y='16' width='24' height='24' transform='rotate(45 28 28)'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Cpath d='M0 0l8 8M56 0l-8 8M0 56l8-8M56 56l-8-8'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 56px 56px;
+}
+
+/* إطار مزدوج ذهبي للعناوين المهمة */
+.frame-gold {
+  border: 1px solid var(--color-gold-400);
+  box-shadow: inset 0 0 0 3px var(--color-paper), inset 0 0 0 4px var(--color-gold-300);
+}
+
+/* فاصل زخرفي بنجمة في النص */
+.ornament {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-gold-500);
+}
+.ornament::before,
+.ornament::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to left, transparent, var(--color-gold-400), transparent);
+}
+
+/* قوس المحراب أعلى الكروت المميزة */
+.arch-top {
+  border-top-left-radius: 999px 120px;
+  border-top-right-radius: 999px 120px;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff; font-size: 12px; }
+  .print-area { box-shadow: none !important; border: none !important; }
+  @page { size: A4 landscape; margin: 10mm; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
