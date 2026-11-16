@@ -15,7 +15,6 @@ import {
 } from 'lucide-react';
 import { Button } from '../ui/Button.tsx';
 import { useTheme } from '../../context/ThemeContext.tsx';
-import { signOut } from '../../auth/session.ts';
 
 interface HeaderProps {
   activeTitle: string;
@@ -246,7 +245,7 @@ export function Header({
                 <button
                   onClick={() => {
                     setIsUserMenuOpen(false);
-                    signOut().finally(() => window.location.reload());
+                    window.location.reload();
                   }}
                   className="w-full px-4 py-2 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center gap-2.5 transition-colors cursor-pointer text-xs font-semibold"
                 >

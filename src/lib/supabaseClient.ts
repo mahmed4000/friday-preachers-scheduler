@@ -55,32 +55,9 @@ export const isSupabaseConfigured = Boolean(
 
 let cachedClient: SupabaseClient | null = null;
 
-// على السيرفر: بيرجع توكن المسؤول صاحب الطلب الحالي (بيتسجّل من src/server/requestContext.ts).
-// كده طلبات السيرفر لـ Supabase بتعدّي على سياسات الحماية بصلاحية المسؤول، من غير مفتاح service role.
-let serverTokenResolver: (() => string | undefined) | null = null;
-const tokenClients = new Map<string, SupabaseClient>();
-
-export function setServerTokenResolver(fn: () => string | undefined) {
-  serverTokenResolver = fn;
-}
-
 export function getSupabaseClient(): SupabaseClient | null {
   if (!isSupabaseConfigured) {
     return null;
-  }
-  const usingServiceRole = typeof process !== 'undefined' && Boolean(process.env?.SUPABASE_SERVICE_ROLE_KEY);
-  const requestToken = !usingServiceRole && serverTokenResolver ? serverTokenResolver() : undefined;
-  if (requestToken) {
-    let c = tokenClients.get(requestToken);
-    if (!c) {
-      if (tokenClients.size > 50) tokenClients.clear();
-      c = createClient(supabaseUrl, supabaseKey, {
-        auth: { persistSession: false, autoRefreshToken: false },
-        global: { headers: { Authorization: `Bearer ${requestToken}` } },
-      });
-      tokenClients.set(requestToken, c);
-    }
-    return c;
   }
   if (!cachedClient) {
     cachedClient = createClient(supabaseUrl, supabaseKey, {
