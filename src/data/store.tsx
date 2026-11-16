@@ -8,7 +8,11 @@ const MODE_KEY = 'fs_mode';
 
 export function isDemoMode(): boolean {
   try {
-    return new URLSearchParams(location.search).has('demo') || localStorage.getItem(MODE_KEY) === 'demo';
+    if (new URLSearchParams(location.search).has('demo')) {
+      localStorage.setItem(MODE_KEY, 'demo');
+      return true;
+    }
+    return localStorage.getItem(MODE_KEY) === 'demo';
   } catch {
     return false;
   }
