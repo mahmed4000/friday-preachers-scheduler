@@ -12,6 +12,7 @@ import {
   Moon,
   Sun,
   Menu,
+  ClipboardList,
 } from 'lucide-react';
 import { Button } from '../ui/Button.tsx';
 import { useTheme } from '../../context/ThemeContext.tsx';
@@ -110,6 +111,17 @@ export function Header({
             <span>تهيئة البيانات</span>
           </button>
         )}
+
+        <a
+          href="/survey"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs font-bold text-amber-200 hover:text-white bg-emerald-900/60 hover:bg-emerald-800/80 rounded-lg transition-colors border border-amber-400/50 shrink-0"
+          title="استبيان طريقة توزيع الخطباء"
+        >
+          <ClipboardList className="w-3.5 h-3.5 text-amber-400" />
+          <span>الاستبيان</span>
+        </a>
 
         <button
           onClick={onOpenWizard}
