@@ -6,7 +6,7 @@ import { Button, Card, Empty, PageTitle, Select, Stat, clsx } from '../ui/kit.ts
 import { byId, currentMonth, fridaysOf, monthAssignments, sortMonths } from '../data/selectors.ts';
 import { fridayOrdinal, gregShort, monthTitle } from '../lib/hijri.ts';
 import { downloadWorkbook } from '../lib/excel.ts';
-import { queryParam } from '../lib/router.ts';
+import { queryParam, printPage } from '../lib/router.ts';
 
 export function ReportPage() {
   const { data, toast } = useStore();
@@ -90,7 +90,7 @@ export function ReportPage() {
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
             <Button variant="gold" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4" />تصدير إكسل</Button>
-            <Button variant="outline" onClick={() => window.print()}><Printer className="w-4 h-4" />طباعة</Button>
+            <Button variant="outline" onClick={printPage}><Printer className="w-4 h-4" />طباعة</Button>
           </>
         }
       />

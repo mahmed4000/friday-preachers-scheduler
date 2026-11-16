@@ -26,3 +26,8 @@ export function usePath(): string {
 export function queryParam(name: string): string | null {
   return new URLSearchParams(location.search).get(name);
 }
+
+/** نافذة الطباعة بتوقف الصفحة لحد ما تتقفل، فبنفتحها بعد ما الزرار يخلص ويترسم */
+export function printPage() {
+  requestAnimationFrame(() => setTimeout(() => window.print(), 30));
+}

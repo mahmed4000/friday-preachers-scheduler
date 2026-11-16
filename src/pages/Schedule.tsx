@@ -7,7 +7,7 @@ import { useConfirm } from '../ui/confirm.tsx';
 import { byId, currentMonth, engineInput, fridaysOf, monthAssignments, sortMonths, unavailableSet } from '../data/selectors.ts';
 import { generate, neededFridays } from '../lib/engine.ts';
 import { addDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthFridays, monthTitle, nextHijriMonth, todayIso, umalqura, umalquraMonth, HIJRI_MONTHS } from '../lib/hijri.ts';
-import { navigate, queryParam } from '../lib/router.ts';
+import { navigate, queryParam, printPage } from '../lib/router.ts';
 import { AssignmentModal } from './AssignmentModal.tsx';
 
 // ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ export function SchedulePage() {
             <Settings2 className="w-4 h-4" />
             بداية الشهر
           </Button>
-          <Button variant="outline" onClick={() => window.print()}>
+          <Button variant="outline" onClick={printPage}>
             <Printer className="w-4 h-4" />
             طباعة
           </Button>
