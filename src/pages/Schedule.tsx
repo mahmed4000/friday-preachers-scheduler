@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CalendarPlus, CircleSlash, Lock, Printer, Send, Settings2, Sparkles, UserX, Wand2 } from 'lucide-react';
+import { CalendarPlus, Lock, Plus, Printer, Send, Settings2, Sparkles, UserX, Wand2 } from 'lucide-react';
 import { useStore } from '../data/store.tsx';
 import type { Assignment, Month } from '../data/types.ts';
 import { Button, Card, Choice, Empty, Field, Input, Modal, PageTitle, Select, StatusPill, Tag, clsx, normalizeAr } from '../ui/kit.tsx';
@@ -311,36 +311,59 @@ export function SchedulePage() {
     );
   }
 
-  const CellButton = ({ mosqueId, fi, compact = false }: { mosqueId: number; fi: number; compact?: boolean }) => {
+  const CellButton = ({ mosqueId, fi, row = false }: { mosqueId: number; fi: number; row?: boolean }) => {
     const a = cell(mosqueId, fi);
     const p = a?.preacher_id ? preachers.get(a.preacher_id) : null;
     const problem = a?.status === 'excused' || Boolean(p && unavail.has(`${p.id}:${fi}`));
+    const mosque = mosques.find((m) => m.id === mosqueId);
+    const lock = a?.source === 'fixed' ? <Lock className="w-3 h-3 text-gold-600 shrink-0" aria-label="ثابت" /> : a?.locked ? <Lock className="w-3 h-3 text-muted shrink-0" aria-label="مثبت" /> : null;
+
+    if (row) {
+      return (
+        <button
+          onClick={() => setSlot({ mosqueId, fridayIndex: fi })}
+          className={clsx('w-full text-right flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors active:bg-brown-50', problem && 'bg-bad-soft/50')}
+        >
+          <span className="flex-1 min-w-0">
+            <span className="block text-[12.5px] text-muted truncate">{mosque?.name}</span>
+            {p ? (
+              <span className={clsx('flex items-center gap-1.5 text-[15px] font-medium text-ink', a?.status === 'excused' && 'line-through text-bad')}>
+                {lock}
+                <span className="truncate">{p.name}</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1.5 text-[14px] text-gold-700 font-medium"><Plus className="w-4 h-4" />اختار خطيب</span>
+            )}
+          </span>
+          {p && <StatusPill status={a!.status} />}
+        </button>
+      );
+    }
+
     return (
       <button
         onClick={() => setSlot({ mosqueId, fridayIndex: fi })}
         className={clsx(
-          'w-full text-right rounded-lg border px-2.5 py-2 transition cursor-pointer group',
-          !p ? 'border-dashed border-sand-dark bg-parchment/60 text-muted hover:border-gold-500' : 'bg-white border-sand hover:border-gold-500 hover:shadow-sm',
-          problem && 'border-bad/50 bg-bad-soft/50',
-          compact ? 'min-h-[52px]' : 'min-h-[58px]'
+          'w-full min-h-[60px] text-right rounded-xl border px-3 py-2 transition cursor-pointer',
+          !p ? 'border-dashed border-sand-dark bg-transparent text-muted hover:border-gold-500 hover:text-gold-700 hover:bg-gold-200/20' : 'bg-white border-sand hover:border-gold-400 hover:shadow-[0_2px_8px_rgba(35,26,18,0.06)]',
+          problem && '!border-bad/40 !bg-bad-soft/40'
         )}
       >
         {p ? (
           <>
-            <span className="flex items-center gap-1 font-semibold text-[14px] text-brown-900 leading-snug">
-              {a?.source === 'fixed' && <Lock className="w-3 h-3 text-gold-600 shrink-0" aria-label="ثابت" />}
-              {a?.locked && a.source !== 'fixed' && <Lock className="w-3 h-3 text-brown-600 shrink-0" aria-label="مثبت" />}
+            <span className="flex items-center gap-1 font-medium text-[14px] text-ink leading-snug">
+              {lock}
               <span className={clsx('truncate', a?.status === 'excused' && 'line-through text-bad')}>{p.name}</span>
             </span>
-            <span className="flex items-center gap-1 mt-1">
-              <StatusPill status={a!.status} className="!text-[11px] !px-1.5" />
-              {a?.status === 'excused' && <span className="text-[11px] text-bad font-semibold">محتاج بديل</span>}
+            <span className="flex items-center gap-1.5 mt-1.5">
+              <StatusPill status={a!.status} className="!h-5 !px-2 !text-[11px]" />
+              {a?.status === 'excused' && <span className="text-[11px] text-bad font-medium">محتاج بديل</span>}
             </span>
           </>
         ) : (
-          <span className="flex items-center gap-1 text-[13px]">
-            <CircleSlash className="w-3.5 h-3.5" />
-            فاضي، دوس للاختيار
+          <span className="flex items-center justify-center gap-1 text-[13px] h-full min-h-[42px]">
+            <Plus className="w-4 h-4" />
+            اختار
           </span>
         )}
       </button>
@@ -359,7 +382,7 @@ export function SchedulePage() {
         }
         actions={
           <>
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto font-display text-lg !py-1.5">
+            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
             <Button variant="outline" onClick={() => setModal('new')}><CalendarPlus className="w-4 h-4" />شهر جديد</Button>
@@ -368,47 +391,58 @@ export function SchedulePage() {
       />
 
       {/* الشريط: الإحصائيات والأوامر */}
-      <div className="bg-paper border border-sand rounded-xl p-3 sm:p-4 mb-4 no-print">
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm mb-3">
-          <span><b className="tabular text-brown-900 text-base">{filled}</b> من <span className="tabular">{totalSlots}</span> مكان متغطي</span>
-          <span className="text-ok"><b className="tabular">{confirmed}</b> مؤكد</span>
-          <span className="text-wait"><b className="tabular">{filled - confirmed}</b> منتظر</span>
-          {excused > 0 && <span className="text-bad font-semibold"><b className="tabular">{excused}</b> معتذر محتاج بديل</span>}
+      <div className="bg-paper border border-sand rounded-2xl mb-5 no-print shadow-[0_1px_2px_rgba(35,26,18,0.04)] overflow-hidden">
+        <div className="grid grid-cols-4 gap-px bg-sand border-b border-sand">
+          {[
+            { label: 'متغطي', value: `${filled}/${totalSlots}`, cls: 'text-brown-900' },
+            { label: 'مؤكد', value: confirmed, cls: 'text-ok' },
+            { label: 'منتظر', value: filled - confirmed, cls: 'text-wait' },
+            { label: 'محتاج بديل', value: excused, cls: excused ? 'text-bad' : 'text-muted' },
+          ].map((x) => (
+            <div key={x.label} className="bg-paper px-3 sm:px-4 py-2.5 sm:py-3">
+              <div className="text-[11.5px] sm:text-[12px] text-muted truncate">{x.label}</div>
+              <div className={clsx('font-display text-lg sm:text-xl font-bold tabular leading-tight', x.cls)}>{x.value}</div>
+            </div>
+          ))}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="gold" onClick={askDistribution} disabled={busy || !mosques.length || !data.preachers.length}>
-            <Wand2 className="w-4 h-4" />
-            {assignments.some((a) => a.preacher_id) ? 'وزّع من جديد' : 'وزّع تلقائي'}
-          </Button>
-          {assignments.some((a) => a.preacher_id) && filled < totalSlots && (
-            <Button variant="outline" onClick={() => runDistribution('fill')} disabled={busy}>
-              <Sparkles className="w-4 h-4" />
-              املا الفاضي
+        <div className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="grid grid-cols-2 sm:flex gap-2">
+            <Button variant="gold" onClick={askDistribution} disabled={busy || !mosques.length || !data.preachers.length}>
+              <Wand2 className="w-4 h-4" />
+              {assignments.some((a) => a.preacher_id) ? 'وزّع من جديد' : 'وزّع تلقائي'}
             </Button>
-          )}
-          <Button variant="outline" onClick={() => setModal('unavail')}>
-            <UserX className="w-4 h-4" />
-            اعتذارات الشهر
-          </Button>
-          <Button variant="outline" onClick={() => setModal('settings')}>
-            <Settings2 className="w-4 h-4" />
-            بداية الشهر
-          </Button>
-          <Button variant="outline" onClick={printPage}>
-            <Printer className="w-4 h-4" />
-            طباعة
-          </Button>
-          {month.status === 'draft' ? (
-            <Button onClick={publish} disabled={!filled} className="sm:mr-auto">
-              <Send className="w-4 h-4" />
-              نشر الجدول
+            {month.status === 'draft' ? (
+              <Button onClick={publish} disabled={!filled}>
+                <Send className="w-4 h-4" />
+                نشر الجدول
+              </Button>
+            ) : (
+              <Button onClick={() => navigate(`/messages?month=${month.id}`)}>
+                <Send className="w-4 h-4" />
+                إرسال للخطباء
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 sm:mr-auto pb-0.5">
+            {assignments.some((a) => a.preacher_id) && filled < totalSlots && (
+              <Button size="sm" variant="outline" onClick={() => runDistribution('fill')} disabled={busy}>
+                <Sparkles className="w-4 h-4" />
+                املا الفاضي
+              </Button>
+            )}
+            <Button size="sm" variant="outline" onClick={() => setModal('unavail')}>
+              <UserX className="w-4 h-4" />
+              اعتذارات الشهر
             </Button>
-          ) : (
-            <Button onClick={() => navigate(`/messages?month=${month.id}`)} className="sm:mr-auto">
-              <Send className="w-4 h-4" />
-              إرسال للخطباء
+            <Button size="sm" variant="outline" onClick={() => setModal('settings')}>
+              <Settings2 className="w-4 h-4" />
+              بداية الشهر
             </Button>
-          )}
+            <Button size="sm" variant="outline" onClick={printPage}>
+              <Printer className="w-4 h-4" />
+              طباعة
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -425,15 +459,15 @@ export function SchedulePage() {
           </div>
 
           {/* جدول (كمبيوتر وطباعة) */}
-          <div className="hidden md:block print:block bg-paper border border-sand rounded-xl overflow-x-auto print-area">
+          <div className="hidden md:block print:block bg-paper border border-sand rounded-2xl overflow-x-auto print-area shadow-[0_1px_2px_rgba(35,26,18,0.04)]">
             <table className="w-full border-collapse min-w-[720px]">
               <thead>
-                <tr className="bg-brown-900 text-gold-200">
-                  <th className="sticky right-0 z-10 bg-brown-900 text-right px-3 py-2.5 font-display text-base font-bold w-52">المسجد</th>
+                <tr className="bg-brown-50 border-b border-sand">
+                  <th className="sticky right-0 z-10 bg-brown-50 text-right px-4 py-3 text-[13px] font-semibold text-muted w-52">المسجد</th>
                   {fridays.map((f) => (
-                    <th key={f.index} className="px-2 py-2 text-center font-normal">
-                      <div className="font-display text-[15px] font-bold">{fridayOrdinal(f.index)}</div>
-                      <div className="text-[12px] text-gold-300/90 tabular">{hijriShort(f.hijriDay, month.hijri_month)} · {gregShort(f.date)}</div>
+                    <th key={f.index} className="px-2 py-3 text-right font-normal">
+                      <div className="text-[14px] font-semibold text-ink">{fridayOrdinal(f.index)}</div>
+                      <div className="text-[12px] text-muted tabular">{hijriShort(f.hijriDay, month.hijri_month)} · {gregShort(f.date)}</div>
                     </th>
                   ))}
                 </tr>
@@ -442,13 +476,13 @@ export function SchedulePage() {
                 {mosques.map((m, i) => {
                   const needed = neededFridays(m, fridayIdx);
                   return (
-                    <tr key={m.id} className={i % 2 ? 'bg-parchment/40' : ''}>
-                      <th className={clsx('sticky right-0 z-10 text-right px-3 py-2 font-semibold text-brown-900 border-t border-sand align-middle', i % 2 ? 'bg-[#faf5ea]' : 'bg-paper')}>
+                    <tr key={m.id} className={clsx(i > 0 && 'border-t border-sand')}>
+                      <th className="sticky right-0 z-10 bg-paper text-right px-4 py-2 font-medium text-ink align-middle">
                         <div className="leading-snug">{m.name}</div>
-                        {m.size === 'large' && <div className="text-[11px] text-gold-700 font-normal">مسجد كبير</div>}
+                        {m.size === 'large' && <div className="text-[11.5px] text-gold-700 font-normal mt-0.5">مسجد كبير</div>}
                       </th>
                       {fridays.map((f) => (
-                        <td key={f.index} className="p-1.5 border-t border-sand align-top">
+                        <td key={f.index} className="p-1.5 align-top">
                           {needed.includes(f.index) ? <CellButton mosqueId={m.id} fi={f.index} /> : <div className="text-center text-sand-dark py-4" title="المسجد مش محتاج خطيب الجمعة دي">—</div>}
                         </td>
                       ))}
@@ -461,29 +495,26 @@ export function SchedulePage() {
 
           {/* موبايل: جمعة جمعة */}
           <div className="md:hidden print:hidden">
-            <div className="flex gap-1.5 overflow-x-auto pb-2 -mx-1 px-1">
+            <div className="grid gap-1 p-1 rounded-xl bg-brown-100/70 mb-3" style={{ gridTemplateColumns: `repeat(${fridays.length}, minmax(0, 1fr))` }}>
               {fridays.map((f) => (
                 <button
                   key={f.index}
                   onClick={() => setMobileFriday(f.index)}
                   className={clsx(
-                    'shrink-0 rounded-lg border px-3 py-1.5 text-center cursor-pointer',
-                    mobileFriday === f.index ? 'bg-brown-800 text-gold-200 border-brown-900' : 'bg-paper border-sand text-brown-800'
+                    'rounded-lg py-1.5 text-center cursor-pointer transition',
+                    mobileFriday === f.index ? 'bg-white text-ink shadow-[0_1px_3px_rgba(35,26,18,0.12)]' : 'text-muted'
                   )}
                 >
                   <div className="text-[13px] font-semibold">{fridayOrdinal(f.index).replace('الجمعة ', '')}</div>
-                  <div className="text-[11px] opacity-80 tabular">{gregShort(f.date)}</div>
+                  <div className="text-[11px] tabular opacity-80">{gregShort(f.date)}</div>
                 </button>
               ))}
             </div>
-            <div className="space-y-2 mt-1">
+            <div className="bg-paper border border-sand rounded-2xl divide-y divide-sand overflow-hidden">
               {mosques
                 .filter((m) => neededFridays(m, fridayIdx).includes(mobileFriday))
                 .map((m) => (
-                  <div key={m.id} className="bg-paper border border-sand rounded-xl p-2.5">
-                    <div className="text-[13px] font-semibold text-brown-700 mb-1.5 px-0.5">{m.name}</div>
-                    <CellButton mosqueId={m.id} fi={mobileFriday} compact />
-                  </div>
+                  <CellButton key={m.id} mosqueId={m.id} fi={mobileFriday} row />
                 ))}
             </div>
           </div>

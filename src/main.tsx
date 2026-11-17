@@ -5,6 +5,13 @@ import { StoreProvider } from './data/store.tsx';
 import { ConfirmProvider } from './ui/confirm.tsx';
 import { PortalPage } from './pages/Portal.tsx';
 import { AuthGate } from './auth/AuthGate.tsx';
+import '@fontsource/ibm-plex-sans-arabic/arabic-400.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-500.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-600.css';
+import '@fontsource/ibm-plex-sans-arabic/arabic-700.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-400.css';
+import '@fontsource/ibm-plex-sans-arabic/latin-600.css';
+import '@fontsource-variable/noto-kufi-arabic';
 import './index.css';
 
 // صفحة الخطيب (/p/<الرابط الخاص>) مستقلة تمامًا عن صفحات المسؤول

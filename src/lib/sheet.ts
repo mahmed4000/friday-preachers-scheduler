@@ -22,7 +22,7 @@ const C = {
   g600: '#9f7a25',
 };
 
-const DISPLAY = "'Amiri', 'Traditional Arabic', 'Noto Naskh Arabic', serif";
+const DISPLAY = "'Noto Kufi Arabic Variable', 'IBM Plex Sans Arabic', sans-serif";
 const SANS = "'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, 'Noto Sans Arabic', sans-serif";
 
 export type SheetColumn = { label: string; width: number; strong?: boolean; ltr?: boolean };

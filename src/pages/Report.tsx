@@ -86,7 +86,7 @@ export function ReportPage() {
         subtitle={`عدد جمعات كل خطيب في ${title}`}
         actions={
           <>
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto font-display text-lg !py-1.5">
+            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
             <Button variant="gold" onClick={exportExcel}><FileSpreadsheet className="w-4 h-4" />تصدير إكسل</Button>
@@ -101,26 +101,26 @@ export function ReportPage() {
         <Stat label="اعتذارات" value={totals.excuses} tone={totals.excuses ? 'bad' : 'brown'} />
         <Stat label="خطباء ما أخدوش جمعات" value={idle.length} tone={idle.length ? 'wait' : 'brown'} />
       </div>
-      <div className="bg-paper border border-sand rounded-xl overflow-x-auto print-area">
+      <div className="bg-paper border border-sand rounded-2xl overflow-x-auto print-area shadow-[0_1px_2px_rgba(35,26,18,0.04)]">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
-            <tr className="bg-brown-900 text-gold-200 text-right">
-              <th className="px-3 py-2.5 font-display text-base">الخطيب</th>
-              <th className="px-3 py-2.5 text-center">الجمعات</th>
-              <th className="px-3 py-2.5 text-center">أكد</th>
-              <th className="px-3 py-2.5 text-center">منتظر</th>
-              <th className="px-3 py-2.5 text-center">اعتذارات</th>
-              <th className="px-3 py-2.5">الأماكن</th>
+            <tr className="bg-brown-50 border-b border-sand text-right text-[13px] text-muted">
+              <th className="px-4 py-3 font-semibold">الخطيب</th>
+              <th className="px-3 py-3 text-center font-semibold">الجمعات</th>
+              <th className="px-3 py-3 text-center font-semibold">أكد</th>
+              <th className="px-3 py-3 text-center font-semibold">منتظر</th>
+              <th className="px-3 py-3 text-center font-semibold">اعتذارات</th>
+              <th className="px-3 py-3 font-semibold">الأماكن</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={r.preacher.id} className={clsx('border-t border-sand', i % 2 && 'bg-parchment/40')}>
-                <td className="px-3 py-2">
-                  <div className="font-semibold text-brown-900">{r.preacher.name}</div>
+              <tr key={r.preacher.id} className={clsx('border-t border-sand hover:bg-brown-50/60', i === 0 && 'border-t-0')}>
+                <td className="px-4 py-2.5">
+                  <div className="font-medium text-ink">{r.preacher.name}</div>
                   <div className="text-[12px] text-muted">{LEVEL_LABEL[r.preacher.level]} · الحد {r.preacher.max_fridays}</div>
                 </td>
-                <td className="px-3 py-2 text-center tabular font-bold text-brown-900 text-base">{r.total}</td>
+                <td className="px-3 py-2 text-center tabular font-display font-bold text-brown-900 text-base">{r.total}</td>
                 <td className="px-3 py-2 text-center tabular text-ok">{r.confirmed}</td>
                 <td className="px-3 py-2 text-center tabular text-wait">{r.pending}</td>
                 <td className={clsx('px-3 py-2 text-center tabular', r.excuses ? 'text-bad font-semibold' : 'text-muted')}>{r.excuses}</td>

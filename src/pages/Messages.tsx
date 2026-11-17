@@ -50,7 +50,7 @@ function PdfButton({ build, phone, onSent }: { build: () => Promise<PdfFile>; ph
         onClick={go}
         disabled={busy}
         title="ملف PDF بالجدول، يتبعت على واتساب"
-        className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold border bg-brown-800 text-gold-200 border-brown-900 hover:bg-brown-700 disabled:opacity-60 cursor-pointer"
+        className="inline-flex items-center gap-1.5 rounded-[10px] h-8 px-3 text-[13px] font-medium border bg-white text-brown-800 border-sand-dark hover:bg-brown-50 disabled:opacity-60 cursor-pointer"
       >
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
         PDF
@@ -115,7 +115,7 @@ function Row({
   return (
     <li className={clsx('flex flex-wrap items-center gap-3 px-4 py-3', sent && 'bg-ok-soft/40')}>
       <div className="flex-1 min-w-[200px]">
-        <div className="font-semibold text-brown-900 flex items-center gap-2 flex-wrap">
+        <div className="font-medium text-ink flex items-center gap-2 flex-wrap">
           {title}
           {sent && <Tag><Check className="w-3 h-3 text-ok" />اتبعت</Tag>}
           {extra}
@@ -134,7 +134,7 @@ function Row({
             rel="noopener noreferrer"
             onClick={() => onSent?.()}
             className={clsx(
-              'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[13px] font-semibold border',
+              'inline-flex items-center gap-1.5 rounded-[10px] h-8 px-3 text-[13px] font-medium border',
               sent ? 'bg-paper text-brown-700 border-sand-dark' : 'bg-[#1f7a4d] text-white border-[#17603c] hover:bg-[#1a6942]'
             )}
           >
@@ -204,7 +204,7 @@ export function MessagesPage() {
       return (
         <>
           <div className="px-4 py-3 border-b border-sand bg-brown-100/50 text-sm">
-            <b className="font-display text-lg text-brown-900">{fridayOrdinal(next.friday.index)} من {monthTitle(m.hijri_year, m.hijri_month)}</b>
+            <b className="text-[15px] font-semibold text-ink">{fridayOrdinal(next.friday.index)} من {monthTitle(m.hijri_year, m.hijri_month)}</b>
             <span className="text-muted"> · {hijriShort(next.friday.hijriDay, m.hijri_month)} · {gregLong(next.friday.date)} · {days === 0 ? 'النهارده' : days === 1 ? 'بكرة' : `بعد ${days} أيام`}</span>
             {days > 1 && <div className="text-wait text-[13px] mt-1">التذكير بيتبعت يوم الخميس عادة.</div>}
           </div>
@@ -310,7 +310,7 @@ export function MessagesPage() {
         actions={
           tab !== 'reminder' &&
           month && (
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto font-display text-lg !py-1.5">
+            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
           )
@@ -322,8 +322,8 @@ export function MessagesPage() {
             key={t.value}
             onClick={() => setTab(t.value)}
             className={clsx(
-              'shrink-0 inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border text-sm cursor-pointer',
-              tab === t.value ? 'bg-brown-800 border-brown-900 text-gold-200 font-semibold' : 'bg-paper border-sand text-brown-800 hover:border-gold-500'
+              'shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-[10px] border text-sm cursor-pointer transition-colors',
+              tab === t.value ? 'bg-brown-800 border-brown-800 text-white font-medium' : 'bg-paper border-sand text-ink hover:bg-brown-50'
             )}
           >
             <t.icon className="w-4 h-4" />

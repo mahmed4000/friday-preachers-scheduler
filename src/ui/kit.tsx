@@ -19,11 +19,11 @@ export function Star8({ className = 'w-4 h-4' }: { className?: string }) {
 
 type BtnVariant = 'primary' | 'gold' | 'ghost' | 'outline' | 'danger';
 const BTN: Record<BtnVariant, string> = {
-  primary: 'bg-brown-800 text-gold-200 hover:bg-brown-700 border border-brown-900 shadow-sm',
-  gold: 'bg-gold-500 text-brown-950 hover:bg-gold-400 border border-gold-600 shadow-sm',
-  outline: 'bg-paper text-brown-800 border border-sand-dark hover:border-gold-500 hover:bg-gold-200/40',
-  ghost: 'text-brown-700 hover:bg-brown-100',
-  danger: 'bg-paper text-bad border border-bad/40 hover:bg-bad-soft',
+  primary: 'bg-brown-800 text-white hover:bg-brown-900 border border-transparent',
+  gold: 'bg-gold-500 text-white hover:bg-gold-600 border border-transparent',
+  outline: 'bg-white text-ink border border-sand-dark hover:bg-brown-50 hover:border-brown-600/30',
+  ghost: 'text-brown-700 border border-transparent hover:bg-brown-100',
+  danger: 'bg-white text-bad border border-bad/30 hover:bg-bad-soft',
 };
 
 export function Button({
@@ -37,8 +37,8 @@ export function Button({
       type="button"
       {...props}
       className={clsx(
-        'inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
-        size === 'sm' ? 'px-2.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm',
+        'inline-flex items-center justify-center gap-2 rounded-[10px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap [&_svg]:shrink-0',
+        size === 'sm' ? 'h-8 px-3 text-[13px]' : 'h-10 px-4 text-sm',
         BTN[variant],
         className
       )}
@@ -58,8 +58,8 @@ export function LinkButton({
       rel="noopener noreferrer"
       {...props}
       className={clsx(
-        'inline-flex items-center justify-center gap-1.5 rounded-lg font-semibold transition-colors whitespace-nowrap',
-        size === 'sm' ? 'px-2.5 py-1.5 text-[13px]' : 'px-4 py-2 text-sm',
+        'inline-flex items-center justify-center gap-2 rounded-[10px] font-medium transition-colors whitespace-nowrap [&_svg]:shrink-0',
+        size === 'sm' ? 'h-8 px-3 text-[13px]' : 'h-10 px-4 text-sm',
         BTN[variant],
         className
       )}
@@ -69,15 +69,10 @@ export function LinkButton({
 
 export function Card({ title, action, children, className }: { title?: React.ReactNode; action?: React.ReactNode; children: React.ReactNode; className?: string }) {
   return (
-    <section className={clsx('bg-paper border border-sand rounded-xl shadow-[0_1px_0_rgba(69,42,22,0.04)]', className)}>
+    <section className={clsx('bg-paper border border-sand rounded-2xl shadow-[0_1px_2px_rgba(35,26,18,0.04)]', className)}>
       {(title || action) && (
-        <header className="flex items-center justify-between gap-3 px-4 sm:px-5 pt-4 pb-3 border-b border-sand/80">
-          {title && (
-            <h2 className="flex items-center gap-2 text-lg text-brown-800 min-w-0">
-              <Star8 className="w-3.5 h-3.5 text-gold-500 shrink-0" />
-              <span className="truncate">{title}</span>
-            </h2>
-          )}
+        <header className="flex items-center justify-between gap-3 px-4 sm:px-5 h-14 border-b border-sand">
+          {title && <h2 className="text-[15px] font-semibold text-ink min-w-0 truncate">{title}</h2>}
           {action}
         </header>
       )}
@@ -88,10 +83,10 @@ export function Card({ title, action, children, className }: { title?: React.Rea
 
 export function PageTitle({ title, subtitle, actions }: { title: string; subtitle?: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3 mb-5">
+    <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-3 mb-6">
       <div className="min-w-0">
-        <h1 className="text-[28px] sm:text-3xl text-brown-900">{title}</h1>
-        {subtitle && <p className="text-muted text-sm mt-0.5">{subtitle}</p>}
+        <h1 className="font-display text-[22px] sm:text-2xl font-bold text-brown-900">{title}</h1>
+        {subtitle && <p className="text-muted text-sm mt-1">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2 no-print">{actions}</div>}
     </div>
@@ -101,7 +96,7 @@ export function PageTitle({ title, subtitle, actions }: { title: string; subtitl
 export function Field({ label, hint, children, className }: { label: string; hint?: string; children: React.ReactNode; className?: string }) {
   return (
     <label className={clsx('block', className)}>
-      <span className="block text-sm font-semibold text-brown-800 mb-1">{label}</span>
+      <span className="block text-[13px] font-medium text-ink mb-1.5">{label}</span>
       {children}
       {hint && <span className="block text-xs text-muted mt-1">{hint}</span>}
     </label>
@@ -109,7 +104,7 @@ export function Field({ label, hint, children, className }: { label: string; hin
 }
 
 export const inputCls =
-  'w-full rounded-lg border border-sand-dark bg-white px-3 py-2 text-ink placeholder:text-muted/60 focus:outline-none focus:ring-2 focus:ring-gold-400 focus:border-gold-500';
+  'w-full h-10 rounded-[10px] border border-sand-dark bg-white px-3 text-[15px] text-ink placeholder:text-muted/60 transition-shadow focus:outline-none focus:ring-[3px] focus:ring-gold-400/30 focus:border-gold-500';
 
 export function Input(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={clsx(inputCls, props.className)} />;
@@ -120,7 +115,7 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
 }
 
 export function Textarea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea rows={2} {...props} className={clsx(inputCls, props.className)} />;
+  return <textarea rows={2} {...props} className={clsx(inputCls, 'h-auto py-2', props.className)} />;
 }
 
 /** أزرار اختيار (بدل القوائم المنسدلة للاختيارات القليلة) */
@@ -149,10 +144,10 @@ export function Choice<T extends string | number>({
             onChange(cur.includes(o.value) ? cur.filter((x) => x !== o.value) : [...cur, o.value]);
           }}
           className={clsx(
-            'px-3 py-1.5 rounded-lg border text-sm transition-colors cursor-pointer',
+            'h-9 px-3.5 rounded-[10px] border text-sm transition-colors cursor-pointer',
             selected(o.value)
-              ? 'bg-brown-800 border-brown-900 text-gold-200 font-semibold'
-              : 'bg-white border-sand-dark text-brown-800 hover:border-gold-500'
+              ? 'bg-brown-800 border-brown-800 text-white font-medium'
+              : 'bg-white border-sand-dark text-ink hover:bg-brown-50'
           )}
         >
           {o.label}
@@ -191,23 +186,20 @@ export function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center no-print" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-brown-950/55" onClick={onClose} />
+      <div className="absolute inset-0 bg-brown-950/45 backdrop-blur-[2px]" onClick={onClose} />
       <div
         className={clsx(
-          'relative w-full bg-paper border border-gold-400/60 shadow-2xl flex flex-col max-h-[92dvh] rounded-t-2xl sm:rounded-2xl',
+          'relative w-full bg-paper shadow-[0_20px_60px_rgba(35,26,18,0.25)] flex flex-col max-h-[92dvh] rounded-t-3xl sm:rounded-2xl',
           wide ? 'sm:max-w-3xl' : 'sm:max-w-lg'
         )}
       >
-        <header className="flex items-center justify-between gap-3 px-5 py-3.5 border-b border-sand bg-brown-100/60 rounded-t-2xl">
-          <h2 className="text-xl text-brown-900 flex items-center gap-2">
-            <Star8 className="w-3.5 h-3.5 text-gold-500" />
-            {title}
-          </h2>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-sand text-brown-700 cursor-pointer" aria-label="إغلاق">
+        <header className="flex items-center justify-between gap-3 px-5 h-14 border-b border-sand shrink-0">
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
+          <button onClick={onClose} className="p-2 -me-2 rounded-lg hover:bg-brown-100 text-muted cursor-pointer" aria-label="إغلاق">
             <X className="w-5 h-5" />
           </button>
         </header>
-        <div className="overflow-y-auto px-5 py-4 flex-1">{children}</div>
+        <div className="overflow-y-auto px-5 py-5 flex-1">{children}</div>
         {footer && <footer className="px-5 py-3 border-t border-sand flex flex-wrap gap-2 justify-end pb-[max(12px,env(safe-area-inset-bottom))]">{footer}</footer>}
       </div>
     </div>
@@ -215,15 +207,15 @@ export function Modal({
 }
 
 const STATUS_STYLE: Record<AssignmentStatus, string> = {
-  confirmed: 'bg-ok-soft text-ok border-ok/25',
-  pending: 'bg-wait-soft text-wait border-wait/25',
-  excused: 'bg-bad-soft text-bad border-bad/25',
+  confirmed: 'bg-ok-soft text-ok',
+  pending: 'bg-wait-soft text-wait',
+  excused: 'bg-bad-soft text-bad',
 };
 const STATUS_TEXT: Record<AssignmentStatus, string> = { confirmed: 'مؤكد', pending: 'منتظر', excused: 'معتذر' };
 
 export function StatusPill({ status, className }: { status: AssignmentStatus; className?: string }) {
   return (
-    <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[12px] font-semibold', STATUS_STYLE[status], className)}>
+    <span className={clsx('inline-flex items-center gap-1.5 h-6 px-2.5 rounded-full text-[12px] font-medium whitespace-nowrap', STATUS_STYLE[status], className)}>
       <span className="w-1.5 h-1.5 rounded-full bg-current" />
       {STATUS_TEXT[status]}
     </span>
@@ -232,32 +224,54 @@ export function StatusPill({ status, className }: { status: AssignmentStatus; cl
 
 export function Tag({ children, tone = 'sand' }: { children: React.ReactNode; tone?: 'sand' | 'gold' | 'brown' | 'bad' }) {
   const t = {
-    sand: 'bg-brown-100 text-brown-700 border-sand-dark/60',
-    gold: 'bg-gold-200 text-gold-700 border-gold-400/50',
-    brown: 'bg-brown-800 text-gold-200 border-brown-900',
-    bad: 'bg-bad-soft text-bad border-bad/25',
+    sand: 'bg-brown-100 text-brown-700',
+    gold: 'bg-gold-200/70 text-gold-700',
+    brown: 'bg-brown-800 text-white',
+    bad: 'bg-bad-soft text-bad',
   }[tone];
-  return <span className={clsx('inline-flex items-center gap-1 px-2 py-0.5 rounded-md border text-[12px] font-semibold', t)}>{children}</span>;
+  return <span className={clsx('inline-flex items-center gap-1 h-6 px-2 rounded-md text-[12px] font-medium whitespace-nowrap', t)}>{children}</span>;
 }
 
 export function Empty({ title, children, action }: { title: string; children?: React.ReactNode; action?: React.ReactNode }) {
   return (
-    <div className="text-center py-10 px-4">
-      <Star8 className="w-8 h-8 text-gold-400 mx-auto mb-3" />
-      <h3 className="text-xl text-brown-800">{title}</h3>
+    <div className="text-center py-12 px-4">
+      <div className="w-12 h-12 rounded-full bg-gold-200/60 text-gold-600 flex items-center justify-center mx-auto mb-3">
+        <Star8 className="w-5 h-5" />
+      </div>
+      <h3 className="text-base font-semibold text-ink">{title}</h3>
       {children && <p className="text-muted text-sm mt-1 max-w-md mx-auto">{children}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}
     </div>
   );
 }
 
-export function Stat({ label, value, tone = 'brown', hint }: { label: string; value: React.ReactNode; tone?: 'brown' | 'ok' | 'wait' | 'bad'; hint?: string }) {
+export function Stat({
+  label,
+  value,
+  tone = 'brown',
+  hint,
+  icon: Icon,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone?: 'brown' | 'ok' | 'wait' | 'bad';
+  hint?: string;
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
   const color = { brown: 'text-brown-800', ok: 'text-ok', wait: 'text-wait', bad: 'text-bad' }[tone];
+  const chip = { brown: 'bg-brown-100 text-brown-700', ok: 'bg-ok-soft text-ok', wait: 'bg-wait-soft text-wait', bad: 'bg-bad-soft text-bad' }[tone];
   return (
-    <div className="bg-paper border border-sand rounded-xl px-4 py-3">
-      <div className="text-[13px] text-muted">{label}</div>
-      <div className={clsx('text-2xl font-bold tabular mt-0.5', color)}>{value}</div>
-      {hint && <div className="text-xs text-muted mt-0.5">{hint}</div>}
+    <div className="bg-paper border border-sand rounded-2xl p-4 shadow-[0_1px_2px_rgba(35,26,18,0.04)]">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[13px] text-muted">{label}</div>
+        {Icon && (
+          <span className={clsx('w-8 h-8 rounded-lg flex items-center justify-center', chip)}>
+            <Icon className="w-4 h-4" />
+          </span>
+        )}
+      </div>
+      <div className={clsx('font-display text-[26px] font-bold tabular leading-tight mt-1', color)}>{value}</div>
+      {hint && <div className="text-xs text-muted mt-1">{hint}</div>}
     </div>
   );
 }

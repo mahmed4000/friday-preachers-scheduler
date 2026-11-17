@@ -1,23 +1,25 @@
 @import "tailwindcss";
 
-/* الهوية: بني وذهبي بطابع إسلامي. خط أميري للعناوين، و IBM Plex Sans Arabic للنصوص. */
+/* الهوية: بني وذهبي بطابع إسلامي.
+   العناوين: نوتو كوفي (خط كوفي هندسي)، والنصوص: IBM Plex Sans Arabic. الخطوط متضمنة في البرنامج نفسه. */
 @theme {
   --font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, system-ui, sans-serif;
-  --font-display: 'Amiri', 'Traditional Arabic', serif;
+  --font-display: 'Noto Kufi Arabic Variable', 'IBM Plex Sans Arabic', sans-serif;
 
-  --color-ink: #2b1d12;
-  --color-muted: #7a6650;
-  --color-parchment: #f7f0e3;
-  --color-paper: #fffcf6;
-  --color-sand: #e9dcc3;
-  --color-sand-dark: #d6c3a0;
+  --color-ink: #231a12;
+  --color-muted: #7c6f62;
+  --color-parchment: #f6f3ee;
+  --color-paper: #ffffff;
+  --color-sand: #ebe4d8;
+  --color-sand-dark: #d9cebd;
 
   --color-brown-950: #1f130a;
   --color-brown-900: #2f1d10;
   --color-brown-800: #452a16;
   --color-brown-700: #63401f;
   --color-brown-600: #84582d;
-  --color-brown-100: #f1e6d6;
+  --color-brown-100: #f3ece2;
+  --color-brown-50: #faf7f2;
 
   --color-gold-200: #f3e5bf;
   --color-gold-300: #e8cf8f;
@@ -41,13 +43,17 @@
   body {
     @apply bg-parchment text-ink font-sans antialiased;
     font-size: 15px;
-    line-height: 1.7;
+    line-height: 1.65;
+    font-feature-settings: 'kern';
   }
   h1, h2, h3 {
-    font-family: var(--font-display);
-    font-weight: 700;
-    line-height: 1.35;
+    font-weight: 600;
+    line-height: 1.45;
     text-wrap: balance;
+  }
+  .font-display {
+    letter-spacing: 0;
+    line-height: 1.55;
   }
   input, select, textarea, button {
     font: inherit;

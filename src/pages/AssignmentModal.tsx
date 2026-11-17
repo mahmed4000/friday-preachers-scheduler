@@ -110,7 +110,7 @@ export function AssignmentModal({ month, slot, onClose }: { month: Month; slot: 
           <div className="flex flex-wrap items-center gap-2 justify-between">
             <div>
               <div className="text-xs text-muted">الخطيب</div>
-              <div className={clsx('font-display text-xl text-brown-900', a.status === 'excused' && 'line-through')}>{current.name}</div>
+              <div className={clsx('text-lg font-semibold text-ink', a.status === 'excused' && 'line-through')}>{current.name}</div>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 <StatusPill status={a.status} />
                 <Tag>{SOURCE_LABEL[a.source]}</Tag>

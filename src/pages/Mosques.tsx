@@ -286,11 +286,11 @@ export function MosquesPage() {
                 className="text-right bg-paper border border-sand rounded-xl p-4 hover:border-gold-500 hover:shadow-sm transition cursor-pointer flex flex-col gap-2"
               >
                 <div className="flex items-start gap-3">
-                  <span className="w-10 h-10 shrink-0 rounded-lg bg-brown-800 text-gold-300 flex items-center justify-center">
+                  <span className="w-10 h-10 shrink-0 rounded-xl bg-brown-100 text-brown-700 flex items-center justify-center">
                     <Landmark className="w-5 h-5" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="font-display text-lg text-brown-900 leading-snug">{m.name}</div>
+                    <div className="text-[16px] font-semibold text-ink leading-snug">{m.name}</div>
                     <div className="flex flex-wrap gap-1.5 mt-1">
                       <Tag tone={m.size === 'large' ? 'gold' : 'sand'}>{SIZE_LABEL[m.size]}</Tag>
                       <Tag>{fridaysText(m.needed_fridays)}</Tag>

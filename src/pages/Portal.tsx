@@ -98,11 +98,11 @@ export function PortalPage({ token }: { token: string }) {
               return (
                 <article key={item.id} className={clsx('bg-paper border rounded-2xl overflow-hidden shadow-sm', item.status === 'excused' ? 'border-bad/30' : 'border-gold-400/60')}>
                   <div className="bg-brown-100/70 border-b border-sand px-4 py-2 flex items-center justify-between gap-2">
-                    <span className="font-display text-lg text-brown-900">{fridayOrdinal(item.friday_index)}</span>
+                    <span className="text-[15px] font-semibold text-brown-900">{fridayOrdinal(item.friday_index)}</span>
                     <StatusPill status={item.status} />
                   </div>
                   <div className="p-4">
-                    <div className="font-display text-2xl text-brown-900">{item.mosque_name}</div>
+                    <div className="font-display text-xl font-bold text-brown-900">{item.mosque_name}</div>
                     <div className="text-sm text-muted mt-0.5 tabular">
                       {hijriShort(item.hijri_day, item.hijri_month)} {item.hijri_year} هـ · {gregLong(item.date)}
                       {days <= 1 && <b className="text-gold-700"> · {days === 0 ? 'النهارده' : 'بكرة'}</b>}
