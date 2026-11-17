@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Landmark, Phone, Plus, Trash2, X } from 'lucide-react';
+import { Eye, FileSpreadsheet, Landmark, Pencil, Plus, Power, Trash2, X } from 'lucide-react';
 import { useStore } from '../data/store.tsx';
 import type { Mosque, MosqueSize } from '../data/types.ts';
 import { SIZE_LABEL } from '../data/types.ts';
-import { Button, Card, Choice, Empty, Field, Input, Modal, PageTitle, Search, Select, Tag, Textarea, normalizeAr } from '../ui/kit.tsx';
+import { Button, Choice, DataTable, Empty, Field, FilterBar, FilterSelect, IconButton, Input, Modal, PageTitle, Search, Select, Tag, Textarea, clsx, normalizeAr, useTable, type Column } from '../ui/kit.tsx';
 import { useConfirm } from '../ui/confirm.tsx';
-import { fridayOrdinal } from '../lib/hijri.ts';
+import { fridayOrdinal, monthTitle } from '../lib/hijri.ts';
+import { byId, currentMonth, monthAssignments } from '../data/selectors.ts';
+import { queryParam } from '../lib/router.ts';
+import { downloadWorkbook } from '../lib/excel.ts';
+import { MosqueProfile, mosqueTotals } from './profiles.tsx';
 
 const FRIDAYS = [1, 2, 3, 4, 5];
 const SIZES: { value: MosqueSize; label: string }[] = [
@@ -215,17 +219,52 @@ function MosqueForm({ initial, onClose }: { initial: FormState; onClose: () => v
 }
 
 export function MosquesPage() {
-  const { data } = useStore();
+  const { data, actions, toast } = useStore();
   const [q, setQ] = useState('');
-  const [form, setForm] = useState<FormState | null>(null);
-  const pname = (id: number) => data.preachers.find((p) => p.id === id)?.name ?? '—';
+  const [status, setStatus] = useState('all');
+  const [size, setSize] = useState('all');
+  const [cover, setCover] = useState('all');
+  const [form, setForm] = useState<FormState | null>(() => (queryParam('new') ? emptyForm() : null));
+  const [profileId, setProfileId] = useState<number | null>(null);
+  const preachers = byId(data.preachers);
+  const pname = (id: number) => preachers.get(id)?.name ?? '—';
+  const month = currentMonth(data.months);
+  const totals = useMemo(() => mosqueTotals(data), [data]);
+
+  // خطباء الشهر الحالي لكل مسجد
+  const monthPreachers = useMemo(() => {
+    const m = new Map<number, number[]>();
+    if (!month) return m;
+    for (const a of monthAssignments(data, month.id).sort((x, y) => x.friday_index - y.friday_index)) {
+      if (!a.preacher_id || a.status === 'excused') continue;
+      m.set(a.mosque_id, [...(m.get(a.mosque_id) ?? []), a.preacher_id]);
+    }
+    return m;
+  }, [data, month]);
+
+  const fixedText = (m: Mosque) => {
+    const fx = data.fixed.filter((r) => r.mosque_id === m.id);
+    if (!fx.length) return null;
+    const all = fx.find((r) => r.friday_index === null);
+    if (all) return `ثابت: ${pname(all.preacher_id)}`;
+    return fx
+      .sort((a, b) => (a.friday_index ?? 0) - (b.friday_index ?? 0))
+      .map((r) => `${fridayOrdinal(r.friday_index!).replace('الجمعة ', '')}: ${pname(r.preacher_id)}`)
+      .join(' · ');
+  };
 
   const list = useMemo(() => {
     const n = normalizeAr(q);
-    return [...data.mosques]
-      .filter((m) => !n || normalizeAr(m.name).includes(n))
-      .sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name, 'ar'));
-  }, [data.mosques, q]);
+    return data.mosques.filter((m) => {
+      if (n && !normalizeAr(m.name).includes(n) && !normalizeAr(m.contact_name).includes(n) && String(m.id) !== q.replace('#', '')) return false;
+      if (status === 'active' && !m.is_active) return false;
+      if (status === 'inactive' && m.is_active) return false;
+      if (size !== 'all' && m.size !== size) return false;
+      if (cover === 'fixed' && !data.fixed.some((f) => f.mosque_id === m.id)) return false;
+      if (cover === 'empty' && (!m.is_active || (monthPreachers.get(m.id)?.length ?? 0) > 0)) return false;
+      return true;
+    });
+  }, [data.mosques, data.fixed, q, status, size, cover, monthPreachers]);
 
   const open = (m?: Mosque) => {
     if (!m) return setForm(emptyForm());
@@ -243,73 +282,128 @@ export function MosquesPage() {
     });
   };
 
-  const fixedText = (m: Mosque) => {
-    const fx = data.fixed.filter((r) => r.mosque_id === m.id);
-    if (!fx.length) return null;
-    const all = fx.find((r) => r.friday_index === null);
-    if (all) return `ثابت: ${pname(all.preacher_id)}`;
-    return fx
-      .sort((a, b) => (a.friday_index ?? 0) - (b.friday_index ?? 0))
-      .map((r) => `${fridayOrdinal(r.friday_index!).replace('الجمعة ', '')}: ${pname(r.preacher_id)}`)
-      .join(' · ');
+  // الإيقاف/التنشيط بيحافظ على الخطيب الثابت والرغبات زي ما هي
+  const toggle = async (m: Mosque) => {
+    const fixed = data.fixed.filter((r) => r.mosque_id === m.id).map((r) => ({ preacher_id: r.preacher_id, friday_index: r.friday_index }));
+    const prefs = data.preferences.filter((r) => r.mosque_id === m.id).map((r) => ({ preacher_id: r.preacher_id, kind: r.kind }));
+    await actions.saveMosque({ ...m, is_active: !m.is_active }, fixed, prefs);
   };
+
+  const exportExcel = async () => {
+    try {
+      await downloadWorkbook('المساجد.xlsx', [
+        {
+          name: 'المساجد',
+          rows: [
+            ['الكود', 'المسجد', 'الحجم', 'المسؤول', 'التليفون', 'محتاج خطيب في', 'الخطيب الثابت', month ? `خطباء ${monthTitle(month.hijri_year, month.hijri_month)}` : 'خطباء الشهر', 'إجمالي التكليفات', 'الحالة', 'ملاحظات'],
+            ...list.map((m) => [
+              m.id, m.name, SIZE_LABEL[m.size], m.contact_name, m.phone, fridaysText(m.needed_fridays), fixedText(m) ?? '',
+              [...new Set((monthPreachers.get(m.id) ?? []).map(pname))].join('، '), totals.get(m.id) ?? 0, m.is_active ? 'نشط' : 'متوقف', m.notes,
+            ]),
+          ],
+        },
+      ]);
+      toast(`اتنزل ملف بـ ${list.length} مسجد`);
+    } catch (e) {
+      toast(`ما قدرتش أعمل الملف: ${e instanceof Error ? e.message : ''}`, 'error');
+    }
+  };
+
+  const Actions = ({ m }: { m: Mosque }) => (
+    <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
+      <IconButton aria-label={`ملف ${m.name}`} onClick={() => setProfileId(m.id)} className="w-9 h-9"><Eye className="w-4 h-4" /></IconButton>
+      <IconButton aria-label={`تعديل ${m.name}`} onClick={() => open(m)} className="w-9 h-9"><Pencil className="w-4 h-4" /></IconButton>
+      <IconButton aria-label={m.is_active ? `إيقاف ${m.name} مؤقتًا` : `تنشيط ${m.name}`} onClick={() => toggle(m)} className={clsx('w-9 h-9', m.is_active ? 'text-muted' : 'text-ok')}><Power className="w-4 h-4" /></IconButton>
+    </div>
+  );
+
+  const preachersCell = (m: Mosque) => {
+    const fixed = fixedText(m);
+    const cur = [...new Set((monthPreachers.get(m.id) ?? []).map(pname))];
+    return (
+      <span className="block text-[13px] min-w-0">
+        {fixed && <span className="block text-gold-700 font-medium truncate">{fixed}</span>}
+        {cur.length ? <span className="block text-brown-700 line-clamp-2">{cur.join('، ')}</span> : !fixed && <span className="text-muted">—</span>}
+      </span>
+    );
+  };
+
+  const columns: Column<Mosque>[] = [
+    { key: 'id', header: 'الكود', cell: (m) => <span className="tabular text-muted text-[13px]">#{m.id}</span>, sort: (m) => m.id, className: 'w-20' },
+    {
+      key: 'name',
+      header: 'المسجد',
+      cell: (m) => (
+        <span className="flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 shrink-0 rounded-[10px] bg-brown-100 text-brown-700 inline-flex items-center justify-center"><Landmark className="w-4 h-4" /></span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-ink">{m.name}</span>
+            <span className="block text-[12px] text-muted">{fridaysText(m.needed_fridays)}{m.contact_name ? ` · ${m.contact_name}` : ''}</span>
+          </span>
+        </span>
+      ),
+      sort: (m) => m.name,
+    },
+    { key: 'size', header: 'الحجم', cell: (m) => <Tag tone={m.size === 'large' ? 'gold' : 'sand'}>{SIZE_LABEL[m.size]}</Tag>, sort: (m) => ({ large: 0, medium: 1, small: 2 })[m.size], className: 'w-24' },
+    { key: 'phone', header: 'التليفون', cell: (m) => (m.phone ? <span dir="ltr" className="tabular text-[13px]">{m.phone}</span> : <span className="text-muted">—</span>), className: 'w-36' },
+    { key: 'preachers', header: month ? `الخطباء (${monthTitle(month.hijri_year, month.hijri_month)})` : 'الخطباء', cell: preachersCell },
+    { key: 'count', header: 'التكليفات', cell: (m) => <span className="font-num font-bold tabular text-brown-900">{totals.get(m.id) ?? 0}</span>, sort: (m) => totals.get(m.id) ?? 0, align: 'center', className: 'w-24' },
+    { key: 'status', header: 'الحالة', cell: (m) => (m.is_active ? <Tag tone="ok">نشط</Tag> : <Tag tone="bad">متوقف</Tag>), sort: (m) => Number(m.is_active), className: 'w-24' },
+    { key: 'actions', header: 'الإجراءات', cell: (m) => <Actions m={m} />, className: 'w-36 text-left' },
+  ];
+  const table = useTable(list, columns, { pageSize: 20, initialSort: { key: 'name', dir: 'asc' } });
+  const profile = profileId ? data.mosques.find((m) => m.id === profileId) : null;
+  const resetPage = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); table.setPage(1); };
 
   return (
     <>
       <PageTitle
         title="المساجد"
-        subtitle={`${data.mosques.filter((m) => m.is_active).length} مسجد في التوزيع`}
+        subtitle={`${data.mosques.filter((m) => m.is_active).length} مسجد نشط من ${data.mosques.length}`}
         actions={
-          <Button onClick={() => open()}>
-            <Plus className="w-4 h-4" />
-            مسجد جديد
-          </Button>
+          <>
+            <Button variant="outline" onClick={exportExcel} disabled={!list.length}><FileSpreadsheet className="w-4 h-4" />تصدير</Button>
+            <Button onClick={() => open()}><Plus className="w-4 h-4" />مسجد جديد</Button>
+          </>
         }
       />
-      <div className="mb-4">
-        <Search value={q} onChange={setQ} placeholder="ابحث باسم المسجد…" />
-      </div>
-      {list.length === 0 ? (
-        <Card>
-          <Empty title={q ? 'مفيش مسجد بالاسم ده' : 'لسه مفيش مساجد'} action={!q && <Button onClick={() => open()}><Plus className="w-4 h-4" />ضيف أول مسجد</Button>}>
-            {!q && 'ضيف المساجد اللي الجمعية بتبعت لها خطباء.'}
+      <FilterBar>
+        <Search value={q} onChange={resetPage(setQ)} placeholder="ابحث بالاسم أو المسؤول أو الكود…" />
+        <FilterSelect label="الحالة" value={status} onChange={resetPage(setStatus)} options={[{ value: 'all', label: 'الكل' }, { value: 'active', label: 'نشط' }, { value: 'inactive', label: 'متوقف' }]} />
+        <FilterSelect label="الحجم" value={size} onChange={resetPage(setSize)} options={[{ value: 'all', label: 'الكل' }, ...SIZES.map((s) => ({ value: s.value, label: s.label }))]} />
+        <FilterSelect label="الخطباء" value={cover} onChange={resetPage(setCover)} options={[{ value: 'all', label: 'الكل' }, { value: 'fixed', label: 'ليه خطيب ثابت' }, ...(month ? [{ value: 'empty', label: 'من غير خطيب الشهر ده' }] : [])]} />
+      </FilterBar>
+      <DataTable
+        columns={columns}
+        table={table}
+        rowKey={(m) => m.id}
+        onRowClick={(m) => setProfileId(m.id)}
+        minWidth={980}
+        empty={
+          <Empty title={data.mosques.length ? 'مفيش مسجد بالبحث ده' : 'لسه مفيش مساجد'} icon={Landmark} action={!data.mosques.length && <Button onClick={() => open()}><Plus className="w-4 h-4" />ضيف أول مسجد</Button>}>
+            {data.mosques.length ? 'جرّب تغيّر البحث أو الفلاتر.' : 'ضيف المساجد اللي الجمعية بتبعت لها خطباء.'}
           </Empty>
-        </Card>
-      ) : (
-        <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">
-          {list.map((m) => {
-            const fixed = fixedText(m);
-            return (
-              <button
-                key={m.id}
-                onClick={() => open(m)}
-                className="text-right bg-paper border border-sand rounded-xl p-4 hover:border-gold-500 hover:shadow-sm transition cursor-pointer flex flex-col gap-2"
-              >
-                <div className="flex items-start gap-3">
-                  <span className="w-10 h-10 shrink-0 rounded-xl bg-brown-100 text-brown-700 flex items-center justify-center">
-                    <Landmark className="w-5 h-5" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[16px] font-semibold text-ink leading-snug">{m.name}</div>
-                    <div className="flex flex-wrap gap-1.5 mt-1">
-                      <Tag tone={m.size === 'large' ? 'gold' : 'sand'}>{SIZE_LABEL[m.size]}</Tag>
-                      <Tag>{fridaysText(m.needed_fridays)}</Tag>
-                      {!m.is_active && <Tag tone="bad">متوقف</Tag>}
-                    </div>
-                  </div>
-                </div>
-                {fixed && <div className="text-[13px] text-brown-700 bg-gold-200/50 border border-gold-300 rounded-lg px-2.5 py-1">{fixed}</div>}
-                {m.phone && (
-                  <div className="text-[13px] text-muted flex items-center gap-1.5" dir="ltr">
-                    <Phone className="w-3.5 h-3.5" />
-                    {m.phone}
-                  </div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      )}
+        }
+        card={(m) => (
+          <div className={clsx('px-4 py-3', !m.is_active && 'bg-brown-50/60')}>
+            <button onClick={() => setProfileId(m.id)} className="w-full flex items-start gap-3 text-right cursor-pointer">
+              <span className="w-10 h-10 shrink-0 rounded-[10px] bg-brown-100 text-brown-700 inline-flex items-center justify-center"><Landmark className="w-5 h-5" /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-ink leading-snug">{m.name}</span>
+                <span className="flex flex-wrap gap-1 mt-1 items-center">
+                  <Tag tone={m.size === 'large' ? 'gold' : 'sand'}>{SIZE_LABEL[m.size]}</Tag>
+                  <Tag>{fridaysText(m.needed_fridays)}</Tag>
+                  {!m.is_active && <Tag tone="bad">متوقف</Tag>}
+                  <span className="text-[12px] text-muted tabular">#{m.id}</span>
+                </span>
+              </span>
+            </button>
+            <div className="mt-2">{preachersCell(m)}</div>
+            <div className="mt-1 -mb-1"><Actions m={m} /></div>
+          </div>
+        )}
+      />
+      {profile && <MosqueProfile mosque={profile} onClose={() => setProfileId(null)} onEdit={() => open(profile)} onToggle={() => toggle(profile)} />}
       {form && <MosqueForm initial={form} onClose={() => setForm(null)} />}
     </>
   );

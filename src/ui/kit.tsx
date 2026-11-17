@@ -250,9 +250,9 @@ export function FilterBar({ children, end }: { children: React.ReactNode; end?: 
 /** قائمة فلتر صغيرة */
 export function FilterSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
-    <label className="flex items-center gap-2 text-[13px] text-muted">
-      <span className="shrink-0">{label}</span>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className={clsx(inputCls, 'h-10 !w-auto min-w-[120px] text-sm pl-8 cursor-pointer')}>
+    <label className="flex items-center gap-2 text-[13px] text-muted w-full sm:w-auto">
+      <span className="shrink-0 w-14 sm:w-auto">{label}</span>
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={clsx(inputCls, 'h-10 flex-1 sm:flex-none sm:!w-auto min-w-[120px] text-sm pl-8 cursor-pointer')}>
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </label>

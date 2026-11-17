@@ -1,13 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Link2, MessageCircle, Plus, Trash2, UserRound } from 'lucide-react';
+import { Eye, FileSpreadsheet, Link2, MessageCircle, Pencil, Plus, Power, Trash2, UserRound, Users } from 'lucide-react';
 import { useStore } from '../data/store.tsx';
 import type { Preacher, PreacherLevel } from '../data/types.ts';
 import { LEVEL_LABEL } from '../data/types.ts';
-import { Button, Card, Choice, Empty, Field, Input, LinkButton, Modal, PageTitle, Search, Tag, Textarea, clsx, normalizeAr } from '../ui/kit.tsx';
+import { Button, Choice, DataTable, Empty, Field, FilterBar, FilterSelect, IconButton, Input, Modal, PageTitle, Search, Tag, Textarea, clsx, normalizeAr, useTable, type Column } from '../ui/kit.tsx';
 import { useConfirm } from '../ui/confirm.tsx';
-import { currentMonth, monthAssignments } from '../data/selectors.ts';
+import { byId, currentMonth, monthAssignments } from '../data/selectors.ts';
 import { fridayOrdinal, monthTitle } from '../lib/hijri.ts';
-import { portalUrl, waLink } from '../lib/whatsapp.ts';
+import { isValidPhone, portalUrl, waLink } from '../lib/whatsapp.ts';
+import { queryParam } from '../lib/router.ts';
+import { downloadWorkbook } from '../lib/excel.ts';
+import { PreacherProfile, preacherTotals } from './profiles.tsx';
 
 const LEVELS: { value: PreacherLevel; label: string }[] = [
   { value: 'senior', label: 'خبرة كبيرة' },
@@ -100,23 +103,53 @@ function PreacherForm({ initial, onClose }: { initial: FormState; onClose: () =>
 }
 
 export function PreachersPage() {
-  const { data, toast } = useStore();
+  const { data, toast, actions } = useStore();
   const [q, setQ] = useState('');
-  const [form, setForm] = useState<FormState | null>(null);
+  const [status, setStatus] = useState(() => (queryParam('filter') === 'nophone' ? 'nophone' : 'all'));
+  const [level, setLevel] = useState('all');
+  const [load, setLoad] = useState('all');
+  const [form, setForm] = useState<FormState | null>(() =>
+    queryParam('new') ? { name: '', phone: '', level: 'mid', max_fridays: 2, available_fridays: null, is_active: true, notes: '', allFridays: true } : null
+  );
+  const [profileId, setProfileId] = useState<number | null>(null);
   const month = currentMonth(data.months);
-  const loads = useMemo(() => {
-    const m = new Map<number, number>();
-    if (!month) return m;
-    for (const a of monthAssignments(data, month.id)) if (a.preacher_id && a.status !== 'excused') m.set(a.preacher_id, (m.get(a.preacher_id) ?? 0) + 1);
-    return m;
+  const mosques = byId(data.mosques);
+  const totals = useMemo(() => preacherTotals(data), [data]);
+
+  const monthInfo = useMemo(() => {
+    const loads = new Map<number, number>();
+    const at = new Map<number, Set<number>>();
+    if (month) {
+      for (const a of monthAssignments(data, month.id)) {
+        if (!a.preacher_id || a.status === 'excused') continue;
+        loads.set(a.preacher_id, (loads.get(a.preacher_id) ?? 0) + 1);
+        if (!at.has(a.preacher_id)) at.set(a.preacher_id, new Set());
+        at.get(a.preacher_id)!.add(a.mosque_id);
+      }
+    }
+    for (const f of data.fixed) {
+      if (!at.has(f.preacher_id)) at.set(f.preacher_id, new Set());
+      at.get(f.preacher_id)!.add(f.mosque_id);
+    }
+    return { loads, at };
   }, [data, month]);
+
+  const linked = (p: Preacher) => [...(monthInfo.at.get(p.id) ?? [])].map((id) => mosques.get(id)?.name).filter(Boolean) as string[];
 
   const list = useMemo(() => {
     const n = normalizeAr(q);
-    return [...data.preachers]
-      .filter((p) => !n || normalizeAr(p.name).includes(n) || p.phone.includes(q))
-      .sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name, 'ar'));
-  }, [data.preachers, q]);
+    return data.preachers.filter((p) => {
+      if (n && !normalizeAr(p.name).includes(n) && !p.phone.includes(q) && String(p.id) !== q.replace('#', '')) return false;
+      if (status === 'active' && !p.is_active) return false;
+      if (status === 'inactive' && p.is_active) return false;
+      if (status === 'nophone' && isValidPhone(p.phone)) return false;
+      if (level !== 'all' && p.level !== level) return false;
+      const l = monthInfo.loads.get(p.id) ?? 0;
+      if (load === 'none' && (l > 0 || !p.is_active)) return false;
+      if (load === 'full' && l < p.max_fridays) return false;
+      return true;
+    });
+  }, [data.preachers, q, status, level, load, monthInfo]);
 
   const open = (p?: Preacher) =>
     setForm(
@@ -124,6 +157,11 @@ export function PreachersPage() {
         ? { ...p, allFridays: !p.available_fridays || p.available_fridays.length === 0 }
         : { name: '', phone: '', level: 'mid', max_fridays: 2, available_fridays: null, is_active: true, notes: '', allFridays: true }
     );
+
+  const toggle = async (p: Preacher) => {
+    const { portal_token: _t, ...rest } = p;
+    await actions.savePreacher({ ...rest, is_active: !p.is_active });
+  };
 
   const copyLink = async (p: Preacher) => {
     try {
@@ -134,65 +172,137 @@ export function PreachersPage() {
     }
   };
 
+  const exportExcel = async () => {
+    try {
+      await downloadWorkbook(`الخطباء.xlsx`, [
+        {
+          name: 'الخطباء',
+          rows: [
+            ['الكود', 'الاسم', 'الموبايل', 'الخبرة', 'أقصى جمعات', 'متاح في', 'المساجد المرتبطة', month ? `جمعات ${monthTitle(month.hijri_year, month.hijri_month)}` : 'جمعات الشهر', 'إجمالي التكليفات', 'الحالة', 'ملاحظات'],
+            ...list.map((p) => [
+              p.id, p.name, p.phone, LEVEL_LABEL[p.level], p.max_fridays,
+              !p.available_fridays?.length ? 'كل الجمعات' : p.available_fridays.map((x) => fridayOrdinal(x)).join('، '),
+              linked(p).join('، '), monthInfo.loads.get(p.id) ?? 0, totals.get(p.id) ?? 0, p.is_active ? 'نشط' : 'متوقف', p.notes,
+            ]),
+          ],
+        },
+      ]);
+      toast(`اتنزل ملف بـ ${list.length} خطيب`);
+    } catch (e) {
+      toast(`ما قدرتش أعمل الملف: ${e instanceof Error ? e.message : ''}`, 'error');
+    }
+  };
+
+  const LoadCell = ({ p }: { p: Preacher }) => {
+    const l = monthInfo.loads.get(p.id) ?? 0;
+    return (
+      <span className="tabular whitespace-nowrap" title="جمعات الشهر من الحد الأقصى">
+        <b className={clsx('font-num text-[15px]', l >= p.max_fridays ? 'text-gold-700' : 'text-brown-900')}>{l}</b>
+        <span className="text-muted text-[12.5px]"> / {p.max_fridays}</span>
+        <span className="block text-[11.5px] text-muted">الإجمالي {totals.get(p.id) ?? 0}</span>
+      </span>
+    );
+  };
+
+  const Actions = ({ p }: { p: Preacher }) => (
+    <div className="flex items-center gap-0.5 justify-end" onClick={(e) => e.stopPropagation()}>
+      <IconButton aria-label={`ملف ${p.name}`} onClick={() => setProfileId(p.id)} className="w-9 h-9"><Eye className="w-4 h-4" /></IconButton>
+      <IconButton aria-label={`تعديل ${p.name}`} onClick={() => open(p)} className="w-9 h-9"><Pencil className="w-4 h-4" /></IconButton>
+      <IconButton aria-label={`نسخ رابط صفحة ${p.name}`} onClick={() => copyLink(p)} className="w-9 h-9"><Link2 className="w-4 h-4" /></IconButton>
+      {p.phone && (
+        <a href={waLink(p.phone, `السلام عليكم ورحمة الله يا شيخ ${p.name}`)} target="_blank" rel="noopener noreferrer" aria-label={`واتساب ${p.name}`} title="واتساب" className="w-9 h-9 rounded-[10px] inline-flex items-center justify-center text-green hover:bg-ok-soft">
+          <MessageCircle className="w-4 h-4" />
+        </a>
+      )}
+      <IconButton aria-label={p.is_active ? `إيقاف ${p.name} مؤقتًا` : `تنشيط ${p.name}`} onClick={() => toggle(p)} className={clsx('w-9 h-9', p.is_active ? 'text-muted' : 'text-ok')}><Power className="w-4 h-4" /></IconButton>
+    </div>
+  );
+
+  const columns: Column<Preacher>[] = [
+    { key: 'id', header: 'الكود', cell: (p) => <span className="tabular text-muted text-[13px]">#{p.id}</span>, sort: (p) => p.id, className: 'w-20' },
+    {
+      key: 'name',
+      header: 'الاسم',
+      cell: (p) => (
+        <span className="flex items-center gap-3 min-w-0">
+          <span className="w-9 h-9 shrink-0 rounded-full bg-brown-100 text-brown-700 inline-flex items-center justify-center"><UserRound className="w-4 h-4" /></span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-ink">{p.name}</span>
+            <span className="flex flex-wrap gap-1 mt-0.5">
+              <Tag tone={p.level === 'senior' ? 'gold' : p.level === 'new' ? 'wait' : 'sand'}>{LEVEL_LABEL[p.level]}</Tag>
+              {p.available_fridays && p.available_fridays.length < 5 && <Tag>متاح: {p.available_fridays.map((x) => fridayOrdinal(x).replace('الجمعة ', '')).join(' و')}</Tag>}
+            </span>
+          </span>
+        </span>
+      ),
+      sort: (p) => p.name,
+    },
+    { key: 'phone', header: 'الموبايل', cell: (p) => (p.phone ? <span dir="ltr" className={clsx('tabular text-[13px]', !isValidPhone(p.phone) && 'text-bad')}>{p.phone}</span> : <span className="text-bad text-[13px]">مش مسجل</span>), className: 'w-36' },
+    {
+      key: 'mosques',
+      header: 'المساجد المرتبطة',
+      cell: (p) => {
+        const l = linked(p);
+        return l.length ? <span className="text-[13px] text-brown-700 line-clamp-2">{l.join('، ')}</span> : <span className="text-muted">—</span>;
+      },
+    },
+    { key: 'load', header: 'التكليفات', cell: (p) => <LoadCell p={p} />, sort: (p) => monthInfo.loads.get(p.id) ?? 0, align: 'center', className: 'w-28' },
+    { key: 'status', header: 'الحالة', cell: (p) => (p.is_active ? <Tag tone="ok">نشط</Tag> : <Tag tone="bad">متوقف</Tag>), sort: (p) => Number(p.is_active), className: 'w-24' },
+    { key: 'actions', header: 'الإجراءات', cell: (p) => <Actions p={p} />, className: 'w-52 text-left' },
+  ];
+  const table = useTable(list, columns, { pageSize: 20, initialSort: { key: 'name', dir: 'asc' } });
+  const profile = profileId ? data.preachers.find((p) => p.id === profileId) : null;
+  const resetPage = <T,>(fn: (v: T) => void) => (v: T) => { fn(v); table.setPage(1); };
+
   return (
     <>
       <PageTitle
         title="الخطباء"
-        subtitle={`${data.preachers.filter((p) => p.is_active).length} خطيب متاح للتوزيع${month ? ` · الأرقام لشهر ${monthTitle(month.hijri_year, month.hijri_month)}` : ''}`}
+        subtitle={`${data.preachers.filter((p) => p.is_active).length} خطيب نشط من ${data.preachers.length}${month ? ` · التكليفات لشهر ${monthTitle(month.hijri_year, month.hijri_month)}` : ''}`}
         actions={
-          <Button onClick={() => open()}>
-            <Plus className="w-4 h-4" />
-            خطيب جديد
-          </Button>
+          <>
+            <Button variant="outline" onClick={exportExcel} disabled={!list.length}><FileSpreadsheet className="w-4 h-4" />تصدير</Button>
+            <Button onClick={() => open()}><Plus className="w-4 h-4" />خطيب جديد</Button>
+          </>
         }
       />
-      <div className="mb-4">
-        <Search value={q} onChange={setQ} placeholder="ابحث بالاسم أو الرقم…" />
-      </div>
-      {list.length === 0 ? (
-        <Card>
-          <Empty title={q ? 'مفيش خطيب بالاسم ده' : 'لسه مفيش خطباء'} action={!q && <Button onClick={() => open()}><Plus className="w-4 h-4" />ضيف أول خطيب</Button>} />
-        </Card>
-      ) : (
-        <div className="bg-paper border border-sand rounded-xl divide-y divide-sand">
-          {list.map((p) => {
-            const load = loads.get(p.id) ?? 0;
-            return (
-              <div key={p.id} className={clsx('flex flex-wrap items-center gap-3 px-4 py-3', !p.is_active && 'opacity-60')}>
-                <button onClick={() => open(p)} className="flex items-center gap-3 min-w-0 flex-1 text-right cursor-pointer group">
-                  <span className="w-10 h-10 shrink-0 rounded-full bg-brown-100 border border-sand-dark text-brown-700 flex items-center justify-center">
-                    <UserRound className="w-5 h-5" />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block font-semibold text-brown-900 group-hover:text-gold-700 truncate">{p.name}</span>
-                    <span className="flex flex-wrap gap-1.5 mt-0.5">
-                      <Tag tone={p.level === 'senior' ? 'gold' : 'sand'}>{LEVEL_LABEL[p.level]}</Tag>
-                      {p.available_fridays && p.available_fridays.length < 5 && (
-                        <Tag>متاح: {p.available_fridays.map((x) => fridayOrdinal(x).replace('الجمعة ', '')).join(' و')}</Tag>
-                      )}
-                      {!p.is_active && <Tag tone="bad">متوقف</Tag>}
-                    </span>
-                  </span>
-                </button>
-                <div className="text-sm text-muted tabular w-24 text-center" title="جمعات الشهر من الحد الأقصى">
-                  <span className={clsx('font-bold text-base', load >= p.max_fridays ? 'text-gold-700' : 'text-brown-800')}>{load}</span> من {p.max_fridays}
-                </div>
-                <div className="flex gap-1.5">
-                  <Button size="sm" variant="outline" onClick={() => copyLink(p)} title="نسخ رابط صفحة الخطيب">
-                    <Link2 className="w-4 h-4" />
-                    <span className="hidden sm:inline">رابطه</span>
-                  </Button>
-                  {p.phone && (
-                    <LinkButton size="sm" href={waLink(p.phone, `السلام عليكم ورحمة الله يا شيخ ${p.name}`)} title="واتساب">
-                      <MessageCircle className="w-4 h-4" />
-                    </LinkButton>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <FilterBar>
+        <Search value={q} onChange={resetPage(setQ)} placeholder="ابحث بالاسم أو الرقم أو الكود…" />
+        <FilterSelect label="الحالة" value={status} onChange={resetPage(setStatus)} options={[{ value: 'all', label: 'الكل' }, { value: 'active', label: 'نشط' }, { value: 'inactive', label: 'متوقف' }, { value: 'nophone', label: 'من غير رقم صحيح' }]} />
+        <FilterSelect label="الخبرة" value={level} onChange={resetPage(setLevel)} options={[{ value: 'all', label: 'الكل' }, ...LEVELS.map((l) => ({ value: l.value, label: l.label }))]} />
+        {month && <FilterSelect label="الشهر" value={load} onChange={resetPage(setLoad)} options={[{ value: 'all', label: 'الكل' }, { value: 'none', label: 'ما أخدش جمعات' }, { value: 'full', label: 'وصل لحده' }]} />}
+      </FilterBar>
+      <DataTable
+        columns={columns}
+        table={table}
+        rowKey={(p) => p.id}
+        onRowClick={(p) => setProfileId(p.id)}
+        minWidth={980}
+        empty={
+          <Empty title={data.preachers.length ? 'مفيش خطيب بالبحث ده' : 'لسه مفيش خطباء'} icon={Users} action={!data.preachers.length && <Button onClick={() => open()}><Plus className="w-4 h-4" />ضيف أول خطيب</Button>}>
+            {data.preachers.length ? 'جرّب تغيّر البحث أو الفلاتر.' : undefined}
+          </Empty>
+        }
+        card={(p) => (
+          <div className={clsx('px-4 py-3', !p.is_active && 'bg-brown-50/60')}>
+            <button onClick={() => setProfileId(p.id)} className="w-full flex items-start gap-3 text-right cursor-pointer">
+              <span className="w-10 h-10 shrink-0 rounded-full bg-brown-100 text-brown-700 inline-flex items-center justify-center"><UserRound className="w-5 h-5" /></span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-semibold text-ink leading-snug">{p.name}</span>
+                <span className="flex flex-wrap gap-1 mt-1">
+                  <Tag tone={p.level === 'senior' ? 'gold' : p.level === 'new' ? 'wait' : 'sand'}>{LEVEL_LABEL[p.level]}</Tag>
+                  {!p.is_active && <Tag tone="bad">متوقف</Tag>}
+                  <span className="text-[12px] text-muted tabular">#{p.id}</span>
+                </span>
+              </span>
+              <LoadCell p={p} />
+            </button>
+            {linked(p).length > 0 && <div className="text-[12.5px] text-muted mt-2 truncate">{linked(p).join('، ')}</div>}
+            <div className="mt-2 -mb-1"><Actions p={p} /></div>
+          </div>
+        )}
+      />
+      {profile && <PreacherProfile preacher={profile} onClose={() => setProfileId(null)} onEdit={() => open(profile)} onToggle={() => toggle(profile)} />}
       {form && <PreacherForm initial={form} onClose={() => setForm(null)} />}
     </>
   );
