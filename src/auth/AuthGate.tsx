@@ -21,7 +21,8 @@ function Frame({ children }: { children: React.ReactNode }) {
       <div className="relative w-full max-w-sm bg-paper rounded-2xl shadow-2xl overflow-hidden">
         <div className="bg-brown-900 text-gold-200 text-center px-6 pt-7 pb-5">
           <img src="/aljameya-logo.png" alt="" className="w-20 h-20 mx-auto rounded-full ring-2 ring-gold-500 bg-paper object-contain p-1" />
-          <h1 className="text-2xl mt-3">جدول خطباء الجمعة</h1>
+          <h1 className="font-display text-[28px] mt-3 leading-tight">الجمعية الشرعية</h1>
+          <div className="text-[13px] text-brown-100/70 mt-0.5">منظومة إدارة خطباء الجمعة</div>
           <div className="ornament text-[10px] mt-2 max-w-[180px] mx-auto"><Star8 className="w-2.5 h-2.5" /></div>
         </div>
         <div className="h-[3px] bg-gradient-to-l from-gold-600 via-gold-400 to-gold-600" />
