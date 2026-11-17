@@ -92,10 +92,22 @@ export function Dashboard() {
               <div className="text-[12.5px] text-brown-100/65 truncate">{data.settings.branch_name ? `${data.settings.branch_name} · ` : ''}منظومة إدارة خطباء الجمعة</div>
             </div>
           </div>
-          <h1 className="mt-5 text-[22px] sm:text-[26px] font-semibold leading-snug">
-            {greeting()}{data.settings.admin_name ? `، أ. ${data.settings.admin_name}` : ''}
-          </h1>
-          <p className="text-brown-100/75 text-sm mt-1">
+          <div className="mt-5 flex items-center gap-4">
+            {/* صورة مسؤول الجدول جنب الترحيب */}
+            <img
+              src="/admin-photo.jpg"
+              alt={data.settings.admin_name ? `م. ${data.settings.admin_name}` : 'مسؤول الدعوة'}
+              className="w-16 h-16 sm:w-20 sm:h-20 shrink-0 rounded-full object-cover ring-2 ring-gold-400 ring-offset-2 ring-offset-brown-950 shadow-lg"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+            <div className="min-w-0">
+              <h1 className="text-[22px] sm:text-[26px] font-semibold leading-snug">
+                {greeting()}{data.settings.admin_name ? `، م. ${data.settings.admin_name}` : ''}
+              </h1>
+              <div className="text-[13px] text-gold-300/90">مسؤول جدول خطباء الجمعة</div>
+            </div>
+          </div>
+          <p className="text-brown-100/75 text-sm mt-3">
             {gregLong(today)}
             {next && (
               <>
