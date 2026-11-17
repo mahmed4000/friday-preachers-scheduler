@@ -277,7 +277,7 @@ export function MessagesPage() {
         actions={
           tab !== 'reminder' && tab !== 'log' &&
           month && (
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
+            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium" aria-label="الشهر">
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
           )

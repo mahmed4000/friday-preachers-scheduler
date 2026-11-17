@@ -241,7 +241,7 @@ export function Dashboard() {
           ) : nextRows.length === 0 ? (
             <Empty title="الجمعة دي لسه ما اتوزعتش" action={<Button size="sm" onClick={() => navigate(`/schedule?month=${next.month.id}`)}>افتح الجدول</Button>} />
           ) : (
-            <div className="max-h-[380px] overflow-y-auto scroll-soft">
+            <div className="max-h-[380px] overflow-y-auto scroll-soft" tabIndex={0} role="region" aria-label="خطباء الجمعة الجاية">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-brown-50 z-[1]">
                   <tr className="text-right text-[12px] text-muted border-b border-border">

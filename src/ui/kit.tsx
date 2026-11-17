@@ -113,7 +113,7 @@ export function Card({
   bodyClassName?: string;
 }) {
   return (
-    <section className={clsx('bg-card border border-border rounded-[var(--radius-card)] shadow-[var(--shadow-card)]', className)}>
+    <section className={clsx('min-w-0 bg-card border border-border rounded-[var(--radius-card)] shadow-[var(--shadow-card)]', className)}>
       {(title || action) && (
         <header className="flex items-center justify-between gap-3 px-4 sm:px-5 min-h-14 py-2 border-b border-border">
           <div className="min-w-0">
@@ -599,7 +599,7 @@ export function DataTable<T>({
                 return (
                   <th key={c.key} scope="col" className={clsx('px-4 h-12 text-[12.5px] font-semibold text-muted whitespace-nowrap', c.align === 'center' ? 'text-center' : 'text-right', c.className)} aria-sort={active ? (table.sort!.dir === 'asc' ? 'ascending' : 'descending') : undefined}>
                     {c.sort ? (
-                      <button onClick={() => table.toggle(c.key)} className={clsx('inline-flex items-center gap-1 cursor-pointer hover:text-ink', active && 'text-brown-900')}>
+                      <button onClick={() => table.toggle(c.key)} className={clsx('inline-flex items-center gap-1 h-9 cursor-pointer hover:text-ink', active && 'text-brown-900')}>
                         {c.header}
                         {active ? (table.sort!.dir === 'asc' ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />) : <ArrowUpDown className="w-3.5 h-3.5 opacity-40" />}
                       </button>
