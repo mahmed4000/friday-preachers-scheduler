@@ -22,6 +22,7 @@ export const ACTIONS: Record<string, { label: string; kind: LogKind }> = {
   mosque_edit: { label: 'تعديل مسجد', kind: 'data' },
   mosque_delete: { label: 'مسح مسجد', kind: 'data' },
   settings: { label: 'تعديل الإعدادات', kind: 'settings' },
+  message_sent: { label: 'إرسال رسالة', kind: 'message' },
 };
 
 export const KIND_LABEL: Record<LogKind, string> = {
