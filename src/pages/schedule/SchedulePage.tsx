@@ -22,7 +22,7 @@ export function SchedulePage() {
   const requested = Number(queryParam('month'));
   const [monthId, setMonthId] = useState<number | null>(() => (months.some((m) => m.id === requested) ? requested : currentMonth(months)?.id ?? null));
   const month = months.find((m) => m.id === monthId) ?? null;
-  const [modal, setModal] = useState<'new' | 'settings' | 'unavail' | null>(null);
+  const [modal, setModal] = useState<'new' | 'settings' | 'unavail' | null>(() => (queryParam('new') ? 'new' : null));
   const [slot, setSlot] = useState<{ mosqueId: number; fridayIndex: number } | null>(null);
   const [mobileFriday, setMobileFriday] = useState(1);
   const [busy, setBusy] = useState(false);

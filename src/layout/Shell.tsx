@@ -197,7 +197,7 @@ function Notifications({ alerts }: { alerts: OpsAlert[] }) {
       >
         <Bell className="w-5 h-5" />
         {alerts.length > 0 && (
-          <span className={clsx('absolute top-1.5 left-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-bold tabular inline-flex items-center justify-center ring-2 ring-card', urgent ? 'bg-bad text-white' : 'bg-gold-500 text-brown-950')}>
+          <span className={clsx('absolute top-0.5 left-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10.5px] font-bold tabular inline-flex items-center justify-center ring-2 ring-card', urgent ? 'bg-bad text-white' : 'bg-gold-500 text-brown-950')}>
             {alerts.length}
           </span>
         )}
