@@ -120,7 +120,7 @@ export function ReportPage() {
                   <div className="font-medium text-ink">{r.preacher.name}</div>
                   <div className="text-[12px] text-muted">{LEVEL_LABEL[r.preacher.level]} · الحد {r.preacher.max_fridays}</div>
                 </td>
-                <td className="px-3 py-2 text-center tabular font-display font-bold text-brown-900 text-base">{r.total}</td>
+                <td className="px-3 py-2 text-center tabular font-num font-bold text-brown-900 text-base">{r.total}</td>
                 <td className="px-3 py-2 text-center tabular text-ok">{r.confirmed}</td>
                 <td className="px-3 py-2 text-center tabular text-wait">{r.pending}</td>
                 <td className={clsx('px-3 py-2 text-center tabular', r.excuses ? 'text-bad font-semibold' : 'text-muted')}>{r.excuses}</td>

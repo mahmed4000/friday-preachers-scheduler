@@ -11,7 +11,9 @@ import '@fontsource/ibm-plex-sans-arabic/arabic-600.css';
 import '@fontsource/ibm-plex-sans-arabic/arabic-700.css';
 import '@fontsource/ibm-plex-sans-arabic/latin-400.css';
 import '@fontsource/ibm-plex-sans-arabic/latin-600.css';
-import '@fontsource-variable/noto-kufi-arabic';
+import '@fontsource/amiri/arabic-400.css';
+import '@fontsource/amiri/arabic-700.css';
+import '@fontsource/amiri/latin-700.css';
 import './index.css';
 
 // صفحة الخطيب (/p/<الرابط الخاص>) مستقلة تمامًا عن صفحات المسؤول

@@ -9,6 +9,7 @@ import { PreachersPage } from './pages/Preachers.tsx';
 import { MessagesPage } from './pages/messages/MessagesPage.tsx';
 import { ReportPage } from './pages/Report.tsx';
 import { SettingsPage } from './pages/Settings.tsx';
+import { ActivityLogPage } from './pages/ActivityLog.tsx';
 import { Star8 } from './ui/kit.tsx';
 
 function Loading({ text = 'جاري تحميل البيانات…' }: { text?: string }) {
@@ -45,6 +46,7 @@ export default function App() {
   else if (path.startsWith('/messages')) page = <MessagesPage />;
   else if (path.startsWith('/report')) page = <ReportPage />;
   else if (path.startsWith('/settings')) page = <SettingsPage />;
+  else if (path.startsWith('/log')) page = <ActivityLogPage />;
   else page = <Dashboard />;
 
   return (

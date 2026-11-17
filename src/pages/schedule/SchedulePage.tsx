@@ -221,7 +221,7 @@ export function SchedulePage() {
           ].map((x) => (
             <div key={x.label} className="bg-paper px-3 sm:px-4 py-2.5 sm:py-3">
               <div className="text-[11.5px] sm:text-[12px] text-muted truncate">{x.label}</div>
-              <div className={clsx('font-display text-lg sm:text-xl font-bold tabular leading-tight', x.cls)}>{x.value}</div>
+              <div className={clsx('font-num text-lg sm:text-xl font-bold tabular leading-tight', x.cls)}>{x.value}</div>
             </div>
           ))}
         </div>
