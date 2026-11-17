@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { SUPABASE_PROJECT } from '../data/supabaseRepo.ts';
 import { Copy, Database, FlaskConical, RefreshCw } from 'lucide-react';
 import schemaSql from '../../supabase/01_new_schema.sql?raw';
 import { Button, Card, Star8 } from '../ui/kit.tsx';
@@ -30,7 +31,7 @@ export function Setup() {
         <Card title="شغّل ملف الإعداد في Supabase">
           <ol className="space-y-3 text-[15px] list-none">
             {[
-              <>افتح مشروعك على <b>supabase.com</b>، ومن القائمة اختار <b>SQL Editor</b>، وبعدين <b>New query</b>.</>,
+              <>افتح مشروع <b dir="ltr">{SUPABASE_PROJECT}</b> على <b>supabase.com</b> (ده المشروع اللي البرنامج متوصل بيه)، ومن القائمة اختار <b>SQL Editor</b>، وبعدين <b>New query</b>.</>,
               <>دوس الزرار اللي تحت علشان تنسخ ملف الإعداد، والزقه في المحرر.</>,
               <>دوس <b>Run</b>. هيظهر في الآخر عدد المساجد والخطباء اللي اتنقلوا من البرنامج القديم.</>,
               <>ارجع هنا ودوس <b>"خلصت، افتح البرنامج"</b>.</>,

@@ -5,10 +5,19 @@ import { DEFAULT_SETTINGS } from './defaults.ts';
 
 // عنوان المشروع والمفتاح العام (publishable). المفتاح ده مصمم إنه يتحط في المتصفح؛
 // الحماية الحقيقية من سياسات Supabase (ملف supabase/02_security.sql).
-const URL = import.meta.env.VITE_SUPABASE_URL || 'https://tctaqmtvypibxsaehawf.supabase.co';
-const KEY =
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
+declare const __SUPABASE_URL__: string;
+declare const __SUPABASE_KEY__: string;
+
+// المشروع الافتراضي (للتطوير المحلي بس). على Vercel القيم بتيجي من SUPABASE_URL و SUPABASE_ANON_KEY.
+const DEV_URL = 'https://tctaqmtvypibxsaehawf.supabase.co';
+const DEV_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRjdGFxbXR2eXBpYnhzYWVoYXdmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEwNjUyNDAsImV4cCI6MjEwNjY0MTI0MH0.LKXvP_kpWNiVmMZK9zWdJev43a489IPtffNqbldnFlg';
+const hasEnv = Boolean(__SUPABASE_URL__ && __SUPABASE_KEY__);
+const URL = hasEnv ? __SUPABASE_URL__ : DEV_URL;
+const KEY = hasEnv ? __SUPABASE_KEY__ : DEV_KEY;
+
+/** رقم مشروع Supabase اللي البرنامج متوصل بيه (بيظهر في الإعدادات علشان تتأكد) */
+export const SUPABASE_PROJECT = URL.replace(/^https?:\/\//, '').split('.')[0];
 
 let client: SupabaseClient | null = null;
 export function supabase(): SupabaseClient {

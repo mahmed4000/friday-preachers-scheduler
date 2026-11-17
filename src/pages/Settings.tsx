@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Database, FlaskConical, LogOut } from 'lucide-react';
 import { useStore, setDemoMode } from '../data/store.tsx';
 import { LocalRepo } from '../data/localRepo.ts';
+import { SUPABASE_PROJECT } from '../data/supabaseRepo.ts';
 import { Button, Card, Field, Input, PageTitle } from '../ui/kit.tsx';
 import { useConfirm } from '../ui/confirm.tsx';
 import { signOut, currentUserEmail } from '../auth/session.ts';
@@ -42,7 +43,7 @@ export function SettingsPage() {
               <li>{data.months.length} شهر، {data.assignments.length} تكليف</li>
               <li className="flex items-center gap-1.5 text-muted">
                 {repo.kind === 'demo' ? <FlaskConical className="w-4 h-4" /> : <Database className="w-4 h-4" />}
-                {repo.kind === 'demo' ? 'وضع تجريبي: البيانات في المتصفح ده بس' : 'محفوظة في Supabase'}
+                {repo.kind === 'demo' ? 'وضع تجريبي: البيانات في المتصفح ده بس' : <>محفوظة في Supabase · مشروع <b dir="ltr">{SUPABASE_PROJECT}</b></>}
               </li>
             </ul>
             {repo.kind === 'demo' && (
