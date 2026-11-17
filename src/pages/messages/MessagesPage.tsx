@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
-import { BellRing, Check, Landmark, Users } from 'lucide-react';
+import { BellRing, Check, History, Landmark, PenLine, Users } from 'lucide-react';
+import { ComposeTab } from './ComposeTab.tsx';
+import { SentLogTab } from './SentLogTab.tsx';
 import { useStore } from '../../data/store.tsx';
 import type { AppData, Assignment, Month } from '../../data/types.ts';
-import { Card, Empty, PageTitle, Select, StatusPill, Tag, clsx } from '../../ui/kit.tsx';
+import { Card, Empty, PageTitle, Select, StatusPill, Tabs, Tag, clsx } from '../../ui/kit.tsx';
 import { byId, currentMonth, fridaysOf, monthAssignments, nextFriday, sortMonths } from '../../data/selectors.ts';
 import { diffDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthTitle, todayIso } from '../../lib/hijri.ts';
 import { portalUrl } from '../../lib/whatsapp.ts';
@@ -11,7 +13,7 @@ import { fridayPdf, mosquePdf, preacherPdf } from '../../lib/pdf/documents.ts';
 import { queryParam } from '../../lib/router.ts';
 import { SendActions } from '../../components/SendActions.tsx';
 
-type Tab = 'month' | 'reminder' | 'mosques';
+type Tab = 'month' | 'reminder' | 'mosques' | 'compose' | 'log';
 type MarkSent = (rows: Assignment[], field: 'notified_at' | 'reminded_at') => void;
 
 const byName = (a: string, b: string) => a.localeCompare(b, 'ar');
@@ -232,9 +234,11 @@ function MosquesTab({ data, month }: { data: AppData; month: Month }) {
 // الصفحة
 // ---------------------------------------------------------------------------
 const TABS: { value: Tab; label: string; icon: typeof Users }[] = [
-  { value: 'month', label: 'جدول الشهر للخطباء', icon: Users },
+  { value: 'month', label: 'رسائل التكليف', icon: Users },
   { value: 'reminder', label: 'تذكير الخميس', icon: BellRing },
   { value: 'mosques', label: 'جداول المساجد', icon: Landmark },
+  { value: 'compose', label: 'رسالة مخصصة', icon: PenLine },
+  { value: 'log', label: 'سجل الإرسال', icon: History },
 ];
 
 export function MessagesPage() {
@@ -251,10 +255,15 @@ export function MessagesPage() {
   const markSent: MarkSent = (rows, field) => {
     const now = new Date().toISOString();
     actions.upsertAssignments(rows.map(({ id: _id, ...r }) => ({ ...r, [field]: now })));
+    const mosques = byId(data.mosques);
+    const pid = rows[0]?.preacher_id ?? null;
+    actions.log(rows[0]?.month_id ?? null, pid, 'message_sent', `${field === 'reminded_at' ? 'تذكير الخميس' : 'تكليف / جدول الشهر'}: ${rows.map((r) => `${mosques.get(r.mosque_id)?.name ?? ''} (${fridayOrdinal(r.friday_index).replace('الجمعة ', '')})`).join('، ')}`);
   };
 
   const content = () => {
     if (tab === 'reminder') return <ReminderTab data={data} markSent={markSent} />;
+    if (tab === 'log') return <SentLogTab data={data} />;
+    if (tab === 'compose') return <ComposeTab data={data} month={month} />;
     if (!month) return <Empty title="لسه مفيش شهور" />;
     if (tab === 'mosques') return <MosquesTab data={data} month={month} />;
     return <MonthTab data={data} month={month} markSent={markSent} />;
@@ -263,32 +272,18 @@ export function MessagesPage() {
   return (
     <>
       <PageTitle
-        title="الإرسال والتذكير"
-        subtitle="كل رسالة بتتبعت على واتساب ومعاها ملف PDF بالجدول"
+        title="مركز الإرسال"
+        subtitle="رسائل التكليف والتذكير وجداول المساجد على واتساب مع ملف PDF، والرسائل المخصصة وسجل الإرسال"
         actions={
-          tab !== 'reminder' &&
+          tab !== 'reminder' && tab !== 'log' &&
           month && (
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
+            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium" aria-label="الشهر">
               {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
             </Select>
           )
         }
       />
-      <div className="flex gap-1.5 mb-3 overflow-x-auto">
-        {TABS.map((t) => (
-          <button
-            key={t.value}
-            onClick={() => setTab(t.value)}
-            className={clsx(
-              'shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-[10px] border text-sm cursor-pointer transition-colors',
-              tab === t.value ? 'bg-brown-800 border-brown-800 text-white font-medium' : 'bg-paper border-sand text-ink hover:bg-brown-50'
-            )}
-          >
-            <t.icon className="w-4 h-4" />
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <div className="mb-3"><Tabs value={tab} onChange={setTab} tabs={TABS} /></div>
       <Card className="overflow-hidden [&>div]:p-0">{content()}</Card>
     </>
   );

@@ -3,6 +3,8 @@ import type { Repo, AssignmentRow } from './repo.ts';
 import type { AppData, Assignment, FixedRule, Month, Mosque, Preacher, Preference, Settings } from './types.ts';
 import { SupabaseRepo, SetupRequiredError } from './supabaseRepo.ts';
 import { LocalRepo } from './localRepo.ts';
+import { diffMosque, diffPreacher, diffSettings } from './audit.ts';
+import { gregLong, monthTitle } from '../lib/hijri.ts';
 
 const MODE_KEY = 'fs_mode';
 
@@ -77,6 +79,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<StoreValue['status']>('loading');
   const [error, setError] = useState('');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  // نسخة من البيانات للمقارنة قبل وبعد التعديل (لسجل العمليات)
+  const dataRef = useRef(data);
+  dataRef.current = data;
 
   const toast = useCallback((text: string, tone: Toast['tone'] = 'ok') => {
     const id = Date.now() + Math.random();
@@ -147,15 +152,30 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const actions = useMemo<StoreValue['actions']>(() => {
     const replaceById = <T extends { id: number }>(list: T[], row: T) =>
       list.some((x) => x.id === row.id) ? list.map((x) => (x.id === row.id ? row : x)) : [...list, row];
+    // تسجيل العملية في السجل؛ فشل السجل ما يوقفش الحفظ
+    const audit = async (monthId: number | null, preacherId: number | null, action: string, details: string) => {
+      try {
+        const row = await repo.addLog({ month_id: monthId, preacher_id: preacherId, action, details });
+        setData((d) => ({ ...d, log: [row, ...d.log] }));
+      } catch {
+        /* السجل مش أساسي */
+      }
+    };
+    const d0 = () => dataRef.current;
     return {
       saveSettings: async (s) => {
-        await run(async () => {
+        const before = d0().settings;
+        const ok = await run(async () => {
           await repo.saveSettings(s);
           setData((d) => ({ ...d, settings: s }));
+          return true;
         }, 'اتحفظت الإعدادات');
+        const changes = diffSettings(before, s);
+        if (ok && changes.length) await audit(null, null, 'settings', changes.join(' · '));
       },
-      saveMosque: (m, fixed, prefs) =>
-        run(async () => {
+      saveMosque: async (m, fixed, prefs) => {
+        const before = m.id ? d0().mosques.find((x) => x.id === m.id) : undefined;
+        const row = await run(async () => {
           const row = await repo.saveMosque(m);
           const [f, p] = await Promise.all([repo.setFixed(row.id, fixed), repo.setPreferences(row.id, prefs)]);
           setData((d) => ({
@@ -165,9 +185,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             preferences: [...d.preferences.filter((x) => x.mosque_id !== row.id), ...p],
           }));
           return row;
-        }, 'اتحفظ المسجد'),
+        }, 'اتحفظ المسجد');
+        if (row) {
+          if (!before) await audit(null, null, 'mosque_add', row.name);
+          else {
+            const changes = diffMosque(before, row);
+            if (changes.length) await audit(null, null, 'mosque_edit', `${row.name}: ${changes.join(' · ')}`);
+          }
+        }
+        return row;
+      },
       deleteMosque: async (id) => {
-        await run(async () => {
+        const name = d0().mosques.find((x) => x.id === id)?.name ?? '';
+        const ok = await run(async () => {
           await repo.deleteMosque(id);
           setData((d) => ({
             ...d,
@@ -176,16 +206,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             preferences: d.preferences.filter((x) => x.mosque_id !== id),
             assignments: d.assignments.filter((x) => x.mosque_id !== id),
           }));
+          return true;
         }, 'اتمسح المسجد');
+        if (ok) await audit(null, null, 'mosque_delete', name);
       },
-      savePreacher: (p) =>
-        run(async () => {
+      savePreacher: async (p) => {
+        const before = p.id ? d0().preachers.find((x) => x.id === p.id) : undefined;
+        const row = await run(async () => {
           const row = await repo.savePreacher(p);
           setData((d) => ({ ...d, preachers: replaceById(d.preachers, row) }));
           return row;
-        }, 'اتحفظ الخطيب'),
+        }, 'اتحفظ الخطيب');
+        if (row) {
+          if (!before) await audit(null, row.id, 'preacher_add', row.name);
+          else {
+            const changes = diffPreacher(before, row);
+            if (changes.length) await audit(null, row.id, 'preacher_edit', `${row.name}: ${changes.join(' · ')}`);
+          }
+        }
+        return row;
+      },
       deletePreacher: async (id) => {
-        await run(async () => {
+        const name = d0().preachers.find((x) => x.id === id)?.name ?? '';
+        const ok = await run(async () => {
           await repo.deletePreacher(id);
           setData((d) => ({
             ...d,
@@ -195,22 +238,33 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             unavailable: d.unavailable.filter((x) => x.preacher_id !== id),
             assignments: d.assignments.map((a) => (a.preacher_id === id ? { ...a, preacher_id: null } : a)),
           }));
+          return true;
         }, 'اتمسح الخطيب');
+        if (ok) await audit(null, null, 'preacher_delete', name);
       },
-      createMonth: (m) =>
-        run(async () => {
+      createMonth: async (m) => {
+        const row = await run(async () => {
           const row = await repo.createMonth(m);
           setData((d) => ({ ...d, months: [...d.months, row] }));
           return row;
-        }, 'اتعمل الشهر'),
+        }, 'اتعمل الشهر');
+        if (row) await audit(row.id, null, 'month_create', `${monthTitle(row.hijri_year, row.hijri_month)}: يبدأ ${gregLong(row.start_date)} (${row.days_count} يوم)`);
+        return row;
+      },
       updateMonth: async (id, patch) => {
-        await run(async () => {
+        const before = d0().months.find((x) => x.id === id);
+        const row = await run(async () => {
           const row = await repo.updateMonth(id, patch);
           setData((d) => ({ ...d, months: replaceById(d.months, row) }));
+          return row;
         });
+        if (row && before && (before.start_date !== row.start_date || before.days_count !== row.days_count)) {
+          await audit(row.id, null, 'month_edit', `${monthTitle(row.hijri_year, row.hijri_month)}: ${gregLong(before.start_date)} (${before.days_count}) ← ${gregLong(row.start_date)} (${row.days_count})`);
+        }
       },
       deleteMonth: async (id) => {
-        await run(async () => {
+        const m = d0().months.find((x) => x.id === id);
+        const ok = await run(async () => {
           await repo.deleteMonth(id);
           setData((d) => ({
             ...d,
@@ -218,7 +272,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             assignments: d.assignments.filter((x) => x.month_id !== id),
             unavailable: d.unavailable.filter((x) => x.month_id !== id),
           }));
+          return true;
         }, 'اتمسح الشهر');
+        if (ok && m) await audit(null, null, 'month_delete', monthTitle(m.hijri_year, m.hijri_month));
       },
       setUnavailable: async (monthId, preacherId, fridays, reason) => {
         await run(async () => {
@@ -248,14 +304,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           setData((d) => ({ ...d, assignments: d.assignments.filter((a) => !ids.includes(a.id)) }));
         });
       },
-      log: async (monthId, preacherId, action, details) => {
-        try {
-          const row = await repo.addLog({ month_id: monthId, preacher_id: preacherId, action, details });
-          setData((d) => ({ ...d, log: [row, ...d.log] }));
-        } catch {
-          /* السجل مش أساسي */
-        }
-      },
+      log: audit,
     };
   }, [repo, run]);
 

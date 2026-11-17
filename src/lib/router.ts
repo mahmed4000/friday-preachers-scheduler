@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export type Route = '/' | '/schedule' | '/mosques' | '/preachers' | '/messages' | '/report' | '/settings';
+export type Route = '/' | '/schedule' | '/mosques' | '/preachers' | '/messages' | '/report' | '/log' | '/settings';
 
 export function navigate(path: string) {
   if (location.pathname + location.search === path) return;

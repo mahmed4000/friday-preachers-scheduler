@@ -1,11 +1,19 @@
 import { useState } from 'react';
-import { CalendarPlus, Lock, Plus, Printer, Send, Settings2, Sparkles, UserX, Wand2 } from 'lucide-react';
+import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, FileSpreadsheet, List, Lock, Plus, Printer, Send, Settings2, Sparkles, UserX, Wand2 } from 'lucide-react';
 import { useStore } from '../../data/store.tsx';
 import type { Assignment } from '../../data/types.ts';
-import { Button, Card, Empty, PageTitle, Select, StatusPill, Tag, clsx } from '../../ui/kit.tsx';
+import { Button, Card, Empty, IconButton, PageTitle, Select, StatusPill, Tabs, Tag, clsx, type Tone } from '../../ui/kit.tsx';
+import { monthStats, scheduleStage, type ScheduleStage } from '../../data/alerts.ts';
+import { LEVEL_LABEL, SIZE_LABEL } from '../../data/types.ts';
+
+const STAGE_LABEL: Record<ScheduleStage, string> = { empty: 'مسودة · لسه ما اتوزعش', incomplete: 'مسودة · ناقص', ready: 'مسودة · جاهز للنشر', published: 'منشور' };
+const STAGE_TONE: Record<ScheduleStage, Tone> = { empty: 'sand', incomplete: 'wait', ready: 'gold', published: 'ok' };
 import { useConfirm } from '../../ui/confirm.tsx';
-import { byId, currentMonth, engineInput, fridaysOf, monthAssignments, sortMonths, unavailableSet } from '../../data/selectors.ts';
-import { generate, neededFridays } from '../../lib/engine.ts';
+import { byId, currentMonth, fridaysOf, monthAssignments, sortMonths, unavailableSet } from '../../data/selectors.ts';
+import { neededFridays } from '../../lib/engine.ts';
+import { downloadWorkbook } from '../../lib/excel.ts';
+import { DistributionPreview, planDistribution, type DistributionPlan } from './DistributionPreview.tsx';
+import { ReviewPanel } from './ReviewPanel.tsx';
 import { addDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthTitle } from '../../lib/hijri.ts';
 import { navigate, queryParam, printPage } from '../../lib/router.ts';
 import { AssignmentModal } from './AssignmentModal.tsx';
@@ -22,7 +30,8 @@ export function SchedulePage() {
   const requested = Number(queryParam('month'));
   const [monthId, setMonthId] = useState<number | null>(() => (months.some((m) => m.id === requested) ? requested : currentMonth(months)?.id ?? null));
   const month = months.find((m) => m.id === monthId) ?? null;
-  const [modal, setModal] = useState<'new' | 'settings' | 'unavail' | null>(null);
+  const monthPos = month ? months.findIndex((m) => m.id === month.id) : -1;
+  const [modal, setModal] = useState<'new' | 'settings' | 'unavail' | null>(() => (queryParam('new') ? 'new' : null));
   const [slot, setSlot] = useState<{ mosqueId: number; fridayIndex: number } | null>(null);
   const [mobileFriday, setMobileFriday] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -39,62 +48,54 @@ export function SchedulePage() {
   const excused = assignments.filter((a) => a.status === 'excused').length;
   const unavail = month ? unavailableSet(data, month.id) : new Set<string>();
 
-  const runDistribution = async (mode: 'fill' | 'full') => {
+  const [plan, setPlan] = useState<DistributionPlan | null>(null);
+  const [view, setView] = useState<'month' | 'week'>('month');
+
+  const runDistribution = (mode: 'fill' | 'full') => {
     if (!month) return;
+    setPlan(planDistribution(data, month, mode));
+  };
+
+  const applyPlan = async () => {
+    if (!month || !plan) return;
     setBusy(true);
-    const input = engineInput(data, month);
-    if (mode === 'fill') {
-      input.existing = input.existing.map((a) => (a.preacher_id && a.status !== 'excused' ? { ...a, locked: true } : a));
-    }
-    const result = generate({ ...input, seed: Date.now() % 100000 });
-    const rows = result.assignments
-      .filter((p) => !p.kept)
-      .map((p) => {
-        const old = cell(p.mosqueId, p.fridayIndex);
-        const same = old && old.preacher_id === p.preacherId && old.status !== 'excused';
-        return {
-          month_id: month.id,
-          mosque_id: p.mosqueId,
-          friday_index: p.fridayIndex,
-          preacher_id: p.preacherId,
-          source: p.source,
-          locked: false,
-          status: same ? old!.status : ('pending' as const),
-          excuse_reason: '',
-          status_at: same ? old!.status_at : null,
-          notified_at: same ? old!.notified_at : null,
-          reminded_at: same ? old!.reminded_at : null,
-        };
-      });
-    // تكليفات لمساجد أو جمعات مبقتش مطلوبة
-    const neededKeys = new Set(result.assignments.map((a) => `${a.mosqueId}:${a.fridayIndex}`));
-    const stale = assignments.filter((a) => !neededKeys.has(`${a.mosque_id}:${a.friday_index}`) && !a.locked && a.source !== 'manual');
-    if (stale.length) await actions.deleteAssignments(stale.map((a) => a.id));
-    const saved = await actions.upsertAssignments(rows);
+    if (plan.stale.length) await actions.deleteAssignments(plan.stale.map((a) => a.id));
+    const saved = await actions.upsertAssignments(plan.rows);
     setBusy(false);
     if (saved) {
-      await actions.log(month.id, null, 'distribute', `توزيع ${mode === 'fill' ? 'الأماكن الفاضية' : 'كامل'}: ${saved.length} تكليف`);
-      toast(result.unfilled.length ? `اتوزّع. فيه ${result.unfilled.length} مكان فاضي محتاج تختار له يدوي` : 'اتوزّع الشهر كله ✓');
+      await actions.log(month.id, null, 'distribute', `توزيع ${plan.mode === 'fill' ? 'الأماكن الفاضية' : 'كامل'}: ${plan.changes.length} تغيير من ${saved.length} تكليف`);
+      toast(plan.unfilled ? `اتوزّع. فيه ${plan.unfilled} مكان فاضي محتاج تختار له يدوي` : 'اتوزّع الشهر كله ✓');
+      setPlan(null);
     }
   };
 
-  const askDistribution = async () => {
+  const askDistribution = () => runDistribution('full');
+
+  const exportExcel = async () => {
     if (!month) return;
-    const hasAuto = assignments.some((a) => a.preacher_id && a.source === 'auto' && !a.locked && a.status !== 'excused');
-    if (!hasAuto) return runDistribution('full');
-    const confirmedAuto = assignments.filter((a) => a.source === 'auto' && !a.locked && a.status === 'confirmed').length;
-    const ok = await confirm({
-      title: 'توزيع من جديد؟',
-      body: (
-        <div className="space-y-2">
-          <p>التوزيع الكامل هيغيّر التكليفات التلقائية اللي مش مثبتة{confirmedAuto ? `، ومنهم ${confirmedAuto} مؤكدين من الخطباء` : ''}.</p>
-          <p className="text-muted text-sm">التكليفات اليدوية والمثبتة والخطيب الثابت مش هيتغيروا. لو عايز تملا الأماكن الفاضية بس، استخدم "املا الفاضي".</p>
-        </div>
-      ),
-      confirmText: 'وزّع من جديد',
-      danger: confirmedAuto > 0,
-    });
-    if (ok) runDistribution('full');
+    try {
+      const title = monthTitle(month.hijri_year, month.hijri_month);
+      await downloadWorkbook(`جدول-الخطباء-${title}.xlsx`, [
+        {
+          name: 'الجدول',
+          rows: [
+            ['المسجد', ...fridays.map((f) => `${fridayOrdinal(f.index)} ${gregShort(f.date)}`)],
+            ...mosques.map((m) => [
+              m.name,
+              ...fridays.map((f) => {
+                if (!neededFridays(m, fridayIdx).includes(f.index)) return '—';
+                const a = cell(m.id, f.index);
+                const p = a?.preacher_id ? preachers.get(a.preacher_id) : null;
+                return p ? `${p.name}${a?.status === 'excused' ? ' (معتذر)' : a?.status === 'confirmed' ? ' ✓' : ''}` : '';
+              }),
+            ]),
+          ],
+        },
+      ]);
+      toast('اتنزل ملف الإكسل');
+    } catch (e) {
+      toast(`ما قدرتش أعمل الملف: ${e instanceof Error ? e.message : ''}`, 'error');
+    }
   };
 
   const publish = async () => {
@@ -190,6 +191,49 @@ export function SchedulePage() {
     );
   };
 
+  const stage = scheduleStage(monthStats(data, month));
+
+  const WeekView = () => {
+    const rows = mosques.filter((m) => neededFridays(m, fridayIdx).includes(mobileFriday));
+    const f = fridays.find((x) => x.index === mobileFriday);
+    const load = new Map<number, number>();
+    for (const a of assignments) if (a.preacher_id && a.status !== 'excused') load.set(a.preacher_id, (load.get(a.preacher_id) ?? 0) + 1);
+    return (
+      <div className="hidden md:block print:hidden bg-card border border-border rounded-[var(--radius-card)] overflow-hidden shadow-[var(--shadow-card)]">
+        <div className="px-4 h-12 flex items-center justify-between border-b border-border bg-brown-50">
+          <b className="text-sm">{fridayOrdinal(mobileFriday)}</b>
+          {f && <span className="text-[13px] text-muted tabular">{hijriShort(f.hijriDay, month.hijri_month)} · {gregLong(f.date)} · {rows.length} مسجد</span>}
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-right text-[12.5px] text-muted border-b border-border">
+              <th className="px-4 h-11 font-semibold">المسجد</th>
+              <th className="px-3 h-11 font-semibold">الخطيب</th>
+              <th className="px-3 h-11 font-semibold">المصدر</th>
+              <th className="px-3 h-11 font-semibold text-center">جمعاته الشهر ده</th>
+              <th className="px-3 h-11 font-semibold">الحالة</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m) => {
+              const a = cell(m.id, mobileFriday);
+              const p = a?.preacher_id ? preachers.get(a.preacher_id) : null;
+              return (
+                <tr key={m.id} onClick={() => setSlot({ mosqueId: m.id, fridayIndex: mobileFriday })} className={clsx('border-t border-border first:border-t-0 cursor-pointer hover:bg-brown-50/70', a?.status === 'excused' && 'bg-bad-soft/40')}>
+                  <td className="px-4 py-3"><span className="font-medium">{m.name}</span> <span className="text-[12px] text-muted">· {SIZE_LABEL[m.size]}</span></td>
+                  <td className="px-3 py-3">{p ? <span className={clsx(a?.status === 'excused' && 'line-through text-bad')}>{p.name} <span className="text-[12px] text-muted">· {LEVEL_LABEL[p.level]}</span></span> : <span className="text-gold-700 inline-flex items-center gap-1"><Plus className="w-4 h-4" />اختار خطيب</span>}</td>
+                  <td className="px-3 py-3">{a?.preacher_id && <Tag>{a.source === 'fixed' ? 'ثابت' : a.source === 'manual' ? 'يدوي' : 'تلقائي'}{a.locked && ' · مثبت'}</Tag>}</td>
+                  <td className="px-3 py-3 text-center tabular">{p ? <>{load.get(p.id) ?? 0} / {p.max_fridays}</> : '—'}</td>
+                  <td className="px-3 py-3">{p && a && <StatusPill status={a.status} />}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <>
       <PageTitle
@@ -197,14 +241,18 @@ export function SchedulePage() {
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <span>{gregLong(month.start_date)} — {gregLong(addDays(month.start_date, month.days_count - 1))}</span>
-            {month.status === 'published' ? <Tag tone="brown">منشور</Tag> : <Tag>مسودة</Tag>}
+            <Tag tone={STAGE_TONE[stage]}>{STAGE_LABEL[stage]}</Tag>
           </span>
         }
         actions={
           <>
-            <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium">
-              {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
-            </Select>
+            <div className="flex items-center gap-1">
+              <IconButton aria-label="الشهر السابق" disabled={monthPos <= 0} onClick={() => setMonthId(months[monthPos - 1].id)} className="border border-border bg-card"><ChevronRight className="w-4 h-4" /></IconButton>
+              <Select value={month.id} onChange={(e) => setMonthId(Number(e.target.value))} className="!w-auto min-w-[190px] font-medium" aria-label="اختيار الشهر الهجري">
+                {months.map((m) => <option key={m.id} value={m.id}>{monthTitle(m.hijri_year, m.hijri_month)}</option>)}
+              </Select>
+              <IconButton aria-label="الشهر التالي" disabled={monthPos >= months.length - 1} onClick={() => setMonthId(months[monthPos + 1].id)} className="border border-border bg-card"><ChevronLeft className="w-4 h-4" /></IconButton>
+            </div>
             <Button variant="outline" onClick={() => setModal('new')}><CalendarPlus className="w-4 h-4" />شهر جديد</Button>
           </>
         }
@@ -221,7 +269,7 @@ export function SchedulePage() {
           ].map((x) => (
             <div key={x.label} className="bg-paper px-3 sm:px-4 py-2.5 sm:py-3">
               <div className="text-[11.5px] sm:text-[12px] text-muted truncate">{x.label}</div>
-              <div className={clsx('font-display text-lg sm:text-xl font-bold tabular leading-tight', x.cls)}>{x.value}</div>
+              <div className={clsx('font-num text-lg sm:text-xl font-bold tabular leading-tight', x.cls)}>{x.value}</div>
             </div>
           ))}
         </div>
@@ -262,9 +310,34 @@ export function SchedulePage() {
               <Printer className="w-4 h-4" />
               طباعة
             </Button>
+            <Button size="sm" variant="outline" onClick={exportExcel}>
+              <FileSpreadsheet className="w-4 h-4" />
+              تصدير
+            </Button>
           </div>
         </div>
       </div>
+
+      <ReviewPanel data={data} month={month} onOpen={setSlot} />
+
+      {month.status === 'published' && (
+        <p className="text-[12.5px] text-muted mb-3 no-print">الجدول منشور: أي تغيير بيتسجل في سجل العمليات، وابعت للخطيب الجديد خطاب التكليف من نافذة المكان.</p>
+      )}
+
+      {mosques.length > 0 && (
+        <div className="hidden md:flex items-center justify-between gap-3 mb-3 no-print">
+          <Tabs value={view} onChange={setView} tabs={[{ value: 'month', label: 'عرض الشهر', icon: CalendarDays }, { value: 'week', label: 'عرض الجمعة', icon: List }]} />
+          {view === 'week' && (
+            <div className="flex gap-1">
+              {fridays.map((f) => (
+                <Button key={f.index} size="sm" variant={mobileFriday === f.index ? 'primary' : 'outline'} onClick={() => setMobileFriday(f.index)}>
+                  {fridayOrdinal(f.index).replace('الجمعة ', '')} · <span className="tabular">{gregShort(f.date)}</span>
+                </Button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {mosques.length === 0 ? (
         <Card>
@@ -279,7 +352,7 @@ export function SchedulePage() {
           </div>
 
           {/* جدول (كمبيوتر وطباعة) */}
-          <div className="hidden md:block print:block bg-paper border border-sand rounded-2xl overflow-x-auto print-area shadow-[0_1px_2px_rgba(35,26,18,0.04)]">
+          <div className={clsx(view === 'month' ? 'md:block' : '', 'hidden print:block bg-card border border-border rounded-[var(--radius-card)] overflow-x-auto scroll-soft print-area shadow-[var(--shadow-card)]')}>
             <table className="w-full border-collapse min-w-[720px]">
               <thead>
                 <tr className="bg-brown-50 border-b border-sand">
@@ -313,6 +386,9 @@ export function SchedulePage() {
             </table>
           </div>
 
+          {/* عرض الجمعة (كمبيوتر) */}
+          {view === 'week' && <WeekView />}
+
           {/* موبايل: جمعة جمعة */}
           <div className="md:hidden print:hidden">
             <div className="grid gap-1 p-1 rounded-xl bg-brown-100/70 mb-3" style={{ gridTemplateColumns: `repeat(${fridays.length}, minmax(0, 1fr))` }}>
@@ -344,6 +420,7 @@ export function SchedulePage() {
       {modal === 'new' && <NewMonthModal onClose={() => setModal(null)} onCreated={(m) => { setMonthId(m.id); setModal(null); }} />}
       {modal === 'settings' && <MonthSettingsModal month={month} onClose={() => setModal(null)} />}
       {modal === 'unavail' && <UnavailabilityModal month={month} onClose={() => setModal(null)} />}
+      {plan && <DistributionPreview data={data} plan={plan} busy={busy} onApply={applyPlan} onRetry={() => runDistribution(plan.mode)} onClose={() => setPlan(null)} />}
       {slot && <AssignmentModal month={month} slot={slot} onClose={() => setSlot(null)} />}
     </>
   );

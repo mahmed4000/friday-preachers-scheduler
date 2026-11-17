@@ -1,39 +1,66 @@
 @import "tailwindcss";
 
-/* الهوية: بني وذهبي بطابع إسلامي.
-   العناوين: نوتو كوفي (خط كوفي هندسي)، والنصوص: IBM Plex Sans Arabic. الخطوط متضمنة في البرنامج نفسه. */
+/* =====================================================================
+   نظام التصميم: Islamic Heritage — Modern Administration
+   الألوان الرسمية للجمعية (المرجع: docs/design-system.md).
+   أسماء الألوان القديمة (brown/gold/ink/...) متربوطة بالقيم الرسمية،
+   علشان كل الصفحات تاخد الهوية من مكان واحد.
+   ===================================================================== */
 @theme {
+  /* الخطوط: IBM Plex Sans Arabic للواجهة، وأميري للعناوين التراثية بس */
   --font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, system-ui, sans-serif;
-  --font-display: 'Noto Kufi Arabic Variable', 'IBM Plex Sans Arabic', sans-serif;
+  --font-display: 'Amiri', 'IBM Plex Sans Arabic', serif;
+  --font-num: 'IBM Plex Sans Arabic', system-ui, sans-serif;
 
-  --color-ink: #231a12;
-  --color-muted: #7c6f62;
-  --color-parchment: #f6f3ee;
-  --color-paper: #ffffff;
-  --color-sand: #ebe4d8;
-  --color-sand-dark: #d9cebd;
+  /* الألوان الرسمية */
+  --color-primary-dark: #24150d;
+  --color-primary: #58351f;
+  --color-gold: #b58a36;
+  --color-gold-light: #d7b56d;
+  --color-parchment: #f4ebdd;
+  --color-beige: #e5d6bd;
+  --color-card: #fbf8f1;
+  --color-green: #365b45;
+  --color-ink: #2c2119;
+  --color-muted: #76634f;
+  --color-border: #e5d6bd;
+  --color-error: #8f3434;
+  --color-warning: #a96b24;
+  --color-success: #365b45;
 
-  --color-brown-950: #1f130a;
-  --color-brown-900: #2f1d10;
-  --color-brown-800: #452a16;
-  --color-brown-700: #63401f;
-  --color-brown-600: #84582d;
-  --color-brown-100: #f3ece2;
-  --color-brown-50: #faf7f2;
+  /* درجات مشتقة من الرسمية (للخلفيات والحالات) */
+  --color-paper: #fbf8f1;
+  --color-sand: #e5d6bd;
+  --color-sand-dark: #d3bf9c;
 
-  --color-gold-200: #f3e5bf;
-  --color-gold-300: #e8cf8f;
-  --color-gold-400: #d8b45f;
-  --color-gold-500: #c39a3c;
-  --color-gold-600: #9f7a25;
-  --color-gold-700: #7c5d18;
+  --color-brown-950: #24150d;
+  --color-brown-900: #3b2315;
+  --color-brown-800: #58351f;
+  --color-brown-700: #6e4628;
+  --color-brown-600: #875a35;
+  --color-brown-100: #efe3cf;
+  --color-brown-50: #f8f1e5;
 
-  --color-ok: #2f6b3a;
-  --color-ok-soft: #e4efe3;
-  --color-wait: #a8701a;
-  --color-wait-soft: #f8ecd2;
-  --color-bad: #a2382a;
-  --color-bad-soft: #f6e0db;
+  --color-gold-200: #f2e6c8;
+  --color-gold-300: #e6cf98;
+  --color-gold-400: #d7b56d;
+  --color-gold-500: #b58a36;
+  --color-gold-600: #98712a;
+  --color-gold-700: #7a5a20;
+
+  --color-ok: #365b45;
+  --color-ok-soft: #e2ebe3;
+  --color-wait: #a96b24;
+  --color-wait-soft: #f6e8d3;
+  --color-bad: #8f3434;
+  --color-bad-soft: #f4e0dc;
+
+  /* الزوايا والظلال */
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --shadow-card: 0 1px 2px rgba(36, 21, 13, 0.05), 0 1px 1px rgba(36, 21, 13, 0.03);
+  --shadow-raised: 0 6px 18px rgba(36, 21, 13, 0.08);
+  --shadow-overlay: 0 24px 64px rgba(36, 21, 13, 0.28);
 }
 
 @layer base {
@@ -43,7 +70,7 @@
   body {
     @apply bg-parchment text-ink font-sans antialiased;
     font-size: 15px;
-    line-height: 1.65;
+    line-height: 1.7;
     font-feature-settings: 'kern';
   }
   h1, h2, h3 {
@@ -52,8 +79,9 @@
     text-wrap: balance;
   }
   .font-display {
+    font-weight: 700;
     letter-spacing: 0;
-    line-height: 1.55;
+    line-height: 1.5;
   }
   input, select, textarea, button {
     font: inherit;
@@ -72,19 +100,31 @@
   }
 }
 
-/* زخرفة: نجمة ثمانية متكررة (خاتم سليمان) بخط ذهبي خفيف */
+/* ---------------------------------------------------------------------
+   الزخارف (بشفافية قليلة، ومش ورا نصوص أو جداول)
+   --------------------------------------------------------------------- */
+
+/* نجمة ونجمة: نجوم ثمانية متلاقية (للسايدبار والأغلفة) */
+.pattern-girih {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23d7b56d' stroke-width='1'%3E%3Cpath d='M32 9.4 38.6 25.4 54.6 32 38.6 38.6 32 54.6 25.4 38.6 9.4 32 25.4 25.4Z'/%3E%3Cpath d='M16 16h32v32H16z'/%3E%3Cpath d='M0 0 9.4 9.4M64 0l-9.4 9.4M0 64l9.4-9.4M64 64l-9.4-9.4'/%3E%3Ccircle cx='32' cy='32' r='4'/%3E%3Cpath d='M0 22.6 6.6 32 0 41.4M64 22.6 57.4 32 64 41.4M22.6 0 32 6.6 41.4 0M22.6 64 32 57.4 41.4 64'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
+}
+
+/* اسم قديم لنفس الزخرفة (صفحة الخطيب وشاشة الإعداد) */
 .pattern-stars {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23d8b45f' stroke-width='1'%3E%3Crect x='16' y='16' width='24' height='24'/%3E%3Crect x='16' y='16' width='24' height='24' transform='rotate(45 28 28)'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Cpath d='M0 0l8 8M56 0l-8 8M0 56l8-8M56 56l-8-8'/%3E%3C/g%3E%3C/svg%3E");
-  background-size: 56px 56px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64'%3E%3Cg fill='none' stroke='%23d7b56d' stroke-width='1'%3E%3Cpath d='M32 9.4 38.6 25.4 54.6 32 38.6 38.6 32 54.6 25.4 38.6 9.4 32 25.4 25.4Z'/%3E%3Cpath d='M16 16h32v32H16z'/%3E%3Cpath d='M0 0 9.4 9.4M64 0l-9.4 9.4M0 64l9.4-9.4M64 64l-9.4-9.4'/%3E%3Ccircle cx='32' cy='32' r='4'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 64px 64px;
 }
 
-/* إطار مزدوج ذهبي للعناوين المهمة */
-.frame-gold {
-  border: 1px solid var(--color-gold-400);
-  box-shadow: inset 0 0 0 3px var(--color-paper), inset 0 0 0 4px var(--color-gold-300);
+/* شريط زخرفي تراثي رفيع (حواف رؤوس الصفحات والسايدبار) */
+.border-band {
+  height: 6px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='6' viewBox='0 0 24 6'%3E%3Cpath d='M0 3h7l2-3 3 3-3 3-2-3M12 3l3-3 2 3h7' fill='none' stroke='%23b58a36' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 24px 6px;
+  background-repeat: repeat-x;
 }
 
-/* فاصل زخرفي بنجمة في النص */
+/* فاصل زخرفي بنجمة */
 .ornament {
   display: flex;
   align-items: center;
@@ -99,10 +139,34 @@
   background: linear-gradient(to left, transparent, var(--color-gold-400), transparent);
 }
 
-/* قوس المحراب أعلى الكروت المميزة */
+/* إطار مزدوج ذهبي (للأغلفة والعناصر المهمة جدًا) */
+.frame-gold {
+  border: 1px solid var(--color-gold-400);
+  box-shadow: inset 0 0 0 3px var(--color-paper), inset 0 0 0 4px var(--color-gold-300);
+}
+
+/* قوس محراب */
 .arch-top {
   border-top-left-radius: 999px 120px;
   border-top-right-radius: 999px 120px;
+}
+
+/* تحميل (Skeleton) */
+@keyframes shimmer {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, var(--color-brown-100) 25%, var(--color-brown-50) 50%, var(--color-brown-100) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* شريط تمرير هادي */
+.scroll-soft {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-sand-dark) transparent;
 }
 
 @media print {
