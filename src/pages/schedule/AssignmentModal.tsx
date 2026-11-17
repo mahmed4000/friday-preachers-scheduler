@@ -1,15 +1,17 @@
 import { useMemo, useState } from 'react';
-import { Check, Lock, LockOpen, MessageCircle, RotateCcw, UserMinus, UserX } from 'lucide-react';
-import { useStore } from '../data/store.tsx';
-import type { Assignment, AssignmentStatus, Month } from '../data/types.ts';
-import { LEVEL_LABEL, SIZE_LABEL } from '../data/types.ts';
-import { Button, Input, LinkButton, Modal, StatusPill, Tag, clsx } from '../ui/kit.tsx';
-import { useConfirm } from '../ui/confirm.tsx';
-import { engineInput, fridaysOf } from '../data/selectors.ts';
-import { rankCandidates } from '../lib/engine.ts';
-import { fridayOrdinal, gregLong, hijriShort } from '../lib/hijri.ts';
-import { portalUrl, waLink } from '../lib/whatsapp.ts';
-import { fridayMessage } from '../lib/messages.ts';
+import { Check, Lock, LockOpen, RotateCcw, UserMinus, UserX } from 'lucide-react';
+import { useStore } from '../../data/store.tsx';
+import type { Assignment, AssignmentStatus, Month } from '../../data/types.ts';
+import { LEVEL_LABEL, SIZE_LABEL } from '../../data/types.ts';
+import { Button, Input, Modal, StatusPill, Tag, clsx } from '../../ui/kit.tsx';
+import { useConfirm } from '../../ui/confirm.tsx';
+import { engineInput, fridaysOf } from '../../data/selectors.ts';
+import { rankCandidates } from '../../lib/engine.ts';
+import { fridayOrdinal, gregLong, hijriShort } from '../../lib/hijri.ts';
+import { portalUrl } from '../../lib/whatsapp.ts';
+import { fridayMessage, type MsgItem } from '../../lib/messages.ts';
+import { fridayPdf } from '../../lib/pdf/documents.ts';
+import { SendActions } from '../../components/SendActions.tsx';
 
 const SOURCE_LABEL = { fixed: 'خطيب ثابت', auto: 'توزيع تلقائي', manual: 'اختيار يدوي' } as const;
 
@@ -90,9 +92,23 @@ export function AssignmentModal({ month, slot, onClose }: { month: Month; slot: 
     await actions.upsertAssignments([{ ...base(), locked: !a.locked }], a.locked ? 'اتفك التثبيت' : 'اتثبت: التوزيع التلقائي مش هيغيره');
   };
 
-  const msgFor = (pid: number) => {
+  /** أزرار إرسال التكليف للخطيب: رسالة + خطاب تكليف PDF */
+  const sendTo = (pid: number) => {
     const p = data.preachers.find((x) => x.id === pid)!;
-    return waLink(p.phone, fridayMessage(p.name, month, { fridayIndex: friday.index, date: friday.date, hijriDay: friday.hijriDay, mosqueName: mosque.name }, portalUrl(p.portal_token), data.settings.org_name));
+    const item: MsgItem = { fridayIndex: friday.index, date: friday.date, hijriDay: friday.hijriDay, mosqueName: mosque.name };
+    const link = portalUrl(p.portal_token);
+    const row = data.assignments.find((x) => x.month_id === month.id && x.mosque_id === slot.mosqueId && x.friday_index === slot.fridayIndex);
+    return (
+      <SendActions
+        phone={p.phone}
+        sent={Boolean(row?.preacher_id === pid && row.notified_at)}
+        message={(withPdf) => fridayMessage(data.settings, p.name, month, item, link, { withPdf })}
+        pdf={() => fridayPdf('assignment', data.settings, month, p.name, item, link)}
+        onSent={() => {
+          if (row?.preacher_id === pid) actions.upsertAssignments([{ ...base(), notified_at: new Date().toISOString() }]);
+        }}
+      />
+    );
   };
   const picked = lastPicked ? data.preachers.find((p) => p.id === lastPicked) : null;
 
@@ -118,12 +134,7 @@ export function AssignmentModal({ month, slot, onClose }: { month: Month; slot: 
               </div>
               {a.status === 'excused' && a.excuse_reason && <div className="text-sm text-bad mt-1.5">السبب: {a.excuse_reason}</div>}
             </div>
-            {current.phone && a.status !== 'excused' && (
-              <LinkButton size="sm" href={msgFor(current.id)}>
-                <MessageCircle className="w-4 h-4" />
-                ابعت له
-              </LinkButton>
-            )}
+            {a.status !== 'excused' && picked?.id !== current.id && sendTo(current.id)}
           </div>
 
           {!excusing ? (
@@ -157,8 +168,8 @@ export function AssignmentModal({ month, slot, onClose }: { month: Month; slot: 
 
       {picked && (
         <div className="rounded-xl border border-ok/30 bg-ok-soft p-3 mb-4 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm text-ok font-semibold">اتحط الشيخ {picked.name}. ابعت له رسالة بالتكليف علشان يأكد.</span>
-          {picked.phone && <LinkButton size="sm" variant="primary" href={msgFor(picked.id)}><MessageCircle className="w-4 h-4" />ابعت له على واتساب</LinkButton>}
+          <span className="text-sm text-ok font-semibold">اتحط الشيخ {picked.name}. ابعت له خطاب التكليف علشان يأكد.</span>
+          {sendTo(picked.id)}
         </div>
       )}
 

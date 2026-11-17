@@ -1,196 +1,16 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { CalendarPlus, Lock, Plus, Printer, Send, Settings2, Sparkles, UserX, Wand2 } from 'lucide-react';
-import { useStore } from '../data/store.tsx';
-import type { Assignment, Month } from '../data/types.ts';
-import { Button, Card, Choice, Empty, Field, Input, Modal, PageTitle, Select, StatusPill, Tag, clsx, normalizeAr } from '../ui/kit.tsx';
-import { useConfirm } from '../ui/confirm.tsx';
-import { byId, currentMonth, engineInput, fridaysOf, monthAssignments, sortMonths, unavailableSet } from '../data/selectors.ts';
-import { generate, neededFridays } from '../lib/engine.ts';
-import { addDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthFridays, monthTitle, nextHijriMonth, todayIso, umalqura, umalquraMonth, HIJRI_MONTHS } from '../lib/hijri.ts';
-import { navigate, queryParam, printPage } from '../lib/router.ts';
+import { useStore } from '../../data/store.tsx';
+import type { Assignment } from '../../data/types.ts';
+import { Button, Card, Empty, PageTitle, Select, StatusPill, Tag, clsx } from '../../ui/kit.tsx';
+import { useConfirm } from '../../ui/confirm.tsx';
+import { byId, currentMonth, engineInput, fridaysOf, monthAssignments, sortMonths, unavailableSet } from '../../data/selectors.ts';
+import { generate, neededFridays } from '../../lib/engine.ts';
+import { addDays, fridayOrdinal, gregLong, gregShort, hijriShort, monthTitle } from '../../lib/hijri.ts';
+import { navigate, queryParam, printPage } from '../../lib/router.ts';
 import { AssignmentModal } from './AssignmentModal.tsx';
-
-// ---------------------------------------------------------------------------
-// شهر جديد / تعديل بداية الشهر (حسب إعلان دار الإفتاء)
-// ---------------------------------------------------------------------------
-function MonthDatesEditor({ start, days, onChange }: { start: string; days: 29 | 30; onChange: (start: string, days: 29 | 30) => void }) {
-  const fridays = monthFridays(start, days);
-  return (
-    <div className="space-y-4">
-      <Field label="أول يوم في الشهر (حسب إعلان دار الإفتاء)" hint="البرنامج بيحسبه مبدئيًا بتقويم أم القرى. لو الإعلان مختلف، زوّد أو نقّص يوم.">
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => onChange(addDays(start, -1), days)}>يوم قبل</Button>
-          <div className="flex-1 text-center font-semibold text-brown-900 bg-white border border-sand-dark rounded-lg py-2 tabular">{gregLong(start)}</div>
-          <Button variant="outline" size="sm" onClick={() => onChange(addDays(start, 1), days)}>يوم بعد</Button>
-        </div>
-      </Field>
-      <Field label="عدد أيام الشهر">
-        <Choice value={days} options={[{ value: 29, label: '29 يوم' }, { value: 30, label: '30 يوم' }]} onChange={(v) => onChange(start, v)} />
-      </Field>
-      <div className="rounded-lg bg-brown-100/70 border border-sand p-3">
-        <div className="text-sm font-semibold text-brown-800 mb-2">جمعات الشهر ({fridays.length})</div>
-        <ul className="grid sm:grid-cols-2 gap-1 text-sm">
-          {fridays.map((f) => (
-            <li key={f.index} className="flex justify-between gap-2">
-              <span>{fridayOrdinal(f.index)}</span>
-              <span className="text-muted tabular">{f.hijriDay} هـ · {gregShort(f.date)}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
-  );
-}
-
-function NewMonthModal({ onClose, onCreated }: { onClose: () => void; onCreated: (m: Month) => void }) {
-  const { data, actions } = useStore();
-  const initial = useMemo(() => {
-    const sorted = sortMonths(data.months);
-    const last = sorted[sorted.length - 1];
-    const h = umalqura(todayIso());
-    const target = last ? nextHijriMonth(last.hijri_year, last.hijri_month) : { year: h.year, month: h.month };
-    return target;
-  }, [data.months]);
-  const [year, setYear] = useState(initial.year);
-  const [month, setMonth] = useState(initial.month);
-  const calc = useMemo(() => umalquraMonth(year, month), [year, month]);
-  const [dates, setDates] = useState<{ start: string; days: 29 | 30; key: string }>({ start: calc.start, days: calc.days, key: `${year}-${month}` });
-  const cur = dates.key === `${year}-${month}` ? dates : { start: calc.start, days: calc.days, key: `${year}-${month}` };
-  const exists = data.months.some((m) => m.hijri_year === year && m.hijri_month === month);
-  const [saving, setSaving] = useState(false);
-
-  const create = async () => {
-    setSaving(true);
-    const row = await actions.createMonth({ hijri_year: year, hijri_month: month, start_date: cur.start, days_count: cur.days });
-    setSaving(false);
-    if (row) onCreated(row);
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="شهر جديد"
-      footer={
-        <>
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button onClick={create} disabled={exists || saving}>{saving ? 'جاري الإنشاء…' : 'إنشاء الشهر'}</Button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="الشهر">
-            <Select value={month} onChange={(e) => setMonth(Number(e.target.value))}>
-              {HIJRI_MONTHS.map((n, i) => <option key={n} value={i + 1}>{n}</option>)}
-            </Select>
-          </Field>
-          <Field label="السنة">
-            <Input type="number" value={year} onChange={(e) => setYear(Number(e.target.value) || year)} className="tabular" />
-          </Field>
-        </div>
-        {exists && <p className="text-sm text-bad">الشهر ده موجود بالفعل.</p>}
-        <MonthDatesEditor start={cur.start} days={cur.days} onChange={(start, days) => setDates({ start, days, key: `${year}-${month}` })} />
-      </div>
-    </Modal>
-  );
-}
-
-function MonthSettingsModal({ month, onClose }: { month: Month; onClose: () => void }) {
-  const { data, actions } = useStore();
-  const confirm = useConfirm();
-  const [start, setStart] = useState(month.start_date);
-  const [days, setDays] = useState<29 | 30>(month.days_count);
-  const newCount = monthFridays(start, days).length;
-  const lost = monthAssignments(data, month.id).filter((a) => a.friday_index > newCount);
-
-  const save = async () => {
-    if (lost.length) {
-      const ok = await confirm({ title: 'عدد الجمعات هيقل', body: `فيه ${lost.length} تكليف في الجمعة الخامسة هيتمسحوا. تكمل؟`, confirmText: 'كمّل', danger: true });
-      if (!ok) return;
-      await actions.deleteAssignments(lost.map((a) => a.id));
-    }
-    await actions.updateMonth(month.id, { start_date: start, days_count: days });
-    onClose();
-  };
-
-  const remove = async () => {
-    const ok = await confirm({ title: 'مسح الشهر', body: `هيتمسح جدول ${monthTitle(month.hijri_year, month.hijri_month)} كله بكل تكليفاته. متأكد؟`, confirmText: 'امسح الشهر', danger: true });
-    if (ok) {
-      await actions.deleteMonth(month.id);
-      onClose();
-    }
-  };
-
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title={`إعدادات ${monthTitle(month.hijri_year, month.hijri_month)}`}
-      footer={
-        <>
-          <Button variant="danger" onClick={remove} className="ml-auto">مسح الشهر</Button>
-          <Button variant="outline" onClick={onClose}>إلغاء</Button>
-          <Button onClick={save}>حفظ</Button>
-        </>
-      }
-    >
-      <MonthDatesEditor start={start} days={days} onChange={(s, d) => { setStart(s); setDays(d); }} />
-    </Modal>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// اعتذارات الشهر (قبل التوزيع)
-// ---------------------------------------------------------------------------
-function UnavailabilityModal({ month, onClose }: { month: Month; onClose: () => void }) {
-  const { data, actions } = useStore();
-  const [q, setQ] = useState('');
-  const fridays = fridaysOf(month);
-  const list = data.preachers
-    .filter((p) => p.is_active && (!q || normalizeAr(p.name).includes(normalizeAr(q))))
-    .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
-  const daysOf = (pid: number) => data.unavailable.filter((u) => u.month_id === month.id && u.preacher_id === pid).map((u) => u.friday_index);
-  const assigned = (pid: number, fi: number) => data.assignments.some((a) => a.month_id === month.id && a.preacher_id === pid && a.friday_index === fi && a.status !== 'excused');
-
-  return (
-    <Modal open onClose={onClose} title="اعتذارات الشهر" wide footer={<Button onClick={onClose}>تمام</Button>}>
-      <p className="text-sm text-muted mb-3">علّم الجمعات اللي كل خطيب مش هيقدر يخطب فيها الشهر ده. التوزيع التلقائي مش هيحطه فيها.</p>
-      <Input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="ابحث باسم الخطيب…" className="mb-3" />
-      <div className="divide-y divide-sand border border-sand rounded-xl bg-white">
-        {list.map((p) => {
-          const days = daysOf(p.id);
-          return (
-            <div key={p.id} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
-              <span className="flex-1 min-w-[140px] font-semibold text-brown-900">{p.name}</span>
-              <div className="flex flex-wrap gap-1">
-                {fridays.map((f) => {
-                  const off = days.includes(f.index);
-                  return (
-                    <button
-                      key={f.index}
-                      type="button"
-                      onClick={() => actions.setUnavailable(month.id, p.id, off ? days.filter((x) => x !== f.index) : [...days, f.index], '')}
-                      className={clsx(
-                        'w-14 py-1 rounded-md border text-[12px] cursor-pointer tabular',
-                        off ? 'bg-bad-soft border-bad/40 text-bad font-bold line-through' : 'bg-paper border-sand-dark text-brown-700 hover:border-gold-500',
-                        assigned(p.id, f.index) && off && 'ring-2 ring-bad'
-                      )}
-                      title={off ? 'مش متاح، دوس علشان تشيل الاعتذار' : 'متاح، دوس لو معتذر'}
-                    >
-                      {gregShort(f.date).split(' ')[0]}/{f.index}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <p className="text-xs text-muted mt-2">الرقم = يوم الجمعة الميلادي / ترتيبها في الشهر. المربع الأحمر المحاط معناه إن الخطيب متكلف فعلًا في الجمعة دي ومحتاج بديل.</p>
-    </Modal>
-  );
-}
+import { MonthSettingsModal, NewMonthModal } from './MonthModals.tsx';
+import { UnavailabilityModal } from './UnavailabilityModal.tsx';
 
 // ---------------------------------------------------------------------------
 // الصفحة
@@ -530,3 +350,4 @@ export function SchedulePage() {
 }
 
 export type { Assignment };
+

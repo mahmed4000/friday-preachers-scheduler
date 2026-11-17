@@ -1,8 +1,8 @@
 /**
  * رسم ورقة جدول (A4) بهوية الجمعية: بني وذهبي بطراز إسلامي.
- * بتترسم على canvas وبعدين بتتحول PDF من lib/pdf.ts
+ * بتترسم على canvas وبعدين بتتحول PDF من pdf/writer.ts
  */
-import { canvasesToPdf } from './pdf.ts';
+import { canvasesToPdf } from './writer.ts';
 
 const C = {
   ink: '#2b1d12',
