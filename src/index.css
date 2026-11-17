@@ -1,227 +1,117 @@
 @import "tailwindcss";
 
+/* الهوية: بني وذهبي بطابع إسلامي.
+   العناوين: نوتو كوفي (خط كوفي هندسي)، والنصوص: IBM Plex Sans Arabic. الخطوط متضمنة في البرنامج نفسه. */
 @theme {
-  --font-sans: 'Alexandria', 'Cairo', 'Tajawal', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-heading: 'Cairo', 'Alexandria', 'Tajawal', system-ui, sans-serif;
-  --font-amiri: 'Amiri', serif;
-  --font-alexandria: 'Alexandria', sans-serif;
-  --font-cairo: 'Cairo', sans-serif;
-}
+  --font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', Tahoma, system-ui, sans-serif;
+  --font-display: 'Noto Kufi Arabic Variable', 'IBM Plex Sans Arabic', sans-serif;
 
-@custom-variant dark (&:where(.dark, .dark *));
+  --color-ink: #231a12;
+  --color-muted: #7c6f62;
+  --color-parchment: #f6f3ee;
+  --color-paper: #ffffff;
+  --color-sand: #ebe4d8;
+  --color-sand-dark: #d9cebd;
+
+  --color-brown-950: #1f130a;
+  --color-brown-900: #2f1d10;
+  --color-brown-800: #452a16;
+  --color-brown-700: #63401f;
+  --color-brown-600: #84582d;
+  --color-brown-100: #f3ece2;
+  --color-brown-50: #faf7f2;
+
+  --color-gold-200: #f3e5bf;
+  --color-gold-300: #e8cf8f;
+  --color-gold-400: #d8b45f;
+  --color-gold-500: #c39a3c;
+  --color-gold-600: #9f7a25;
+  --color-gold-700: #7c5d18;
+
+  --color-ok: #2f6b3a;
+  --color-ok-soft: #e4efe3;
+  --color-wait: #a8701a;
+  --color-wait-soft: #f8ecd2;
+  --color-bad: #a2382a;
+  --color-bad-soft: #f6e0db;
+}
 
 @layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
   body {
-    font-family: 'Alexandria', 'Cairo', 'Tajawal', 'IBM Plex Sans Arabic', system-ui, -apple-system, sans-serif;
-    background-color: #fcfbf8;
-    color: #0f172a;
-    transition: background-color 0.2s ease, color 0.2s ease;
-    letter-spacing: -0.01em;
+    @apply bg-parchment text-ink font-sans antialiased;
+    font-size: 15px;
+    line-height: 1.65;
+    font-feature-settings: 'kern';
   }
-
-  html.dark body {
-    background-color: #0b1120;
-    color: #f8fafc;
+  h1, h2, h3 {
+    font-weight: 600;
+    line-height: 1.45;
+    text-wrap: balance;
   }
-  
-  h1, h2, h3, h4, .font-heading {
-    font-family: 'Cairo', 'Tajawal', 'Alexandria', system-ui, sans-serif;
-    letter-spacing: -0.02em;
+  .font-display {
+    letter-spacing: 0;
+    line-height: 1.55;
   }
-
-  /* Ensure all form inputs, textareas, and selects default to clear, visible dark text */
-  input,
-  textarea,
-  select {
-    color: #0f172a;
+  input, select, textarea, button {
+    font: inherit;
+    color: inherit;
   }
-
-  input::placeholder,
-  textarea::placeholder {
-    color: #94a3b8;
-    opacity: 1;
+  ::selection {
+    background: var(--color-gold-300);
+    color: var(--color-brown-950);
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-gold-500);
+    outline-offset: 2px;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
   }
 }
 
-.font-amiri {
-  font-family: 'Amiri', serif;
+/* زخرفة: نجمة ثمانية متكررة (خاتم سليمان) بخط ذهبي خفيف */
+.pattern-stars {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56'%3E%3Cg fill='none' stroke='%23d8b45f' stroke-width='1'%3E%3Crect x='16' y='16' width='24' height='24'/%3E%3Crect x='16' y='16' width='24' height='24' transform='rotate(45 28 28)'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Cpath d='M0 0l8 8M56 0l-8 8M0 56l8-8M56 56l-8-8'/%3E%3C/g%3E%3C/svg%3E");
+  background-size: 56px 56px;
 }
 
-.font-alexandria {
-  font-family: 'Alexandria', sans-serif;
+/* إطار مزدوج ذهبي للعناوين المهمة */
+.frame-gold {
+  border: 1px solid var(--color-gold-400);
+  box-shadow: inset 0 0 0 3px var(--color-paper), inset 0 0 0 4px var(--color-gold-300);
 }
 
-.font-cairo {
-  font-family: 'Cairo', sans-serif;
+/* فاصل زخرفي بنجمة في النص */
+.ornament {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-gold-500);
+}
+.ornament::before,
+.ornament::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to left, transparent, var(--color-gold-400), transparent);
 }
 
-/* Subtle Royal Islamic Geometry Motif */
-.islamic-pattern {
-  background-image: radial-gradient(rgba(4, 120, 87, 0.04) 1px, transparent 1px);
-  background-size: 16px 16px;
+/* قوس المحراب أعلى الكروت المميزة */
+.arch-top {
+  border-top-left-radius: 999px 120px;
+  border-top-right-radius: 999px 120px;
 }
 
-/* Tabular figures for numbers, dates, statistics */
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
-}
-
-/* Print & PDF Export rules */
 @media print {
-  html, body, main, #root {
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-    background: white !important;
-    color: black !important;
-  }
-  .no-print {
-    display: none !important;
-  }
-  .print-only {
-    display: block !important;
-  }
-  .page-break-after {
-    page-break-after: always;
-  }
-  
-  /* Expand only table/scroll containers in print mode (never generic overflow-hidden elements) */
-  .pdf-report-document,
-  .pdf-table-container,
-  .scroll-container,
-  .table-scroll-container,
-  .overflow-auto,
-  .overflow-x-auto,
-  .overflow-y-auto,
-  .overflow-scroll {
-    overflow: visible !important;
-    overflow-x: visible !important;
-    overflow-y: visible !important;
-    height: auto !important;
-    max-height: none !important;
-    min-height: 0 !important;
-    width: 100% !important;
-  }
-
-  /* Strict logo sizing in print mode */
-  .print-logo-box,
-  .print-logo-box div,
-  [class*="print-logo-box"] {
-    width: 60px !important;
-    height: 60px !important;
-    max-width: 60px !important;
-    max-height: 60px !important;
-    min-width: 60px !important;
-    min-height: 60px !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    margin: 0 auto 6px auto !important;
-    border-radius: 9999px !important;
-    overflow: hidden !important;
-  }
-
-  .print-logo-box img,
-  .print-logo-img {
-    width: 56px !important;
-    height: 56px !important;
-    max-width: 56px !important;
-    max-height: 56px !important;
-    min-width: 56px !important;
-    min-height: 56px !important;
-    object-fit: contain !important;
-    border-radius: 9999px !important;
-    display: block !important;
-  }
-
-  .sticky,
-  [class*="sticky"] {
-    position: static !important;
-  }
-
-  ::-webkit-scrollbar,
-  *::-webkit-scrollbar {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    background: transparent !important;
-  }
-
-  table, .pdf-table {
-    width: 100% !important;
-    border-collapse: collapse !important;
-  }
-
-  tr, .pdf-table tr {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-
-  thead, .pdf-table thead {
-    display: table-header-group !important;
-  }
+  .no-print { display: none !important; }
+  body { background: #fff; font-size: 12px; }
+  .print-area { box-shadow: none !important; border: none !important; }
+  @page { size: A4 landscape; margin: 10mm; }
 }
 
-@media screen {
-  .print-only {
-    display: none !important;
-  }
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
 }
-
-/* Specific classes for PDF export snapshot mode */
-.pdf-export-active,
-.pdf-export-active * {
-  box-shadow: none !important;
-}
-
-.pdf-export-active .no-print {
-  display: none !important;
-}
-
-.pdf-export-active,
-.pdf-export-active .pdf-report-document,
-.pdf-export-active .pdf-table-container,
-.pdf-export-active .scroll-container,
-.pdf-export-active .table-scroll-container,
-.pdf-export-active .overflow-auto,
-.pdf-export-active .overflow-x-auto,
-.pdf-export-active .overflow-y-auto,
-.pdf-export-active .overflow-hidden,
-.pdf-export-active .overflow-scroll {
-  overflow: visible !important;
-  overflow-x: visible !important;
-  overflow-y: visible !important;
-  height: auto !important;
-  max-height: none !important;
-  min-height: 0 !important;
-}
-
-.pdf-export-active .sticky,
-.pdf-export-active [class*="sticky"] {
-  position: static !important;
-}
-
-.pdf-export-active ::-webkit-scrollbar,
-.pdf-export-active *::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-  height: 0 !important;
-  background: transparent !important;
-}
-

@@ -1,45 +1,36 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
-import path from 'path';
-import {defineConfig} from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 
-export default defineConfig(() => {
+// بنقرا عنوان Supabase ومفتاحه العام من نفس أسماء المتغيرات اللي البرنامج القديم كان بيستخدمها على Vercel.
+// ممنوع نقرا SUPABASE_SERVICE_ROLE_KEY هنا: المفتاح ده سري وما ينفعش يوصل للمتصفح.
+function supabaseEnv(mode: string) {
+  const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env } as Record<string, string | undefined>;
+  const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key =
+    env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || '';
+  return { url, key };
+}
+
+export default defineConfig(({ mode }) => {
+  const sb = supabaseEnv(mode);
   return {
-    plugins: [react(), tailwindcss()],
-    resolve: {
-      alias: {
-        '@': path.resolve(import.meta.dirname, '.'),
-      },
-    },
-    server: {
-      port: 3000,
-      host: '0.0.0.0',
-      // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modify—file watching is disabled to prevent flickering during agent edits.
-      hmr: process.env.DISABLE_HMR !== 'true',
-      // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
-      watch: process.env.DISABLE_HMR === 'true' ? null : {},
-    },
-    build: {
-      chunkSizeWarningLimit: 1000,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.includes('node_modules/xlsx')) {
-              return 'export-xlsx';
-            }
-            if (id.includes('node_modules/jspdf') || id.includes('node_modules/html2canvas') || id.includes('node_modules/html-to-image')) {
-              return 'export-pdf';
-            }
-            if (id.includes('node_modules/lucide-react')) {
-              return 'ui-icons';
-            }
-            if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
-              return 'framework-react';
-            }
-          },
+  define: {
+    __SUPABASE_URL__: JSON.stringify(sb.url),
+    __SUPABASE_KEY__: JSON.stringify(sb.key),
+  },
+  plugins: [react(), tailwindcss()],
+  server: { port: 3000, host: '0.0.0.0' },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/xlsx')) return 'xlsx';
+          if (id.includes('node_modules/@supabase')) return 'supabase';
+          if (id.includes('node_modules/react')) return 'react';
         },
       },
     },
-  };
+  },
+};
 });

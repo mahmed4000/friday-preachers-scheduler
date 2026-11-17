@@ -1,56 +1,24 @@
-export interface MessageTemplateParams {
-  recipientName: string;
-  recipientType: 'MOSQUE' | 'IMAM';
-  monthName: string;
-  hijriYear: number;
-  fridaysList: { fridayIndex: number; dateStr: string; entityName: string }[];
+// رسائل واتساب: بنفتح محادثة جاهزة بالنص، والمسؤول يدوس إرسال.
+
+/** 01xxxxxxxxx → 201xxxxxxxxx */
+export function normalizePhone(phone: string): string {
+  let p = (phone || '').replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  p = p.replace(/[^\d+]/g, '').replace(/^\+/, '');
+  if (p.startsWith('00')) p = p.slice(2);
+  if (p.startsWith('0') && p.length === 11) p = `2${p}`;
+  if (p.length === 10 && p.startsWith('1')) p = `20${p}`;
+  return p;
 }
 
-export function generateWhatsAppMessage(params: MessageTemplateParams): string {
-  const { recipientName, recipientType, monthName, hijriYear, fridaysList } = params;
-
-  if (recipientType === 'IMAM') {
-    const listText = fridaysList
-      .map((f) => `• الجمعة ${f.fridayIndex} (${f.dateStr}): ${f.entityName}`)
-      .join('\n');
-
-    return `السلام عليكم ورحمة الله وبركاته
-
-فضيلة الشيخ / ${recipientName} حفظكم الله
-
-نرفق لفضيلتكم بيان تكليفات خطب الجمعة لشهر ${monthName} لعام ${hijriYear} هـ:
-
-${listText}
-
-نسأل الله لكم التوفيق والسداد والقبول، وجزاكم الله عنا وعن المسلمين خير الجزاء.
-
-الجمعية الشرعية — أمانة شؤون المساجد والخطباء`;
-  } else {
-    const listText = fridaysList
-      .map((f) => `• الجمعة ${f.fridayIndex} (${f.dateStr}): ${f.entityName}`)
-      .join('\n');
-
-    return `السلام عليكم ورحمة الله وبركاته
-
-الإخوة الكرام في إدارة / ${recipientName} المحترمين
-
-نرفق لكم جدول خطباء الجمعة المعتمد لشهر ${monthName} لعام ${hijriYear} هـ:
-
-${listText}
-
-شاكرين لكم حسن تعاونكم الدائم في خدمة بيوت الله.
-
-الجمعية الشرعية — أمانة شؤون المساجد والخطباء`;
-  }
+export function isValidPhone(phone: string): boolean {
+  return /^20(10|11|12|15)\d{8}$/.test(normalizePhone(phone)) || /^\d{10,15}$/.test(normalizePhone(phone));
 }
 
-export function buildWhatsAppLink(phone: string, text: string): string {
-  // Normalize phone number (e.g. 0501112233 -> 966501112233 or international format)
-  let clean = phone.replace(/[^0-9]/g, '');
-  if (clean.startsWith('05')) {
-    clean = '966' + clean.slice(1);
-  } else if (clean.startsWith('00')) {
-    clean = clean.slice(2);
-  }
-  return `https://wa.me/${clean}?text=${encodeURIComponent(text)}`;
+export function waLink(phone: string, text: string): string {
+  const p = normalizePhone(phone);
+  return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
+}
+
+export function portalUrl(token: string): string {
+  return `${location.origin}/p/${token}`;
 }
