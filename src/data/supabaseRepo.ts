@@ -47,8 +47,20 @@ export class SupabaseRepo implements Repo {
   readonly kind = 'supabase' as const;
   private db = supabase();
 
+  /** Supabase بيرجّع 1000 صف بحد أقصى في الطلب، فبنجيب الجدول على صفحات */
+  private async selectAll(table: string): Promise<{ data: any[]; error: { message: string; code?: string } | null }> {
+    const PAGE = 1000;
+    const all: any[] = [];
+    for (let from = 0; ; from += PAGE) {
+      const res = await this.db.from(table).select('*').order('id').range(from, from + PAGE - 1);
+      if (res.error) return { data: [], error: res.error };
+      all.push(...(res.data ?? []));
+      if (!res.data || res.data.length < PAGE) return { data: all, error: null };
+    }
+  }
+
   async loadAll(): Promise<AppData> {
-    const q = (t: string) => this.db.from(t).select('*').order('id');
+    const q = (t: string) => this.selectAll(t);
     const [s, mosques, preachers, fixed, preferences, months, unavailable, assignments, log] = await Promise.all([
       this.db.from('fs_settings').select('*').eq('id', 1).maybeSingle(),
       q('fs_mosques'), q('fs_preachers'), q('fs_fixed'), q('fs_preferences'), q('fs_months'), q('fs_unavailable'), q('fs_assignments'),

@@ -17,13 +17,14 @@ export function Star8({ className = 'w-4 h-4' }: { className?: string }) {
   );
 }
 
-type BtnVariant = 'primary' | 'gold' | 'ghost' | 'outline' | 'danger';
+type BtnVariant = 'primary' | 'gold' | 'ghost' | 'outline' | 'danger' | 'whatsapp';
 const BTN: Record<BtnVariant, string> = {
   primary: 'bg-brown-800 text-white hover:bg-brown-900 border border-transparent',
   gold: 'bg-gold-500 text-white hover:bg-gold-600 border border-transparent',
   outline: 'bg-white text-ink border border-sand-dark hover:bg-brown-50 hover:border-brown-600/30',
   ghost: 'text-brown-700 border border-transparent hover:bg-brown-100',
   danger: 'bg-white text-bad border border-bad/30 hover:bg-bad-soft',
+  whatsapp: 'bg-[#1f7a4d] text-white border border-[#17603c] hover:bg-[#1a6942]',
 };
 
 export function Button({

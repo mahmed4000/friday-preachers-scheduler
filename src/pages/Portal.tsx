@@ -14,7 +14,7 @@ export function PortalPage({ token }: { token: string }) {
   const [excuseFor, setExcuseFor] = useState<number | null>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<number | null>(null);
-  const [notice, setNotice] = useState<{ item: PortalItem; status: 'confirmed' | 'excused' } | null>(null);
+  const [notice, setNotice] = useState<{ item: PortalItem; status: 'confirmed' | 'excused'; reason: string } | null>(null);
 
   const load = () =>
     repo
@@ -31,9 +31,10 @@ export function PortalPage({ token }: { token: string }) {
   const act = async (item: PortalItem, status: 'confirmed' | 'excused') => {
     setBusy(item.id);
     try {
-      const ok = await repo.portalSetStatus(token, item.id, status, status === 'excused' ? reason.trim() : '');
+      const why = status === 'excused' ? reason.trim() : '';
+      const ok = await repo.portalSetStatus(token, item.id, status, why);
       if (!ok) throw new Error('ما اتسجلش. ممكن الجدول اتغير، حدّث الصفحة.');
-      setNotice({ item, status });
+      setNotice({ item, status, reason: why });
       setExcuseFor(null);
       setReason('');
       await load();
@@ -48,7 +49,8 @@ export function PortalPage({ token }: { token: string }) {
   const upcoming = data?.items.filter((i) => diffDays(i.date, today) >= 0) ?? [];
   const past = data?.items.filter((i) => diffDays(i.date, today) < 0) ?? [];
 
-  const adminMsg = (item: PortalItem, status: 'confirmed' | 'excused') =>
+  // السبب بييجي من الإشعار، لأن خانة السبب بتتفضى بعد التسجيل
+  const adminMsg = (item: PortalItem, status: 'confirmed' | 'excused', reason: string) =>
     status === 'excused'
       ? `السلام عليكم، معذرة يا ${data?.admin_name ? `أ. ${data.admin_name}` : 'أستاذنا'}، أنا ${data?.preacher.name} ومعتذر عن ${fridayOrdinal(item.friday_index)} (${gregLong(item.date)}) في ${item.mosque_name}${reason ? `، والسبب: ${reason}` : ''}.`
       : `السلام عليكم، أنا ${data?.preacher.name}، أكدت خطبة ${fridayOrdinal(item.friday_index)} (${gregLong(item.date)}) في ${item.mosque_name} إن شاء الله.`;
@@ -81,7 +83,7 @@ export function PortalPage({ token }: { token: string }) {
           <div className={clsx('rounded-xl border p-4', notice.status === 'confirmed' ? 'bg-ok-soft border-ok/30' : 'bg-wait-soft border-wait/30')}>
             <div className="font-semibold">{notice.status === 'confirmed' ? 'جزاكم الله خيرًا، اتسجل تأكيدك ✓' : 'اتسجل اعتذارك، وهنرتب بديل إن شاء الله.'}</div>
             {data.admin_phone && (
-              <a href={waLink(data.admin_phone, adminMsg(notice.item, notice.status))} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-[#1f7a4d] underline">
+              <a href={waLink(data.admin_phone, adminMsg(notice.item, notice.status, notice.reason))} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-2 text-sm font-semibold text-[#1f7a4d] underline">
                 <MessageCircle className="w-4 h-4" />
                 بلّغ مسؤول الدعوة على واتساب كمان
               </a>

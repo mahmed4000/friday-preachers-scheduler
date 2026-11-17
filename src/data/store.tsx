@@ -84,9 +84,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 3000);
   }, []);
 
+  // عدّاد التعديلات: لو حصل تعديل أثناء تحديث في الخلفية، بنتجاهل نتيجة التحديث علشان ما ترجّعش بيانات قديمة
+  const writes = useRef(0);
+  const lastLoad = useRef(0);
+
   const reload = useCallback(async () => {
     try {
       const d = await repo.loadAll();
+      lastLoad.current = Date.now();
       setData(d);
       setStatus('ready');
     } catch (e) {
@@ -102,8 +107,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     reload();
   }, [reload]);
 
+  // لما المسؤول يرجع للصفحة، نجيب آخر تأكيدات واعتذارات الخطباء من صفحاتهم
+  useEffect(() => {
+    if (status !== 'ready') return;
+    const refresh = async () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastLoad.current < 30_000) return;
+      lastLoad.current = Date.now();
+      const before = writes.current;
+      try {
+        const d = await repo.loadAll();
+        if (writes.current === before) setData(d);
+      } catch {
+        // التحديث في الخلفية مش لازم يوقف الشغل
+      }
+    };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [status, repo]);
+
   const run = useCallback(
     async <T,>(fn: () => Promise<T>, okText?: string) => {
+      writes.current++;
       try {
         const v = await fn();
         if (okText) toast(okText);

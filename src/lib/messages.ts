@@ -1,6 +1,11 @@
-// نصوص رسائل واتساب
-import { fridayOrdinal, gregShort, hijriShort, monthTitle } from './hijri.ts';
-import type { Month } from '../data/types.ts';
+/**
+ * نصوص رسائل واتساب بصيغة رسمية موحّدة.
+ * كل رسالة: تحية، مخاطبة، المحتوى، طلب الإجراء، ثم توقيع مسؤول الدعوة والجمعية.
+ * لما الرسالة تتبعت مع ملف PDF بنضيف سطر بيشير للمرفق.
+ * (*نص* في واتساب بيظهر بخط عريض)
+ */
+import type { Month, Settings } from '../data/types.ts';
+import { diffDays, fridayOrdinal, gregLong, hijriShort, monthTitle } from './hijri.ts';
 
 export interface MsgItem {
   fridayIndex: number;
@@ -9,41 +14,94 @@ export interface MsgItem {
   mosqueName: string;
 }
 
-const sign = (org: string) => (org ? `\n\n${org}` : '');
+export interface MosqueRow {
+  fridayIndex: number;
+  date: string;
+  hijriDay: number;
+  preacher: string;
+  phone?: string;
+}
+
+export type MsgOptions = { withPdf?: boolean };
+
+const GREETING = 'السلام عليكم ورحمة الله وبركاته';
+
+/** توقيع الرسائل: اسم المسؤول + الجمعية والفرع */
+export function signature(s: Settings): string {
+  const who = s.admin_name ? `${s.admin_name}\nمسؤول الدعوة` : 'مسؤول الدعوة';
+  const org = [s.org_name, s.branch_name].filter(Boolean).join(' - ');
+  return [who, org].filter(Boolean).join('\n');
+}
+
+/** وسيلة التواصل مع المسؤول (للمساجد) */
+function contactLine(s: Settings): string {
+  return s.admin_phone ? `للتواصل أو أي تعديل: ${s.admin_phone}` : 'لأي تعديل نرجو التواصل مع مسؤول الدعوة.';
+}
+
+const when = (month: Month, i: { fridayIndex: number; date: string; hijriDay: number }) =>
+  `${fridayOrdinal(i.fridayIndex)} · ${hijriShort(i.hijriDay, month.hijri_month)} · ${gregLong(i.date)}`;
+
+const join = (...blocks: (string | false | undefined)[]) => blocks.filter(Boolean).join('\n\n');
+
+/** موعد الجمعة بالنسبة للنهارده، بيتكتب بعد "خطبة الجمعة": اليوم / غدًا / القادمة */
+export function relativeFriday(date: string, today: string): string {
+  const d = diffDays(date, today);
+  if (d === 0) return 'اليوم';
+  if (d === 1) return 'غدًا';
+  if (d > 1 && d < 7) return 'القادمة';
+  return `يوم ${gregLong(date)}`;
+}
 
 /** جدول الخطيب للشهر كله + رابط التأكيد */
-export function monthMessage(name: string, month: Month, items: MsgItem[], link: string, org: string): string {
-  const lines = items.map((i) => `• ${fridayOrdinal(i.fridayIndex)} (${hijriShort(i.hijriDay, month.hijri_month)} - ${gregShort(i.date)}): ${i.mosqueName}`);
-  return (
-    `السلام عليكم ورحمة الله وبركاته\nفضيلة الشيخ ${name}، جزاكم الله خيرًا.\n\n` +
-    `جمعاتكم في شهر ${monthTitle(month.hijri_year, month.hijri_month)}:\n${lines.join('\n')}\n\n` +
-    `برجاء التأكيد أو الاعتذار من الرابط ده:\n${link}` +
-    sign(org)
+export function monthMessage(s: Settings, name: string, month: Month, items: MsgItem[], link: string, o: MsgOptions = {}): string {
+  const title = monthTitle(month.hijri_year, month.hijri_month);
+  const lines = items.map((i) => `▪️ *${i.mosqueName}*\n     ${when(month, i)}`);
+  return join(
+    `${GREETING}\nفضيلة الشيخ/ ${name}، حفظه الله`,
+    `يسعدنا أن نرسل لفضيلتكم جدول خطب الجمعة لشهر *${title}*:`,
+    lines.join('\n'),
+    o.withPdf && '📎 مرفق الجدول بصيغة PDF.',
+    `نرجو التكرم بتأكيد الجمعات أو الاعتذار عن أيٍّ منها من صفحتكم الخاصة:\n${link}`,
+    'جزاكم الله خيرًا ونفع بكم.',
+    signature(s)
   );
 }
 
-/** تكليف جمعة واحدة (مثلًا بعد تعيين بديل) */
-export function fridayMessage(name: string, month: Month, item: MsgItem, link: string, org: string): string {
-  return (
-    `السلام عليكم ورحمة الله وبركاته\nفضيلة الشيخ ${name}،\n\n` +
-    `نرجو من فضيلتكم خطبة ${fridayOrdinal(item.fridayIndex)} (${hijriShort(item.hijriDay, month.hijri_month)} - ${gregShort(item.date)}) في ${item.mosqueName}.\n\n` +
-    `برجاء التأكيد من الرابط:\n${link}` +
-    sign(org)
+/** تكليف بجمعة واحدة (مثلًا بعد تعيين بديل) */
+export function fridayMessage(s: Settings, name: string, month: Month, item: MsgItem, link: string, o: MsgOptions = {}): string {
+  return join(
+    `${GREETING}\nفضيلة الشيخ/ ${name}، حفظه الله`,
+    `نرجو من فضيلتكم التكرم بإلقاء خطبة الجمعة في:\n*${item.mosqueName}*\n${when(month, item)}`,
+    o.withPdf && '📎 مرفق خطاب التكليف بصيغة PDF.',
+    `نرجو التأكيد أو الاعتذار من صفحتكم الخاصة:\n${link}`,
+    'جزاكم الله خيرًا.',
+    signature(s)
   );
 }
 
-/** تذكير الخميس */
-export function reminderMessage(name: string, month: Month, item: MsgItem, link: string, org: string): string {
-  return (
-    `السلام عليكم ورحمة الله\nفضيلة الشيخ ${name}، تذكير بخطبة الجمعة بكرة إن شاء الله ` +
-    `(${hijriShort(item.hijriDay, month.hijri_month)} - ${gregShort(item.date)}) في ${item.mosqueName}.\n` +
-    `بارك الله فيكم ونفع بكم.\n\nلو فيه أي ظرف بلّغنا من الرابط:\n${link}` +
-    sign(org)
+/** تذكير الخميس (أو قبل الجمعة بأيام) */
+export function reminderMessage(s: Settings, name: string, month: Month, item: MsgItem, link: string, today: string, o: MsgOptions = {}): string {
+  return join(
+    `${GREETING}\nفضيلة الشيخ/ ${name}، حفظه الله`,
+    `نذكّر فضيلتكم بخطبة الجمعة ${relativeFriday(item.date, today)} إن شاء الله:\n*${item.mosqueName}*\n${when(month, item)}`,
+    o.withPdf && '📎 مرفق بطاقة التذكير بصيغة PDF.',
+    'نسأل الله أن يفتح عليكم وأن ينفع بكم.',
+    `وإن طرأ ما يمنعكم، نرجو إبلاغنا في أقرب وقت من صفحتكم:\n${link}`,
+    signature(s)
   );
 }
 
-/** جدول المسجد للشهر */
-export function mosqueMessage(mosqueName: string, month: Month, rows: { fridayIndex: number; date: string; hijriDay: number; preacher: string }[], org: string): string {
-  const lines = rows.map((r) => `• ${fridayOrdinal(r.fridayIndex)} (${gregShort(r.date)}): الشيخ ${r.preacher}`);
-  return `السلام عليكم ورحمة الله\nجدول خطباء ${mosqueName} لشهر ${monthTitle(month.hijri_year, month.hijri_month)}:\n${lines.join('\n')}` + sign(org);
+/** جدول خطباء المسجد للشهر */
+export function mosqueMessage(s: Settings, mosqueName: string, month: Month, rows: MosqueRow[], o: MsgOptions = {}): string {
+  const title = monthTitle(month.hijri_year, month.hijri_month);
+  const lines = rows.map((r) => `▪️ ${when(month, r)}\n     الشيخ *${r.preacher}*${r.phone ? ` · ${r.phone}` : ''}`);
+  return join(
+    `${GREETING}\nالإخوة الأفاضل القائمون على ${mosqueName}، حفظكم الله`,
+    `نرسل إليكم جدول خطباء الجمعة لشهر *${title}*:`,
+    lines.join('\n'),
+    o.withPdf && '📎 مرفق الجدول بصيغة PDF، ويمكن طباعته وتعليقه في لوحة المسجد.',
+    contactLine(s),
+    'جزاكم الله خيرًا.',
+    signature(s)
+  );
 }
