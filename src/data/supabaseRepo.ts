@@ -1,7 +1,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Repo, PortalData } from './repo.ts';
 import type { AppData, Assignment, FixedRule, LogEntry, Month, Mosque, Preacher, Preference, Settings, Unavailable } from './types.ts';
-import { DEFAULT_SETTINGS } from './defaults.ts';
+import { withDefaults } from './defaults.ts';
 
 // عنوان المشروع والمفتاح العام (publishable). المفتاح ده مصمم إنه يتحط في المتصفح؛
 // الحماية الحقيقية من سياسات Supabase (ملف supabase/02_security.sql).
@@ -74,7 +74,7 @@ export class SupabaseRepo implements Repo {
         return o;
       });
     return {
-      settings: { ...DEFAULT_SETTINGS, ...(settingsRow ?? {}) },
+      settings: withDefaults(settingsRow),
       mosques: ids(check(mosques) as any[]) as Mosque[],
       preachers: ids(check(preachers) as any[]) as Preacher[],
       fixed: ids(check(fixed) as any[], ['mosque_id', 'preacher_id']) as FixedRule[],
